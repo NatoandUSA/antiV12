@@ -237,6 +237,11 @@
        <div class="briefbox hidden" id="brief" style="margin-top:12px"></div>
      </div>
 
+     <!-- listing policy + product facts -->
+     <div class="card"><h2>📋 Listing policy &amp; product facts</h2>
+       <div class="muted" id="policyfacts">Load a project to see its category policy and product facts.</div>
+     </div>
+
      <!-- amazon preview -->
      <div class="card"><h2>Amazon page preview</h2><div id="preview"><div class="empty">Import a <code>listing.json</code> (button above) to render it here as an Amazon-style product page + A+ modules + 10-photo plan.</div></div></div>
 
@@ -258,6 +263,8 @@ function seedVal(){
 }
 $('#project').addEventListener('change',seedVal);
 let LAST=null;
+// Listing limits ALWAYS come from the backend category-policy payload (ACT-004) — never hardcoded here.
+let LIMITS=null;
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
 function stepDone(k){$$('#steps .s').forEach(s=>{if(+s.dataset.k<=k)s.classList.add('done')});}
 
@@ -301,6 +308,8 @@ async function loadProject(){
 
 function render(s){
   LAST=s;
+  if(s.category_policy) LIMITS=s.category_policy;
+  renderPolicyFacts(s.category_policy, s.product_facts);
   // ASIN
   const a=$('#asins');
   if(s.asins&&s.asins.length){
@@ -401,6 +410,28 @@ function kwCard(k,rank,top){
     .map(x=>`<span>${esc(x)}</span>`).join('');
   return `<div class="kw ${top?'top':''}"><div class="rank">${rank}</div><div class="p">${esc(k.keyword)}</div><div class="m">${m}</div></div>`;
 }
+function renderPolicyFacts(cp, pf){
+  const el=$('#policyfacts'); if(!el) return;
+  let html='';
+  if(cp){
+    const fb=cp.fallback_used?` <b style="color:#c0392b">⚠️ ${esc(cp.warning_state||'POLICY_VERIFICATION_REQUIRED')}</b>`:'';
+    html+=`<b>Category policy</b> — ${esc(cp.category_identifier)} · title hard limit <b>${cp.title_hard_limit}</b>`
+      +` · recommended ${cp.title_recommended_target!=null?cp.title_recommended_target:'—'}`
+      +` · backend ${cp.backend_byte_ceiling}B${fb}`;
+    if(cp.fallback_used) html+=`<br><span class="muted">${esc(cp.policy_source||'')}</span>`;
+  }
+  if(pf){
+    if(pf.error){ html+=`<br><span style="color:#c0392b">⚠️ product facts: ${esc(pf.error)}</span>`; }
+    else{
+      const req=(pf.owner_fact_required||[]);
+      html+=`<br><b>Product facts</b> — source ${pf.present?`<code>${esc(pf.source_file)}</code>`:'<i>none (all UNKNOWN)</i>'}`
+        +` · verified <b>${pf.verified}</b> · owner-review ${pf.owner_review} · missing <b>${pf.unknown}</b> · blocked ${pf.blocked}`;
+      if(pf.source_sha256) html+=`<br><span class="muted">sha256 <code>${esc(pf.source_sha256)}</code></span>`;
+      if(req.length) html+=`<br><span style="color:#8a5220">OWNER_FACT_REQUIRED (${req.length}): ${esc(req.slice(0,16).join(', '))}${req.length>16?' …':''}</span>`;
+    }
+  }
+  el.innerHTML=html||'<span class="muted">Load a project to see its category policy and product facts.</span>';
+}
 function renderPreview(L){
   const p=$('#preview');
   if(!L){p.innerHTML='<div class="empty">Import a <code>listing.json</code> to render the Amazon page preview.</div>';return;}
@@ -414,17 +445,20 @@ function renderPreview(L){
   const thumbs=photos.map((t,i)=>`<div class="${i<7?'lead':''}">${i+1}</div>`).join('');
   // P0-07: honest preview — no invented ratings, real-or-absent price, clearly labelled structural.
   const title=L.title||'(no title)';
-  const tlen=(L.title||'').length; const tover=tlen>75;
+  // ACT-004: limits come from the resolved category policy payload, never a hardcoded number here.
+  const lim=LIMITS||{}; const thard=lim.title_hard_limit; const ihmax=lim.item_highlights_max;
+  const tlen=(L.title||'').length; const tover=(thard!=null)&&tlen>thard;
   const price = (L.price!=null && String(L.price).trim()!=='') ? ('$'+esc(String(L.price))) : '<span class="muted">Price not entered</span>';
   const ih = L.item_highlights||L.product_highlights;
   const ihtext = ih ? (Array.isArray(ih)?ih.join(', '):String(ih)) : '';
+  const ihover=(ihmax!=null)&&ihtext.length>ihmax;
   p.innerHTML=`<div class="prevtag">🧱 STRUCTURAL PREVIEW — layout only, NOT live Amazon data. No ratings/reviews are shown because none exist yet.</div>
     <div class="amz">
     <div class="gallery"><div class="hero">MAIN IMAGE<br>(real product · pure white · ≥85% frame · ≥2000px)</div>
       <div class="thumbs">${thumbs}</div>
       <div class="muted" style="margin-top:6px">Orange = the 7 that show on desktop.</div></div>
     <div><div class="atitle">${esc(title)}</div>
-      <div class="muted" style="margin:4px 0"><span class="${tover?'no':'ok'}">title ${tlen}/75 chars${tover?' — OVER LIMIT':''}</span>${ihtext?` · <span class="${ihtext.length>125?'no':'ok'}">highlights ${ihtext.length}/125</span>`:''}</div>
+      <div class="muted" style="margin:4px 0"><span class="${tover?'no':'ok'}">title ${tlen}${thard!=null?('/'+thard):''} chars${tover?' — OVER LIMIT':''}</span>${ihtext?` · <span class="${ihover?'no':'ok'}">highlights ${ihtext.length}${ihmax!=null?('/'+ihmax):''}</span>`:''}</div>
       <div class="price">${price}</div>
       <ul class="bul">${bullets||'<li class="muted">no bullets</li>'}</ul>
       <div class="aplus"><div style="font-weight:700;margin:14px 0 4px">A+ Content</div>${aplus||'<div class="empty">no A+ modules in listing.json</div>'}</div>

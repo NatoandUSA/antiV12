@@ -26,10 +26,18 @@ import sys, json, re, os
 from collections import Counter
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "listing"))
+import category_policy_registry as CPR
+import product_fact_loader as PFL
 try:
     from ip_guard import check as tm_check
 except Exception:
     from tm_guard import check as tm_check
+
+# Fabricated defaults the generator used to inject (ACT-006). Deterministically detectable in copy —
+# if they appear, they are almost certainly an invented default, not a verified product fact.
+INVENTED_DEFAULT_MARKERS = ("cotton-blend", "10-14 business days", "10–14 business days",
+                            "any name and credentials", "any occasion", "embroidered name")
 
 GARMENTS = ["crewneck","hoodie","sweatshirt","mock neck","mockneck","pullover","sweater",
             "t-shirt","tshirt","tee","tank","long sleeve","longsleeve","jacket","cardigan"]
@@ -48,6 +56,12 @@ def load_cfg():
 def sev_add(sev, fails, warns, msg):
     if sev == "block": fails.append(msg)
     elif sev == "warn": warns.append(msg)
+
+def resolve_listing_policy(listing, registry=None):
+    """The category policy this listing validates against — the shared registry authority (ACT-004).
+    Exposed so tests can prove the validator, generator, and dashboard resolve identical limits."""
+    cat = str((listing or {}).get("category") or load_cfg().get("default", "apparel")).lower()
+    return CPR.resolve_category_policy(cat, marketplace="US", registry=registry)
 
 # P0.9: canonical-fact contradictions — a claim that contradicts the real product is BLOCKED.
 def fact_contradictions(text, facts):
@@ -109,6 +123,9 @@ def main():
     cat = str(listing.get("category") or cfg.get("default","apparel")).lower()
     R = cfg.get("categories",{}).get(cat) or cfg.get("categories",{}).get(cfg.get("default"),{}) or {}
     CR = cfg.get("claim_rules",{})
+    # ACT-004: title/backend HARD limits come from the shared category-policy registry, not a hardcoded
+    # 75 rule and not category_config.json. The generator and dashboard resolve the same policy.
+    policy = resolve_listing_policy(listing)
 
     fails, warns = [], []
     title = listing.get("title","") or ""
@@ -126,13 +143,16 @@ def main():
     ppc = (listing.get("ppc_exact",[]) or []) + (listing.get("ppc_phrase",[]) or [])
 
     # ---- TITLE ----
-    # P0-02: Amazon's non-media title rule (effective 2026-07-27) caps titles at 75 chars incl. spaces.
-    tmax = R.get("title_max",75)
+    # ACT-004: the title hard limit is the category policy's, resolved through the shared registry.
+    tmax = policy.title_hard_limit
     if len(title) > tmax:
-        fails.append(f"Title {len(title)} chars > {tmax} (Amazon non-media limit effective {R.get('title_rule_effective','2026-07-27')})")
-    ttmax = R.get("title_target_max")
+        fails.append(f"Title {len(title)} chars > {tmax} ({policy.category_identifier} title hard limit)")
+    ttmax = policy.title_recommended_target
     if ttmax and tmax >= len(title) > ttmax:
         warns.append(f"Title {len(title)} chars — over the {ttmax}-char sweet spot; front-load the key phrase in the first ~60.")
+    if policy.fallback_used:
+        warns.append(f"POLICY_VERIFICATION_REQUIRED: no verified category policy for '{cat}' — using local "
+                     f"fallback (title hard limit {tmax}). Verify your exact category in Seller Central.")
     # ---- ITEM HIGHLIGHTS (new field, 125 chars) ----
     ih = listing.get("item_highlights") or listing.get("product_highlights") or []
     if isinstance(ih, str): ih_text = ih
@@ -167,9 +187,10 @@ def main():
         elif len(b) > R.get("bullet_soft_max",250): warns.append(f"Bullet {i} {len(b)} chars > {R.get('bullet_soft_max',250)} (readability)")
 
     # ---- BACKEND ----
+    bmax = policy.backend_byte_ceiling                     # ACT-004: from the shared registry
     nb = bl(backend)
-    if nb > R.get("backend_max_bytes",249): fails.append(f"Backend {nb} bytes > {R.get('backend_max_bytes',249)}")
-    elif nb < R.get("backend_min_bytes",230): warns.append(f"Backend only {nb} bytes (aim {R.get('backend_min_bytes',230)}–{R.get('backend_max_bytes',249)})")
+    if nb > bmax: fails.append(f"Backend {nb} bytes > {bmax} ({policy.category_identifier} backend byte ceiling)")
+    elif nb < R.get("backend_min_bytes",230): warns.append(f"Backend only {nb} bytes (aim {R.get('backend_min_bytes',230)}–{bmax})")
     if "," in backend: fails.append("Backend contains commas (use spaces)")
     bw = toks(backend)
     dup = [w for w,n in Counter(bw).items() if n > 1]
@@ -208,6 +229,34 @@ def main():
         for m in fact_contradictions(text, facts):
             fails.append(f"{label}: {m}")
 
+    # ---- INVENTED-DEFAULT DETECTION (ACT-006) ----
+    # Deterministically flag the fabricated defaults the generator used to inject. Real, verified copy
+    # would not contain these exact tokens.
+    pub_copy = " ".join([title, desc] + [str(b) for b in bullets] + aplus).lower()
+    for marker in INVENTED_DEFAULT_MARKERS:
+        if marker in pub_copy:
+            warns.append(f"possible invented/default claim '{marker}' in publishable copy — verify it is a "
+                         f"real product fact (OWNER_FACT_REQUIRED) or remove it")
+
+    # ---- PRODUCT FACTS (ACT-006) ----
+    # If the project folder next to listing.json carries product facts, surface what is still missing.
+    pf_note = None
+    folder = os.path.dirname(os.path.abspath(path)) if path else None
+    if folder:
+        try:
+            pfx = PFL.load_product_facts(folder=folder)
+            pf_note = (f"{pfx.source_file}: verified {pfx.verified_fact_count} · owner-review "
+                       f"{pfx.owner_review_count} · unknown {pfx.unknown_fact_count} · blocked "
+                       f"{pfx.blocked_fact_count}")
+            if pfx.source_sha256 is None:
+                warns.append("No product-facts.json — product facts are UNKNOWN; verify material, "
+                             "personalization, production time and shipping before publishing")
+            elif pfx.owner_fact_required:
+                warns.append(f"OWNER_FACT_REQUIRED ({len(pfx.owner_fact_required)}): "
+                             f"{', '.join(pfx.owner_fact_required[:12])}")
+        except PFL.ProductFactError as e:
+            warns.append(f"product-facts file present but unusable: {e}")
+
     # ---- KEYWORD VERIFY vs master sheet ----
     if master and os.path.exists(master):
         try:
@@ -232,6 +281,11 @@ def main():
     print("="*58)
     print(f"  LISTING VALIDATION  [{cat}]  —  title {len(title)}c · backend {nb}B")
     print("="*58)
+    fb = "  ⚠️ FALLBACK (POLICY_VERIFICATION_REQUIRED)" if policy.fallback_used else ""
+    print(f"policy: {policy.category_identifier} · title hard limit {policy.title_hard_limit} · "
+          f"recommended {policy.title_recommended_target} · backend ceiling {policy.backend_byte_ceiling}B{fb}")
+    if pf_note:
+        print(f"product facts: {pf_note}")
     if fails:
         print(f"\n❌ FAIL ({len(fails)}):")
         for f in fails: print("  -", f)

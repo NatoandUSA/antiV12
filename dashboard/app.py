@@ -33,6 +33,8 @@ PY = sys.executable or "python3"
 sys.path.insert(0, os.path.join(ROOT, "core"))
 sys.path.insert(0, os.path.join(ROOT, "listing"))
 import keyword_source_adapter as KSA
+import category_policy_registry as CPR
+import product_fact_loader as PFL
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # 64 MB uploads
@@ -268,8 +270,37 @@ def read_listing(folder):
             return None
     return None
 
+def category_policy_summary(folder, listing=None):
+    """The resolved category policy for the cockpit — the SAME limits the generator and validator use
+    (ACT-004). The frontend reads its title/highlights counters from this payload, never hardcoded."""
+    L = listing if listing is not None else read_listing(folder)
+    cat = ((L or {}).get("category")) or "apparel"
+    p = CPR.resolve_category_policy(cat, marketplace="US")
+    return {
+        "category": p.product_category, "category_identifier": p.category_identifier,
+        "title_hard_limit": p.title_hard_limit, "title_recommended_target": p.title_recommended_target,
+        "backend_byte_ceiling": p.backend_byte_ceiling, "item_highlights_max": ITEM_HIGHLIGHTS_MAX,
+        "fallback_used": p.fallback_used, "warning_state": p.warning_state,
+        "policy_source": p.policy_source,
+    }
+
+def product_fact_summary(folder):
+    """Product-fact source + counts + OWNER_FACT_REQUIRED for the cockpit (ACT-006)."""
+    try:
+        pf = PFL.load_product_facts(folder=folder)
+    except PFL.ProductFactError as e:
+        return {"error": str(e)}
+    return {
+        "source_file": pf.source_file, "source_sha256": pf.source_sha256,
+        "present": pf.source_sha256 is not None,
+        "verified": pf.verified_fact_count, "owner_review": pf.owner_review_count,
+        "unknown": pf.unknown_fact_count, "blocked": pf.blocked_fact_count,
+        "owner_fact_required": pf.owner_fact_required, "warnings": pf.warnings[:6],
+    }
+
 def snapshot(folder, seed=""):
     src, src_err = load_keyword_source(folder)      # loaded once, shared by both views below
+    listing = read_listing(folder)
     return {
         "asins": parse_asins(folder),
         "batch_meta": parse_batches_meta(folder),
@@ -279,7 +310,9 @@ def snapshot(folder, seed=""):
         "intel": parse_intel(folder),
         "gaps": parse_gaps(folder),
         "gates": parse_gates(folder),
-        "listing": read_listing(folder),
+        "listing": listing,
+        "category_policy": category_policy_summary(folder, listing=listing),
+        "product_facts": product_fact_summary(folder),
         "seed": seed,
         "files": sorted(os.path.basename(f) for f in glob.glob(os.path.join(folder, "*"))
                         if os.path.isfile(f)),
@@ -523,19 +556,24 @@ def api_models():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 LISTING_SCHEMA_VERSION = "2.4"
-TITLE_MAX = 75            # P0-02: Amazon non-media title cap (effective 2026-07-27)
 ITEM_HIGHLIGHTS_MAX = 125
 
-def validate_listing(L):
-    """P0-06: field-level validation against the minimum listing contract. Returns (ok, errors)."""
+def validate_listing(L, registry=None):
+    """P0-06: field-level validation against the minimum listing contract. Returns (ok, errors).
+
+    ACT-004: the title hard limit is resolved through the shared category-policy registry (same authority
+    the generator and validator use), keyed off the listing's category — never a hardcoded 75 rule.
+    """
     errs = []
     if not isinstance(L, dict):
         return False, ["listing is not a JSON object"]
+    policy = CPR.resolve_category_policy(L.get("category") or "apparel", marketplace="US", registry=registry)
+    title_max = policy.title_hard_limit
     title = L.get("title")
     if not isinstance(title, str) or not title.strip():
         errs.append("title: missing or empty")
-    elif len(title) > TITLE_MAX:
-        errs.append(f"title: {len(title)} chars > {TITLE_MAX} (Amazon non-media limit, effective 2026-07-27)")
+    elif len(title) > title_max:
+        errs.append(f"title: {len(title)} chars > {title_max} ({policy.category_identifier} title hard limit)")
     bullets = L.get("bullets") or L.get("bullet_points")
     if not isinstance(bullets, list) or len(bullets) < 1:
         errs.append("bullets: expected a non-empty list")

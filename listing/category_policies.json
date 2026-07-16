@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0.0",
+  "registry_note": "Versioned category-policy registry (ACT-004). The single authority for per-category listing limits used by the listing generator, compliance validator, and dashboard. Limits are the toolkit owner's documented working values for Amazon US listing optimization and customer experience; they are NOT redistributions of an official Amazon rule table. Verify your exact category in Seller Central before publishing. Not legal advice.",
+  "default_marketplace": "US",
+  "policies": [
+    {
+      "schema_version": "1.0.0",
+      "marketplace": "US",
+      "product_category": "apparel",
+      "category_identifier": "US:apparel",
+      "title_hard_limit": 75,
+      "title_recommended_target": 65,
+      "bullet_count": 5,
+      "bullet_character_limit": 500,
+      "description_character_limit": 2000,
+      "backend_byte_ceiling": 249,
+      "supported_catalog_fields": ["title", "bullet_points", "description", "backend_search_terms", "item_highlights"],
+      "unsupported_catalog_fields": [],
+      "policy_source": "Owner working value aligned to the Amazon US Seller Central non-media title rule effective 2026-07-27. Verify your exact apparel category in Seller Central.",
+      "policy_verified_at": "2026-07-16"
+    },
+    {
+      "schema_version": "1.0.0",
+      "marketplace": "US",
+      "product_category": "pod",
+      "category_identifier": "US:pod",
+      "title_hard_limit": 75,
+      "title_recommended_target": 65,
+      "bullet_count": 5,
+      "bullet_character_limit": 500,
+      "description_character_limit": 2000,
+      "backend_byte_ceiling": 249,
+      "supported_catalog_fields": ["title", "bullet_points", "description", "backend_search_terms", "item_highlights"],
+      "unsupported_catalog_fields": [],
+      "policy_source": "Owner working value for print-on-demand apparel, aligned to the Amazon US non-media title rule effective 2026-07-27. Verify your exact category in Seller Central.",
+      "policy_verified_at": "2026-07-16"
+    },
+    {
+      "schema_version": "1.0.0",
+      "marketplace": "US",
+      "product_category": "jewelry",
+      "category_identifier": "US:jewelry",
+      "title_hard_limit": 75,
+      "title_recommended_target": 65,
+      "bullet_count": 5,
+      "bullet_character_limit": 500,
+      "description_character_limit": 2000,
+      "backend_byte_ceiling": 249,
+      "supported_catalog_fields": ["title", "bullet_points", "description", "backend_search_terms", "item_highlights"],
+      "unsupported_catalog_fields": [],
+      "policy_source": "Owner working value for jewelry, aligned to the Amazon US non-media title rule effective 2026-07-27. Verify your exact category in Seller Central.",
+      "policy_verified_at": "2026-07-16"
+    }
+  ],
+  "fallback_policy": {
+    "schema_version": "1.0.0",
+    "marketplace": "US",
+    "product_category": "__fallback__",
+    "category_identifier": "US:__fallback__",
+    "title_hard_limit": 75,
+    "title_recommended_target": 60,
+    "bullet_count": 5,
+    "bullet_character_limit": 500,
+    "description_character_limit": 2000,
+    "backend_byte_ceiling": 249,
+    "supported_catalog_fields": ["title", "bullet_points", "description", "backend_search_terms"],
+    "unsupported_catalog_fields": [],
+    "policy_source": "LOCAL_FALLBACK — no category-verified policy is available for this category. This is a conservative local working value, NOT an official or universal Amazon limit. Resolve a real category policy and verify it in Seller Central before publishing.",
+    "policy_verified_at": null
+  }
+}

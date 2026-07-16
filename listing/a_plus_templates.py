@@ -38,8 +38,8 @@ TEMPLATES = [
     {
         "key": "made_to_order",
         "title": "Made to Order for You",
-        "copy_template": "Each {garment} is embroidered after you order and shipped from the US with "
-                         "tracking. Typical production time: {production_time}.",
+        "copy_template": "Each {garment} is embroidered after you order. Typical production "
+                         "time: {production_time}.",
         "image_direction": "Simple production/shipping graphic; no guaranteed-delivery language.",
         "requires_proof": False,
         "gap_signals": ["Review beatability"],

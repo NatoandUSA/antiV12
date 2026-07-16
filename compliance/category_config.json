@@ -1,9 +1,8 @@
 {
-  "_note": "Per-category listing rules. listing.json may set \"category\": \"apparel|jewelry|pod\". Missing -> default. Values block|warn|allow control severity. Not legal advice. title_max=75 reflects Amazon's non-media title rule effective 2026-07-27 (verify your exact category in Seller Central).",
+  "_note": "Per-category listing CLAIM RULES and severity/soft settings only. listing.json may set \"category\": \"apparel|jewelry|pod\". Missing -> default. Values block|warn|allow control severity. Not legal advice. TITLE and BACKEND hard limits are NOT here anymore — they live in the versioned registry listing/category_policies.json (ACT-004), which the validator, generator, and dashboard all resolve through category_policy_registry. This file is a registry consumer, not a second authority for the title rule.",
   "default": "apparel",
   "categories": {
     "apparel": {
-      "title_max": 75,
       "title_word_repeat_max": 2,
       "referral_pct": 0.17,
       "ampersand_in_title": "warn",
@@ -12,17 +11,12 @@
       "bullets_expected": 5,
       "bullet_hard_max": 500,
       "bullet_soft_max": 250,
-      "backend_max_bytes": 249,
       "backend_min_bytes": 230,
       "garment_variation_check": true,
-      "title_target_min": 45,
-      "title_target_max": 65,
       "item_highlights_max": 125,
-      "item_highlights_target_max": 120,
-      "title_rule_effective": "2026-07-27"
+      "item_highlights_target_max": 120
     },
     "pod": {
-      "title_max": 75,
       "title_word_repeat_max": 2,
       "referral_pct": 0.17,
       "ampersand_in_title": "warn",
@@ -31,17 +25,12 @@
       "bullets_expected": 5,
       "bullet_hard_max": 500,
       "bullet_soft_max": 250,
-      "backend_max_bytes": 249,
       "backend_min_bytes": 230,
       "garment_variation_check": true,
-      "title_target_min": 45,
-      "title_target_max": 65,
       "item_highlights_max": 125,
-      "item_highlights_target_max": 120,
-      "title_rule_effective": "2026-07-27"
+      "item_highlights_target_max": 120
     },
     "jewelry": {
-      "title_max": 75,
       "title_word_repeat_max": 2,
       "referral_pct": 0.2,
       "ampersand_in_title": "warn",
@@ -50,14 +39,10 @@
       "bullets_expected": 5,
       "bullet_hard_max": 500,
       "bullet_soft_max": 250,
-      "backend_max_bytes": 249,
       "backend_min_bytes": 230,
       "garment_variation_check": false,
-      "title_target_min": 45,
-      "title_target_max": 65,
       "item_highlights_max": 125,
-      "item_highlights_target_max": 120,
-      "title_rule_effective": "2026-07-27"
+      "item_highlights_target_max": 120
     }
   },
   "claim_rules": {

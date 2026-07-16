@@ -1,0 +1,85 @@
+{
+  "session": 3,
+  "scope": [
+    "ACT-005",
+    "ACT-007",
+    "ACT-008",
+    "ACT-015"
+  ],
+  "fixture": "runs/T2 (personalized nurse sweatshirt)",
+  "keyword_source_file": "MASTER-KEYWORDS-LEAN.json",
+  "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "keyword_tier_counts": {
+    "TIER_A": 74,
+    "TIER_B": 378,
+    "REVIEW": 2671,
+    "REJECTED": 3606
+  },
+  "product_fact_source": "product-facts.json",
+  "product_fact_source_sha256": null,
+  "claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+  "claim_counts": {
+    "verified": 1,
+    "owner_review": 0,
+    "blocked": 23,
+    "prohibited": 0
+  },
+  "title_recommended": "Personalized Nurse Sweatshirt",
+  "title_recommended_candidate": "CONCISE",
+  "mobile_identity_visible": true,
+  "bullet_jobs": [
+    "PRODUCT_AND_PERSONALIZATION",
+    "EMBROIDERY_OR_DECORATION_PROOF",
+    "FIT_SIZE_COLOR_ORDER_ACCURACY",
+    "CARE_PRODUCTION_PACKAGING_DELIVERY",
+    "RECIPIENT_OCCASION_USE"
+  ],
+  "blocked_bullet_jobs": [
+    "EMBROIDERY_OR_DECORATION_PROOF",
+    "FIT_SIZE_COLOR_ORDER_ACCURACY",
+    "CARE_PRODUCTION_PACKAGING_DELIVERY"
+  ],
+  "page_audit_status": "PASS_WITH_WARNINGS",
+  "owner_fact_required": [
+    "care_instructions",
+    "color_options",
+    "decoration_method",
+    "fit",
+    "handling_time",
+    "material",
+    "material_composition",
+    "measurements",
+    "occasion",
+    "packaging",
+    "personalization_fields",
+    "production_location",
+    "production_time_range",
+    "shipping_method",
+    "size_range",
+    "tracking",
+    "verified_differentiator"
+  ],
+  "checks": {
+    "tier_a_is_74": true,
+    "tier_b_is_378": true,
+    "listing_dashboard_keyword_hash_match": true,
+    "product_fact_sha256_recorded": true,
+    "claim_evidence_sha256_recorded": true,
+    "wrong_audience_leakage_zero": true,
+    "brand_ip_leakage_zero": true,
+    "no_invented_defaults_in_copy": true,
+    "no_unsupported_publishable_claims": true,
+    "title_no_duplicate_product_concept": true,
+    "title_no_duplicate_personalization_concept": true,
+    "title_not_sliced": true,
+    "five_bullets_unique_jobs": true,
+    "every_factual_phrase_has_lineage": true,
+    "safe_candidate_promoted": true,
+    "pageauditor_blocks_unsafe": true,
+    "last_valid_listing_preserved": true,
+    "deterministic_output": true
+  },
+  "all_checks_pass": true,
+  "status": "SESSION3_READY_FOR_REVIEW",
+  "note": "Full local proof artifacts (CLAIM-EVIDENCE.json, PRODUCT-PAGE.json, PRODUCT-PAGE-BRIEF.md, LISTING-COPY-READY.txt, PAGE-AUDIT-REPORT.json, CONTENT-COMPLIANCE-REPORT.json, LAST-VALID-LISTING-METADATA.json, FAILED-LISTING-CANDIDATE.json) are in runs/T2, which is gitignored business data. This root gate carries only non-sensitive verification data."
+}

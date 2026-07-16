@@ -36,6 +36,11 @@ import a_plus_templates as APT
 import keyword_source_adapter as KSA
 import category_policy_registry as CPR
 import product_fact_loader as PFL
+import claim_evidence as CE
+import title_engine as TE
+import bullet_engine as BE
+import description_engine as DE
+import page_auditor as PA
 
 ITEM_HIGHLIGHTS_MAX = 125
 DEFAULT_CATEGORY = "apparel"
@@ -79,38 +84,6 @@ def _load(folder, name):
         raise KSA.MalformedKeywordSourceError(p, e.lineno, e.colno, e.msg) from e
 
 
-def _titlecase(s):
-    small = {"for", "and", "with", "the", "a", "an", "of", "to", "in"}
-    words = s.split()
-    out = []
-    for i, w in enumerate(words):
-        out.append(w if (w.islower() and w in small and i != 0) else w[:1].upper() + w[1:])
-    return " ".join(out)
-
-
-def build_title(primary, product, title_limit):
-    """Front-load the primary keyword, add product type + one differentiator, capped at the category
-    policy's title hard limit, no promo words, no repeats, no symbols."""
-    garment = product.get("garment_type") or ""
-    audience = product.get("audience") or ""
-    base_words = []
-    seen = set()
-    for chunk in (primary, garment, "Embroidered", "Personalized", audience):
-        for w in re.sub(r"[^A-Za-z0-9 ]", " ", str(chunk)).split():
-            lw = w.lower()
-            if lw in PROMO or lw in seen:
-                continue
-            seen.add(lw)
-            base_words.append(w)
-    title = ""
-    for w in base_words:
-        cand = (title + " " + w).strip()
-        if len(cand) > title_limit:
-            break
-        title = cand
-    return _titlecase(title)
-
-
 def build_item_highlights(keywords, product):
     """Comma-separated secondary phrases within 125 chars (secondary keywords + verified material)."""
     parts = []
@@ -121,27 +94,6 @@ def build_item_highlights(keywords, product):
     if material and len(", ".join(parts + [material])) <= ITEM_HIGHLIGHTS_MAX:
         parts.append(material)
     return ", ".join(parts)[:ITEM_HIGHLIGHTS_MAX]
-
-
-def build_bullets(keywords, gaps, product):
-    """Five benefit bullets. Facts that are unknown are omitted, never fabricated: no material default,
-    no personalization value, no shipping-origin claim unless the fact is verified (ACT-006)."""
-    g = product.get("garment_type") or "garment"
-    audience = product.get("audience")
-    who = f"for {audience} " if audience else ""
-    pers = product.get("personalization")        # verified personalization value or None
-    material = product.get("material")           # verified material or None
-    shipping_verified = bool(product.get("shipping_origin_verified"))
-
-    b1 = (f"PERSONALIZED FOR THEM: Add {pers} — embroidered as you enter it at checkout." if pers
-          else "PERSONALIZED FOR THEM: Add your personalization at checkout — embroidered as you enter it.")
-    b2 = f"REAL MACHINE EMBROIDERY: Raised satin stitching on the {g}, not a flat printed graphic."
-    b3 = ("MADE TO ORDER: Each piece is embroidered after you order and shipped from the US with tracking."
-          if shipping_verified else "MADE TO ORDER: Each piece is embroidered after you order.")
-    b4 = (f"COMFORTABLE {material.upper()} FIT: Built for everyday wear and easy to layer." if material
-          else "COMFORTABLE FIT: Built for everyday wear and easy to layer.")
-    b5 = f"THOUGHTFUL GIFT: A personalized {g} {who}to actually wear and keep."
-    return [b[:490] for b in (b1, b2, b3, b4, b5)]
 
 
 def build_backend(keywords, product, title="", byte_ceiling=249):
@@ -253,9 +205,25 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     product["audience"] = _audience_from_keywords(kws)
     product["price"] = (brief_in.get("product") or {}).get("price")
 
-    title = build_title(primary, product, title_limit)
+    # Evidence-classed claims (ACT-007/008): every factual phrase in the title/bullets/description is
+    # drawn from a VERIFIED claim here — unknown facts stay blocked and never become copy.
+    keyword_context = {"audience": product["audience"]} if product["audience"] else {}
+    claims = CE.build_claim_evidence(facts_src, keyword_context=keyword_context)
+    CE.write_claim_evidence(folder, evidence=claims)
+    # union the fact fields behind every blocked/owner-review claim into OWNER_FACT_REQUIRED.
+    for req in claims.missing_evidence_requirements:
+        for fld in req["required_fact_fields"]:
+            if fld not in owner_fact_required:
+                owner_fact_required.append(fld)
+
+    title_res = TE.build_titles(primary, claims, policy, audience_hint=product["audience"])
+    title = title_res.title_recommended
+    bullet_res = BE.build_bullets(claims, primary, eligible_keywords=kws, garment=product["garment_type"])
+    bullets = bullet_res.texts
+    desc_res = DE.build_description(claims, primary, eligible_keywords=kws)
+    description = desc_res.description_text
+
     highlights = build_item_highlights(kws, product)
-    bullets = build_bullets(kws, gaps, product)
     backend = build_backend(kws, product, title=title, byte_ceiling=policy.backend_byte_ceiling)
 
     # A+ facts: only verified values, so an unresolved {placeholder} marks a module non-publishable
@@ -278,8 +246,6 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
             blocked_modules.append(m)
         else:
             publishable_modules.append(dict(m, publishable=True))
-
-    description = _build_description(product)
 
     image_plan = [
         "Main: real product, pure white bg, >=85% frame, no text/props, >=2000px",
@@ -316,9 +282,34 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
                             "policy_source": policy.policy_source},
         "product_fact_source": facts_src.source_file,
         "product_fact_source_sha256": facts_src.source_sha256,
+        # ACT-005: three semantic-component title candidates + a word-boundary mobile preview.
+        "title_candidates": {"TITLE_CONCISE": title_res.title_concise,
+                             "TITLE_EXPANDED": title_res.title_expanded,
+                             "TITLE_RECOMMENDED": title_res.title_recommended},
+        "title_recommended": title_res.title_recommended,
+        "title_recommended_candidate": title_res.recommended_candidate,
+        "title_scores": title_res.scores,
+        "title_meta": {"status": title_res.status,
+                       "recommended_candidate": title_res.recommended_candidate,
+                       "components": title_res.components},
+        "mobile_preview": title_res.mobile_preview,
+        # ACT-007: five structured bullet objects with distinct buyer jobs + claim lineage.
+        "bullet_objects": bullet_res.to_list(),
+        # ACT-008: description sections built only from verified evidence.
+        "description_meta": desc_res.to_dict(),
+        # ACT-007/008: the evidence lineage every factual phrase traces back to.
+        "claim_evidence": _claim_evidence_block(claims),
         "owner_fact_required": sorted(owner_fact_required),
+        "missing_claim_evidence": claims.missing_evidence_requirements,
         **src.listing_metadata(),
     }
+
+    # ACT-015: audit the assembled listing with the shared PageAuditor and record the verdict.
+    audit = PA.audit_listing(listing, keyword_source=src, claim_evidence=claims,
+                             product_facts=facts_src, policy=policy)
+    listing["audit"] = audit
+    listing["publishable"] = audit["status"] != PA.BLOCKED
+    listing["publishability_status"] = audit["status"]
 
     brief = {
         "schema_version": "2.4",
@@ -328,7 +319,22 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
         "keyword_eligibility_counts": src.eligibility_counts,
         "category_policy": listing["category_policy"],
         "title": title, "title_len": len(title), "title_limit": title_limit,
+        "title_candidates": listing["title_candidates"],
+        "title_recommended_candidate": title_res.recommended_candidate,
+        "title_scores": {k: {"length": v["length"], "score": v["score"]}
+                         for k, v in title_res.scores.items()},
+        "mobile_preview": title_res.mobile_preview,
         "item_highlights": highlights, "item_highlights_len": len(highlights),
+        "bullet_jobs": [{"bullet_number": b["bullet_number"], "job": b["job"],
+                         "publishability": b["publishability"], "claim_ids": b["claim_ids"]}
+                        for b in bullet_res.to_list()],
+        "description_sections": [s["section_id"] for s in desc_res.sections],
+        "description_omitted_sections": desc_res.omitted_sections,
+        "claim_counts": {"verified": claims.verified_count, "owner_review": claims.owner_review_count,
+                         "blocked": claims.blocked_count, "prohibited": claims.prohibited_count},
+        "claim_evidence_source_sha256": claims.content_sha256(),
+        "audit_status": audit["status"],
+        "audit_hard_failures": audit["hard_failures"],
         "keywords_used": kws[:8],
         "product_fact_source": facts_src.source_file,
         "product_fact_source_sha256": facts_src.source_sha256,
@@ -359,9 +365,18 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
           f"**Product facts:** `{facts_src.source_file}` · verified {facts_src.verified_fact_count} · "
           f"owner-review {facts_src.owner_review_count} · unknown {facts_src.unknown_fact_count}", "",
           f"**OWNER_FACT_REQUIRED:** " + (", ".join(sorted(owner_fact_required)) or "none"), "",
-          f"**Title ({len(title)}/{title_limit}):** {title}", "",
+          f"**Title ({len(title)}/{title_limit}, {title_res.recommended_candidate}):** {title}", "",
+          f"**Mobile preview ({title_res.mobile_preview['char_count']} chars, identity visible: "
+          f"{title_res.mobile_preview['product_identity_visible']}):** {title_res.mobile_preview['text']}", "",
+          f"**Claims:** verified {claims.verified_count} · owner-review {claims.owner_review_count} · "
+          f"blocked {claims.blocked_count} · prohibited {claims.prohibited_count}", "",
+          f"**PageAudit:** {audit['status']}"
+          + (f" — {len(audit['hard_failures'])} hard failure(s)" if audit['hard_failures'] else ""), "",
           f"**Item Highlights ({len(highlights)}/{ITEM_HIGHLIGHTS_MAX}):** {highlights}", "",
-          "**Bullets:**"] + [f"- {b}" for b in bullets] + ["", "**A+ modules (publishable):**"] + \
+          "**Bullets (5 evidence-led jobs):**"] + \
+         [f"- [{b['job']} · {b['publishability']}] {b['text'] or '(blocked — needs '
+          + ', '.join(b['missing_requirements']) + ')'}" for b in bullet_res.to_list()] + \
+         ["", "**A+ modules (publishable):**"] + \
          [f"- {m['headline']}" + ("  ⚠️ needs real photo" if m["requires_proof"] else "") for m in publishable_modules] + \
          ["", "**A+ modules blocked (missing verified facts):**"] + \
          ([f"- {m['headline']} — needs {', '.join(m['missing_facts'])}" for m in blocked_modules] or ["- none"]) + \
@@ -371,27 +386,28 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
         f.write("\n".join(md))
 
     return {"ok": True, "listing": listing, "brief": brief, "keyword_source": src,
-            "product_facts": facts_src, "category_policy": policy,
-            "title_len": len(title), "title_limit": title_limit,
+            "product_facts": facts_src, "category_policy": policy, "claim_evidence": claims,
+            "title_result": title_res, "bullet_result": bullet_res, "description_result": desc_res,
+            "audit": audit, "title_len": len(title), "title_limit": title_limit,
             "owner_fact_required": sorted(owner_fact_required), "proof_required": proof_needed}
 
 
-def _build_description(product):
-    """Description from verified facts only. No production-origin or material claim unless verified."""
-    g = product.get("garment_type") or "garment"
-    parts = [f"A personalized {g}."]
-    pers = product.get("personalization")
-    material = product.get("material")
-    design = product.get("design")
-    if pers:
-        parts.append(f"Personalize it with {pers}.")
-    if design and "embroider" in str(design).lower():
-        parts.append("Decorated with real machine embroidery.")
-    if material:
-        parts.append(f"Made from {material}.")
-    if product.get("shipping_origin_verified"):
-        parts.append("Made to order and shipped from the US with tracking.")
-    return " ".join(parts)
+def _claim_evidence_block(claims):
+    """Compact evidence block embedded in the listing so PageAuditor can verify claim backing from the
+    listing alone (verified claim texts + owner-review texts + counts + source hashes)."""
+    def rows(records):
+        return [{"claim_id": c["claim_id"], "concept": c["normalized_concept"],
+                 "text": c["proposed_text"]} for c in records if c.get("proposed_text")]
+    return {
+        "source_product_fact_file": claims.source_product_fact_file,
+        "source_product_fact_sha256": claims.source_product_fact_sha256,
+        "source_content_sha256": claims.content_sha256(),
+        "verified": rows(claims.publishable),
+        "owner_review": rows(claims.by_state(CE.SUPPORTED_OWNER_REVIEW)),
+        "counts": {"verified": claims.verified_count, "owner_review": claims.owner_review_count,
+                   "blocked": claims.blocked_count, "prohibited": claims.prohibited_count},
+        "missing_evidence_requirements": claims.missing_evidence_requirements,
+    }
 
 
 def main():

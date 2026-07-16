@@ -29,6 +29,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "listing"))
 import category_policy_registry as CPR
 import product_fact_loader as PFL
+import keyword_source_adapter as KSA
 try:
     from ip_guard import check as tm_check
 except Exception:
@@ -257,6 +258,45 @@ def main():
         except PFL.ProductFactError as e:
             warns.append(f"product-facts file present but unusable: {e}")
 
+    # ---- SHARED PAGE AUDITOR (ACT-015) ----
+    # The CLI validator, the dashboard safe-write path, and the proof gate all reach their block/allow
+    # decision through the SAME listing.page_auditor — not a contradictory independent safety path. Its
+    # hard failures block here too; its warnings surface here too. Verified claim backing is read from
+    # the listing's own embedded claim_evidence block (present on generator output).
+    try:
+        import page_auditor as PA
+        kwsrc = None
+        if folder:
+            try:
+                kwsrc = KSA.load_keyword_source(folder)
+            except Exception:
+                kwsrc = None
+        audit = PA.audit_listing(listing, keyword_source=kwsrc)
+        # The lineage-dependent claim screen (unsupported/owner-review/prohibited) can only PROVE a
+        # claim unsupported when the listing carries a claim_evidence block. This CLI validator is also
+        # run on hand-authored listings whose claims are verified through the separate gate evidence
+        # files, and it already owns claim accuracy via category_config + fact_contradictions — so when
+        # no lineage is present those findings are advisory here (they still HARD-block the dashboard
+        # safe-write path and the proof gate, which govern publishable output). Every other PageAuditor
+        # hard failure (keyword leakage, title/backend limits, structure, placeholders, hash) blocks.
+        has_lineage = isinstance(listing.get("claim_evidence"), dict)
+        LINEAGE_CLAIM_CATS = {"unsupported_claim", "owner_review_in_copy", "prohibited_claim"}
+        for h in audit["hard_failures"]:
+            m = f"[PageAudit] {h['category']}: {h['message']}"
+            if h["category"] in LINEAGE_CLAIM_CATS and not has_lineage:
+                if m not in warns:
+                    warns.append(m + " — advisory: listing carries no claim_evidence lineage")
+            elif m not in fails:
+                fails.append(m)
+        for w in audit["warnings"]:
+            m = f"[PageAudit] {w['category']}: {w['message']}"
+            if m not in warns:
+                warns.append(m)
+        page_audit_status = audit["status"]
+    except Exception as e:
+        page_audit_status = "UNAVAILABLE"
+        warns.append(f"PageAudit unavailable: {e}")
+
     # ---- KEYWORD VERIFY vs master sheet ----
     if master and os.path.exists(master):
         try:
@@ -284,6 +324,7 @@ def main():
     fb = "  ⚠️ FALLBACK (POLICY_VERIFICATION_REQUIRED)" if policy.fallback_used else ""
     print(f"policy: {policy.category_identifier} · title hard limit {policy.title_hard_limit} · "
           f"recommended {policy.title_recommended_target} · backend ceiling {policy.backend_byte_ceiling}B{fb}")
+    print(f"PageAudit: {page_audit_status}  (shared listing.page_auditor — same authority as dashboard safe-write)")
     if pf_note:
         print(f"product facts: {pf_note}")
     if fails:

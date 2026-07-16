@@ -242,6 +242,11 @@
        <div class="muted" id="policyfacts">Load a project to see its category policy and product facts.</div>
      </div>
 
+     <!-- evidence-backed listing copy + shared page audit (Session 3: ACT-005/007/008/015) -->
+     <div class="card"><h2>🧾 Listing copy &amp; page audit</h2>
+       <div class="muted" id="listingcopy">Generate a structured listing to see title candidates, the five bullet jobs, claim evidence counts and the shared PageAuditor result.</div>
+     </div>
+
      <!-- amazon preview -->
      <div class="card"><h2>Amazon page preview</h2><div id="preview"><div class="empty">Import a <code>listing.json</code> (button above) to render it here as an Amazon-style product page + A+ modules + 10-photo plan.</div></div></div>
 
@@ -310,6 +315,7 @@ function render(s){
   LAST=s;
   if(s.category_policy) LIMITS=s.category_policy;
   renderPolicyFacts(s.category_policy, s.product_facts);
+  renderListingCopy(s.listing_copy);
   // ASIN
   const a=$('#asins');
   if(s.asins&&s.asins.length){
@@ -431,6 +437,35 @@ function renderPolicyFacts(cp, pf){
     }
   }
   el.innerHTML=html||'<span class="muted">Load a project to see its category policy and product facts.</span>';
+}
+function renderListingCopy(lc){
+  const el=$('#listingcopy'); if(!el) return;
+  if(!lc||!lc.title_recommended){ el.innerHTML='<span class="muted">Generate a structured listing to see title candidates, the five bullet jobs, claim evidence counts and the shared PageAuditor result.</span>'; return; }
+  const st=(lc.page_audit&&lc.page_audit.status)||lc.publishability_status||'—';
+  const stColor={PASS:'#1e7e34',PASS_WITH_WARNINGS:'#8a5220',BLOCKED:'#c0392b'}[st]||'#8a97a4';
+  let html=`<b>PageAudit:</b> <b style="color:${stColor}">${esc(st)}</b> <span class="muted">(shared auditor — CLI, dashboard, proof gate)</span>`;
+  const hf=(lc.page_audit&&lc.page_audit.hard_failures)||[];
+  if(hf.length) html+=`<br><span style="color:#c0392b">${hf.length} hard failure(s): ${esc(hf.slice(0,4).map(h=>h.category).join(', '))}</span>`;
+  // titles
+  const tc=lc.title_candidates||{}, sc=lc.title_scores||{};
+  html+=`<br><br><b>Title candidates</b> (recommended: ${esc(lc.title_recommended_candidate||'—')})`;
+  ['TITLE_CONCISE','TITLE_EXPANDED'].forEach(k=>{ if(tc[k]!=null){ const key=k.replace('TITLE_',''); const s=sc[key]||{};
+    html+=`<br>· ${key}: <code>${esc(tc[k])}</code> <span class="muted">${s.length!=null?s.length+'c':''}${s.score!=null?' · score '+s.score:''}</span>`; }});
+  if(lc.mobile_preview) html+=`<br><span class="muted">📱 mobile: “${esc(lc.mobile_preview.text||'')}” · identity visible: ${lc.mobile_preview.product_identity_visible?'yes':'<b style="color:#c0392b">no</b>'}</span>`;
+  // bullets
+  const bj=lc.bullet_jobs||[];
+  if(bj.length){ html+='<br><br><b>Five bullet jobs</b>';
+    bj.forEach(b=>{ const ok=b.publishability==='PUBLISHABLE'; html+=`<br>${ok?'✅':'⛔'} B${b.bullet_number} ${esc(b.job)} <span class="muted">[${esc(b.publishability)}]${b.claim_ids&&b.claim_ids.length?' · '+esc(b.claim_ids.join(', ')):''}</span>`; }); }
+  // claims
+  const cc=lc.claim_counts;
+  if(cc) html+=`<br><br><b>Claim evidence</b> — verified <b>${cc.verified}</b> · owner-review ${cc.owner_review} · blocked <b>${cc.blocked}</b> · prohibited ${cc.prohibited}`;
+  if(lc.claim_evidence_sha256) html+=`<br><span class="muted">claim-evidence sha256 <code>${esc(lc.claim_evidence_sha256)}</code></span>`;
+  const req=lc.owner_fact_required||[];
+  if(req.length) html+=`<br><span style="color:#8a5220">OWNER_FACT_REQUIRED (${req.length}): ${esc(req.slice(0,16).join(', '))}${req.length>16?' …':''}</span>`;
+  // last valid / failed candidate
+  if(lc.last_valid_listing) html+=`<br><br><b>Last valid listing</b> — ${esc(lc.last_valid_listing.status||'')} · out sha <code>${esc(String(lc.last_valid_listing.output_sha256||'').slice(0,16))}…</code>`;
+  if(lc.failed_candidate) html+=`<br><span style="color:#c0392b">Last failed candidate: ${esc(lc.failed_candidate.status||'')} — ${(lc.failed_candidate.hard_failures||[]).length} hard failure(s) (last valid preserved)</span>`;
+  el.innerHTML=html;
 }
 function renderPreview(L){
   const p=$('#preview');

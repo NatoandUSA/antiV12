@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.join(ROOT, "listing"))
 import keyword_source_adapter as KSA
 import category_policy_registry as CPR
 import product_fact_loader as PFL
+import page_auditor as PA
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # 64 MB uploads
@@ -298,6 +299,52 @@ def product_fact_summary(folder):
         "owner_fact_required": pf.owner_fact_required, "warnings": pf.warnings[:6],
     }
 
+def listing_copy_summary(folder, listing=None):
+    """Session 3 cockpit view (ACT-005/007/008/015): title candidates + scores, recommended title and
+    mobile preview, the five bullet jobs and their publishability, verified/owner-review/blocked claim
+    counts, OWNER_FACT_REQUIRED, missing evidence, the shared PageAuditor result, and the last-valid-
+    listing state. Everything is read from the generator's listing.json + the audit artifacts on disk."""
+    L = listing if listing is not None else read_listing(folder)
+    if not isinstance(L, dict):
+        return {}
+    audit = L.get("audit") or {}
+    out = {
+        "title_candidates": L.get("title_candidates"),
+        "title_recommended": L.get("title_recommended") or L.get("title"),
+        "title_recommended_candidate": L.get("title_recommended_candidate"),
+        "title_scores": {k: {"length": v.get("length"), "score": v.get("score")}
+                         for k, v in (L.get("title_scores") or {}).items()},
+        "mobile_preview": L.get("mobile_preview"),
+        "bullet_jobs": [{"bullet_number": b.get("bullet_number"), "job": b.get("job"),
+                         "publishability": b.get("publishability"),
+                         "claim_ids": b.get("claim_ids", [])}
+                        for b in (L.get("bullet_objects") or [])],
+        "claim_counts": (L.get("claim_evidence") or {}).get("counts"),
+        "claim_evidence_sha256": (L.get("claim_evidence") or {}).get("source_content_sha256"),
+        "owner_fact_required": L.get("owner_fact_required", []),
+        "missing_claim_evidence": L.get("missing_claim_evidence", []),
+        "publishability_status": L.get("publishability_status") or audit.get("status"),
+        "page_audit": {"status": audit.get("status"),
+                       "hard_failures": audit.get("hard_failures", []),
+                       "warnings": audit.get("warnings", [])},
+    }
+    # last-valid-listing state from the audit artifacts on disk.
+    meta_p = os.path.join(folder, "LAST-VALID-LISTING-METADATA.json")
+    failed_p = os.path.join(folder, "FAILED-LISTING-CANDIDATE.json")
+    if os.path.exists(meta_p):
+        try:
+            out["last_valid_listing"] = json.load(open(meta_p, encoding="utf-8"))
+        except Exception:
+            out["last_valid_listing"] = None
+    if os.path.exists(failed_p):
+        try:
+            fc = json.load(open(failed_p, encoding="utf-8"))
+            out["failed_candidate"] = {"status": fc.get("status"),
+                                       "hard_failures": fc.get("hard_failures", [])}
+        except Exception:
+            out["failed_candidate"] = None
+    return out
+
 def snapshot(folder, seed=""):
     src, src_err = load_keyword_source(folder)      # loaded once, shared by both views below
     listing = read_listing(folder)
@@ -313,6 +360,7 @@ def snapshot(folder, seed=""):
         "listing": listing,
         "category_policy": category_policy_summary(folder, listing=listing),
         "product_facts": product_fact_summary(folder),
+        "listing_copy": listing_copy_summary(folder, listing=listing),
         "seed": seed,
         "files": sorted(os.path.basename(f) for f in glob.glob(os.path.join(folder, "*"))
                         if os.path.isfile(f)),
@@ -559,51 +607,31 @@ LISTING_SCHEMA_VERSION = "2.4"
 ITEM_HIGHLIGHTS_MAX = 125
 
 def validate_listing(L, registry=None):
-    """P0-06: field-level validation against the minimum listing contract. Returns (ok, errors).
+    """Field-level + content-safety validation via the shared PageAuditor (ACT-015). Returns (ok, errors).
 
-    ACT-004: the title hard limit is resolved through the shared category-policy registry (same authority
-    the generator and validator use), keyed off the listing's category — never a hardcoded 75 rule.
+    The dashboard, the CLI validator (compliance/listing_validate.py) and the proof gate all reach the
+    same block/allow decision through listing.page_auditor — one authority, not a contradictory
+    independent safety path. Title/backend limits resolve through the shared category-policy registry
+    (ACT-004); unsupported claims, rejected/wrong-audience keyword leakage, backend overflow and A+
+    placeholder errors all block here now, so they can no longer slip past safe_write_listing.
     """
-    errs = []
     if not isinstance(L, dict):
         return False, ["listing is not a JSON object"]
-    policy = CPR.resolve_category_policy(L.get("category") or "apparel", marketplace="US", registry=registry)
-    title_max = policy.title_hard_limit
-    title = L.get("title")
-    if not isinstance(title, str) or not title.strip():
-        errs.append("title: missing or empty")
-    elif len(title) > title_max:
-        errs.append(f"title: {len(title)} chars > {title_max} ({policy.category_identifier} title hard limit)")
-    bullets = L.get("bullets") or L.get("bullet_points")
-    if not isinstance(bullets, list) or len(bullets) < 1:
-        errs.append("bullets: expected a non-empty list")
-    ih = L.get("item_highlights") or L.get("product_highlights")
-    if ih:
-        t = ih if isinstance(ih, str) else ", ".join(str(x) for x in ih)
-        if len(t) > ITEM_HIGHLIGHTS_MAX:
-            errs.append(f"item_highlights: {len(t)} chars > {ITEM_HIGHLIGHTS_MAX}")
-    ap = L.get("aplus") or L.get("aplus_modules") or L.get("a_plus")
-    if ap is not None and not isinstance(ap, list):
-        errs.append("aplus: expected a list of modules")
-    return (len(errs) == 0), errs
+    policy = CPR.resolve_category_policy(L.get("category") or "apparel", marketplace="US",
+                                         registry=registry)
+    return PA.audit_verdict(L, policy=policy, allow_warnings=True)
 
 def safe_write_listing(folder, listing):
-    """Validate, then write only if valid — a bad build never overwrites the last good listing.json.
-    Backs up the prior valid file. Returns (ok, errors)."""
-    ok, errs = validate_listing(listing)
-    if not ok:
-        return False, errs
-    listing = dict(listing); listing.setdefault("schema_version", LISTING_SCHEMA_VERSION)
-    dest = os.path.join(folder, "listing.json")
-    if os.path.exists(dest):
-        try:
-            import shutil as _sh
-            _sh.copyfile(dest, os.path.join(folder, "listing.prev.json"))
-        except Exception:
-            pass
-    with open(dest, "w", encoding="utf-8") as f:
-        json.dump(listing, f, indent=2, ensure_ascii=False)
-    return True, []
+    """Audit, then promote to the last-valid listing ONLY if safe — a blocked candidate never overwrites
+    listing.json (ACT-015). Backs up the prior valid file, writes atomically, and records the audit,
+    the failed candidate (if any) and last-valid metadata. Returns (ok, errors)."""
+    listing = dict(listing)
+    listing.setdefault("schema_version", LISTING_SCHEMA_VERSION)
+    policy = CPR.resolve_category_policy(listing.get("category") or "apparel", marketplace="US")
+    result = PA.promote_if_safe(folder, listing, allow_warnings=True, policy=policy)
+    if result["promoted"]:
+        return True, []
+    return False, [f"{h['category']}: {h['message']}" for h in result["audit"]["hard_failures"]]
 
 def _extract_json(text):
     """Pull the first {...} JSON object out of a model reply."""

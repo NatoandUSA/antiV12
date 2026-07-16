@@ -1,0 +1,90 @@
+{
+  "project_id": "nurse_go",
+  "project_name": "Personalized Nurse Sweatshirt",
+  "created_at": "2026-07-14T20:07:47+00:00",
+  "updated_at": "2026-07-14T20:07:49+00:00",
+  "marketplace": "US",
+  "fulfillment": "FBM",
+  "product_family": "",
+  "owner": "",
+  "staff_assignee": "",
+  "current_stage": "Stage 0",
+  "overall_status": "INCOMPLETE",
+  "publication_locked": true,
+  "publication_lock_reasons": [
+    "RELEVANCE=NOT_RUN",
+    "IP_SAFETY=NOT_RUN",
+    "PRODUCT_FEASIBILITY=NOT_RUN",
+    "FULFILLMENT=NOT_RUN",
+    "CATALOG_STRUCTURE=NOT_RUN",
+    "CLAIMS_EVIDENCE=NOT_RUN",
+    "PERSONALIZATION=NOT_RUN",
+    "LISTING_ACCURACY=NOT_RUN"
+  ],
+  "source_files": [
+    "PROJECT-MANIFEST.json",
+    "demand-input.csv",
+    "economics-input.csv"
+  ],
+  "source_file_hashes": {
+    "economics-input.csv": "sha256:6160081a39b1d103daf8c426ad6b31770b181323db00e7cdd954aa2522c9cefa",
+    "demand-input.csv": "sha256:09fe0306ae4809d7134dbd66796bdde753b4269aadaebeaf7b7e6f93801a4ec9",
+    "PROJECT-MANIFEST.json": "sha256:e332bb07cd7a26d4224ad4367d93b9aedf753158366cc8907e7d328a7d6dcd72"
+  },
+  "stage_results": {},
+  "gates": {
+    "DEMAND": {
+      "gate_id": "DEMAND",
+      "status": "GO",
+      "blocking": false,
+      "score": null,
+      "reasons": [
+        "1 GO keyword(s)"
+      ],
+      "evidence": [],
+      "required_actions": [],
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "tool_version": "2.0.0",
+      "at": "2026-07-14T20:07:49+00:00"
+    },
+    "OWNER_APPROVAL": {
+      "gate_id": "OWNER_APPROVAL",
+      "status": "APPROVED",
+      "blocking": false,
+      "reasons": []
+    },
+    "ECONOMICS": {
+      "gate_id": "ECONOMICS",
+      "status": "GO",
+      "blocking": false,
+      "score": null,
+      "reasons": [
+        "🟢 GO      nurse sweatshirt             after-ads $11.04  break-even ACOS 38%"
+      ],
+      "evidence": [],
+      "required_actions": [],
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "tool_version": "2.0.0",
+      "at": "2026-07-14T20:07:49+00:00"
+    }
+  },
+  "owner_approvals": [
+    {
+      "approval_type": "FINAL_LISTING",
+      "decision": "APPROVED",
+      "owner_name": "owner",
+      "keyword": "personalized nurse sweatshirt",
+      "notes": "",
+      "at": "2026-07-14T20:07:48+00:00"
+    }
+  ],
+  "tool_versions": {
+    "toolkit": "2.0.0"
+  },
+  "assumptions": [],
+  "warnings": [],
+  "manual_actions": [],
+  "history": []
+}

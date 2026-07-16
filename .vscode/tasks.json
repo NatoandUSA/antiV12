@@ -1,0 +1,129 @@
+{
+  "version": "2.0.0",
+  "//": "One-click tasks. Uses the project's .venv Python directly. Clean terminal output (no spam).",
+  "inputs": [
+    {
+      "id": "projectName",
+      "type": "promptString",
+      "description": "Project folder name under runs/ (e.g. nurse)",
+      "default": "nurse"
+    },
+    {
+      "id": "decoration",
+      "type": "pickString",
+      "description": "Decoration method",
+      "options": ["machine embroidery", "print"],
+      "default": "machine embroidery"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "▶ Run dashboard (cockpit)",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["dashboard/app.py"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "detail": "Starts the local cockpit at http://127.0.0.1:5000"
+    },
+    {
+      "label": "✅ Run tests",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "unittest", "discover", "-s", "tests"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "① New project (init)",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["pipeline.py", "runs/${input:projectName}", "--init-project", "--decoration-method", "${input:decoration}"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "② Scaffold gate files",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["pipeline.py", "runs/${input:projectName}", "--scaffold-gate-files"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "③ Run analysis + gates",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["pipeline.py", "runs/${input:projectName}", "${input:projectName}"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "④ Status / next action",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["pipeline.py", "runs/${input:projectName}", "--status"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "⌨ Install / update dependencies",
+      "type": "process",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "pip", "install", "-r", "requirements.txt"],
+      "linux": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "osx": { "command": "${workspaceFolder}/.venv/bin/python" },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}

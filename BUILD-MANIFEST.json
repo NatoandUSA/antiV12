@@ -1,0 +1,94 @@
+{
+  "tool_version": "2.4.0-rc2",
+  "built_at": "2026-07-15T12:27:22Z",
+  "test_count": 143,
+  "module_count_verified": 17,
+  "modules": {
+    "pipeline.py": {
+      "status": "VERIFIED",
+      "sha256": "d1ff717cb14691be7fa2fb71b325aac9e04df0bd060f81aa1e60b057dda4809e",
+      "bytes": 28949
+    },
+    "core/gate_engine.py": {
+      "status": "VERIFIED",
+      "sha256": "fabea576497ffbd1a0c680d3ade311f9e5671843b896330ec9aea4aab15c788c",
+      "bytes": 5504
+    },
+    "core/manifest.py": {
+      "status": "VERIFIED",
+      "sha256": "1b02a655c0f94c3fc56b5862fa3bf50d95c375d002779b11a61c2d7ea5e9542a",
+      "bytes": 10984
+    },
+    "core/asset_validator.py": {
+      "status": "VERIFIED",
+      "sha256": "10b8111c3c39ff835e2859d4223665a26a47e946a13bf5a4428622d0eba6965d",
+      "bytes": 5961
+    },
+    "core/stages.py": {
+      "status": "VERIFIED",
+      "sha256": "243c0cc79c196d525d65077388bbcfaf028214fb30e7281975906a0f01d34873",
+      "bytes": 5771
+    },
+    "creative/creative_edge.py": {
+      "status": "VERIFIED",
+      "sha256": "c5c409e25d59c629c4ae6efda38a0ec47819ab562c66b009ba95c52a62683fcb",
+      "bytes": 53949
+    },
+    "compliance/listing_validate.py": {
+      "status": "VERIFIED",
+      "sha256": "b4a431ffa5ddb85ea799d8173fc203a376b6bf220f9a052fc067d8e203d49926",
+      "bytes": 12733
+    },
+    "compliance/ip_guard.py": {
+      "status": "VERIFIED",
+      "sha256": "600f919136e0d4624c27346168e4aaa55339501cc5da398fb3bb3b44def9e82a",
+      "bytes": 7495
+    },
+    "research/phaseA_master.py": {
+      "status": "VERIFIED",
+      "sha256": "4b0194ad30fdaa63cbfb95ed7d5b3d8f2d86472336965f9c287b3de65b3f3ccd",
+      "bytes": 17243
+    },
+    "research/asin_picker.py": {
+      "status": "VERIFIED",
+      "sha256": "4e52ffc85bd533b1d1d9cd48b9911d0783d50c9e6bdf6c67e113fcc5f017874a",
+      "bytes": 13520
+    },
+    "research/seed_expand.py": {
+      "status": "VERIFIED",
+      "sha256": "754a2a5d38df885d61cca99031098a0f94a8f1567f423ebf25dec19709414a10",
+      "bytes": 7432
+    },
+    "research/keyword_intelligence.py": {
+      "status": "VERIFIED",
+      "sha256": "674d112963e40965a11277c5cc6b1ace6321860e45b4f3a619fc26a5215ce533",
+      "bytes": 12360
+    },
+    "research/competitor_gap_analyzer.py": {
+      "status": "VERIFIED",
+      "sha256": "6ef50cbcd315c34246e7c86a6fa097565aad9e17a1fffe03222d5fb95d342760",
+      "bytes": 9756
+    },
+    "dashboard/app.py": {
+      "status": "VERIFIED",
+      "sha256": "6f246c8ccdc02c6b3ec39668610997fe685ba133908845553ae2ca615506a710",
+      "bytes": 28178
+    },
+    "dashboard/templates/index.html": {
+      "status": "VERIFIED",
+      "sha256": "ff7b6fb437560c71048dc0161ccd558a73ec787f775964983ac476a7a3f546ec",
+      "bytes": 32643
+    },
+    "listing/listing_generator.py": {
+      "status": "VERIFIED",
+      "sha256": "845ca58a63e1141ad15cea20a3dee921d9294e3c45e1d289d2ebae133413d070",
+      "bytes": 11538
+    },
+    "listing/a_plus_templates.py": {
+      "status": "VERIFIED",
+      "sha256": "77d67f4db8ca253c11655e5271bfb6046b499d6cde6aede7bef66d53cf4ea0eb",
+      "bytes": 5426
+    }
+  },
+  "note": "Compare these hashes against the archive to prove integrity. Modules marked UNAVAILABLE are not in this build."
+}

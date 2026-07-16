@@ -1,0 +1,34 @@
+# --- business data: NEVER commit -------------------------------------------
+# runs/ holds paid Helium 10 exports (Xray/Cerebro), ASIN batches, keyword
+# research and generated listings. Committing it publishes competitive research
+# and redistributes H10 export data. Keep it local.
+runs/
+
+# --- environment -----------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- secrets ---------------------------------------------------------------
+.env
+.env.*
+*.key
+*_secret*
+credentials*.json
+
+# --- generated / local -----------------------------------------------------
+*.log
+.DS_Store
+Thumbs.db
+BUILD-VERIFICATION.json
+BASELINE-TEST-RESULTS.json
+KEYWORD-BUILD-VERIFICATION.json
+KEYWORD-BASELINE-TEST-RESULTS.json
+KEYWORD-BASELINE-TOP-RESULTS.json
+
+# --- editor ----------------------------------------------------------------
+.idea/
+*.swp

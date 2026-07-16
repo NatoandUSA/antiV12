@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "//": "Press F5 to run/debug the dashboard with breakpoints. Uses your selected venv interpreter.",
+  "configurations": [
+    {
+      "name": "▶ Dashboard (Flask, debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/dashboard/app.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Run current file",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

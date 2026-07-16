@@ -1,0 +1,38 @@
+# AMZ FBM Toolkit v2 — business configuration.
+# Adjustable business rules live here, NOT hard-coded in scripts.
+# These are OUR preferences, not universal Amazon policy. Category-specific Amazon
+# rules must be verified manually and live in compliance/category_config.json.
+marketplace: US
+currency: USD
+tool_version: "2.4.0-rc2"
+
+business:
+  minimum_contribution_profit: 8.00     # USD per order, base case
+  owner_only_publish: true
+  seller_central_connection_allowed: false   # HARD principle — never true
+
+demand:
+  minimum_external_supporting_sources: 2
+  required_amazon_anchor: true
+
+listing:
+  review_score_ready: 90
+  review_score_owner_review: 85
+  review_score_revise: 75
+
+fulfillment:
+  require_tracking: true
+  peak_capacity_buffer_percent: 25
+
+compliance:
+  ip_block_is_hard_gate: true
+  unsupported_high_risk_claim_is_hard_gate: true
+
+creative_benchmarks:
+  category: apparel
+  organic_ctr_low: null          # null = no universal threshold; prefer relative comparison
+  ad_ctr_low: null
+  conversion_low: null
+  minimum_impressions_for_ctr_diagnosis: 500
+  minimum_sessions_for_conversion_diagnosis: 100
+  competitor_min_effective_sample: 8

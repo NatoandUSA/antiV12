@@ -1,0 +1,134 @@
+{
+  "generated_from": "capabilities.py",
+  "tool_version": "2.4.0-rc2",
+  "overall": {
+    "backend_decision_engine": "PILOT_READY",
+    "creative_planning": "PILOT_READY",
+    "actual_asset_validation": "PILOT",
+    "smart_dashboard": "NOT_BUILT",
+    "post_launch_learning_loop": "PARTIAL",
+    "market_beating_operating_system": "NOT_READY (backend hardened; web app pending)"
+  },
+  "capabilities": {
+    "research": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "research/phaseA_master.py",
+      "note": "H10 keyword scoring, Beatability, reports"
+    },
+    "asin_selection": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "research/asin_picker.py",
+      "note": "active-sales aware; short-batch warning"
+    },
+    "demand_validation": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "research/demand_score.py",
+      "note": "GO/TEST/SKIP/INCOMPLETE cross-market"
+    },
+    "seed_expansion": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "research/seed_expand.py",
+      "note": "next-round seeds"
+    },
+    "keyword_intelligence": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "research/keyword_intelligence.py",
+      "note": "H10 + optional YTrends; separate Amazon-opportunity + trend-momentum scores, confidence, provenance"
+    },
+    "competitor_gaps": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "research/competitor_gap_analyzer.py",
+      "note": "Xray gaps with source_type/confidence/manual-review flags; embroidery proof never inferred from numbers"
+    },
+    "dashboard_cockpit": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "dashboard/app.py",
+      "note": "local Flask cockpit: upload->run->Amazon-style results; 4 build modes; products board; version/module status"
+    },
+    "listing_generator": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "listing/listing_generator.py",
+      "note": "deterministic 75-char-compliant listing.json + review Brief from research data; dynamic A+"
+    },
+    "a_plus_templates": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "listing/a_plus_templates.py",
+      "note": "6 A+ templates for embroidered apparel; proof-required flags on visual-claim modules"
+    },
+    "ip_compliance": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "compliance/ip_guard.py",
+      "note": "450+ term library; exit 0/2/3"
+    },
+    "listing_validation": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "compliance/listing_validate.py",
+      "note": "all-content + claim checker + category config"
+    },
+    "economics": {
+      "maturity": "BUILT_WITH_LIMITATIONS",
+      "present": true,
+      "path": "economics/economics_gate.py",
+      "note": "missing costs now INCOMPLETE; no scenario UI"
+    },
+    "creative_plan": {
+      "maturity": "PILOT",
+      "present": true,
+      "path": "creative/creative_edge.py",
+      "note": "compliant main image; plan vs actual split; writes gates to manifest"
+    },
+    "actual_asset_validation": {
+      "maturity": "PILOT",
+      "present": true,
+      "path": "core/asset_validator.py",
+      "note": "real file/hash/dims; PROVEN needs hash-bound owner content review (not just a decodable file); no CV"
+    },
+    "post_launch": {
+      "maturity": "PARTIAL",
+      "present": true,
+      "path": "creative/creative_diagnosis.py",
+      "note": "zero-safe diagnosis; no full query funnel"
+    },
+    "gate_engine": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "core/gate_engine.py",
+      "note": "per-gate pass statuses; READY_FOR_REVIEW != pass"
+    },
+    "manifest_approvals": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "core/manifest.py",
+      "note": "atomic writes, history, hash-bound approvals"
+    },
+    "dashboard_ui": {
+      "maturity": "NOT_BUILT",
+      "present": false,
+      "path": "apps/web",
+      "note": "web app is a separate program (OS-v3)"
+    },
+    "import_center": {
+      "maturity": "NOT_BUILT",
+      "present": false,
+      "path": "services/import",
+      "note": "planned OS-v3"
+    },
+    "database": {
+      "maturity": "NOT_BUILT",
+      "present": false,
+      "path": "storage/db.sqlite",
+      "note": "planned OS-v3"
+    }
+  }
+}

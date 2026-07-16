@@ -299,6 +299,37 @@ def product_fact_summary(folder):
         "owner_fact_required": pf.owner_fact_required, "warnings": pf.warnings[:6],
     }
 
+def _aplus_evidence_summary(L):
+    """Session 4 cockpit view of the evidence-aware A+ payload: capability, Basic module count + READY
+    count, per-module status, the missing facts / real assets / claim & placeholder blockers, Premium
+    eligibility + selected dynamic modules, the Basic-fallback status and copy-ready inclusion state."""
+    ac = L.get("aplus_content") if isinstance(L.get("aplus_content"), dict) else None
+    if not ac:
+        return None
+    comp = ac.get("compliance") or {}
+    prem = ac.get("premium") or {}
+    pub = ac.get("publishable_modules") or []
+    return {
+        "capability": ac.get("capability") or L.get("aplus_capability"),
+        "basic_module_count": ac.get("basic_module_count"),
+        "basic_ready_count": ac.get("basic_ready_count"),
+        "basic_ready": ac.get("basic_ready"),
+        "module_states": {m.get("module_key"): m.get("status") for m in (ac.get("basic_modules") or [])},
+        "missing_facts": comp.get("missing_facts", []),
+        "missing_real_assets": comp.get("missing_real_assets", []),
+        "claim_blockers": comp.get("claim_blockers", []),
+        "placeholder_blockers": comp.get("placeholder_blockers", []),
+        "premium_eligible": prem.get("premium_eligible"),
+        "premium_status": prem.get("premium_status"),
+        "premium_module_count": len(prem.get("modules") or []) if prem.get("modules") else 0,
+        "selected_dynamic_modules": prem.get("selected_dynamic_modules", []),
+        "eligibility_unverified": prem.get("eligibility_unverified", False),
+        "basic_fallback_positions": comp.get("fallback_positions", []),
+        "publishable_module_count": len(pub),
+        "copy_ready_included": bool(pub) and str(L.get("aplus_state") or "").startswith("READY_"),
+    }
+
+
 def listing_copy_summary(folder, listing=None):
     """Session 3 cockpit view (ACT-005/007/008/015): title candidates + scores, recommended title and
     mobile preview, the five bullet jobs and their publishability, verified/owner-review/blocked claim
@@ -328,10 +359,12 @@ def listing_copy_summary(folder, listing=None):
         "publishability": L.get("publishability") or audit.get("publishability"),
         "publishability_status": L.get("publishability_status") or audit.get("publishability")
         or audit.get("status"),
-        # PATCH 1: A+ is quarantined — the cockpit shows it is blocked and draft-only.
+        # PATCH 1: legacy A+ is quarantined — the cockpit shows it is blocked and draft-only.
         "aplus_state": L.get("aplus_state"),
         "aplus_blocked_draft_only": L.get("aplus_state") == PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
         "aplus_draft_module_count": len((L.get("aplus_draft") or {}).get("modules") or []),
+        # Session 4 — the evidence-aware, capability-based A+ state.
+        "aplus_evidence": _aplus_evidence_summary(L),
         "item_highlights_state": L.get("item_highlights_state"),
         "audited_text_fields": audit.get("audited_text_fields", {}),
         "page_audit": {"status": audit.get("status"),

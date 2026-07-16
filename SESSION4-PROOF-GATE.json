@@ -1,0 +1,130 @@
+{
+  "session": 4,
+  "scope": [
+    "ACT-011",
+    "ACT-012",
+    "ACT-013",
+    "ACT-014"
+  ],
+  "fixture": "runs/T2 (personalized nurse sweatshirt)",
+  "keyword_source_file": "MASTER-KEYWORDS-LEAN.json",
+  "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "product_fact_source": "product-facts.json",
+  "product_fact_source_sha256": null,
+  "aplus_capability": "UNKNOWN_A_PLUS_CAPABILITY",
+  "aplus_state": "BLOCKED_LEGACY_UNVERIFIED",
+  "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "aplus_content_sha256": "7755edd0f2f6221823162df2294710ca224215308f59473f29768cf3754cb4ea",
+  "basic_module_order": [
+    "HERO_EMBROIDERY_PROOF",
+    "PERSONALIZATION_GALLERY",
+    "HOW_TO_CUSTOMIZE",
+    "FIT_SIZE_COLOR_DETAILS",
+    "CARE_PRODUCTION_FAQ"
+  ],
+  "basic_module_states": {
+    "HERO_EMBROIDERY_PROOF": "OWNER_FACT_REQUIRED",
+    "PERSONALIZATION_GALLERY": "OWNER_FACT_REQUIRED",
+    "HOW_TO_CUSTOMIZE": "OWNER_FACT_REQUIRED",
+    "FIT_SIZE_COLOR_DETAILS": "OWNER_FACT_REQUIRED",
+    "CARE_PRODUCTION_FAQ": "OWNER_FACT_REQUIRED"
+  },
+  "basic_ready_count": 0,
+  "basic_module_blockers": {
+    "HERO_EMBROIDERY_PROOF": {
+      "status": "OWNER_FACT_REQUIRED",
+      "missing_facts": [
+        "decoration_method"
+      ],
+      "missing_real_assets": [
+        "MACRO_DECORATION_STITCH"
+      ]
+    },
+    "PERSONALIZATION_GALLERY": {
+      "status": "OWNER_FACT_REQUIRED",
+      "missing_facts": [
+        "personalization_fields"
+      ],
+      "missing_real_assets": [
+        "PERSONALIZATION_EXAMPLE"
+      ]
+    },
+    "HOW_TO_CUSTOMIZE": {
+      "status": "OWNER_FACT_REQUIRED",
+      "missing_facts": [
+        "personalization_fields"
+      ],
+      "missing_real_assets": []
+    },
+    "FIT_SIZE_COLOR_DETAILS": {
+      "status": "OWNER_FACT_REQUIRED",
+      "missing_facts": [
+        "color_options",
+        "size_range"
+      ],
+      "missing_real_assets": [
+        "GARMENT_OR_COLOR"
+      ]
+    },
+    "CARE_PRODUCTION_FAQ": {
+      "status": "OWNER_FACT_REQUIRED",
+      "missing_facts": [
+        "care_instructions",
+        "handling_time",
+        "packaging",
+        "production_location",
+        "production_time_range",
+        "shipping_method",
+        "tracking"
+      ],
+      "missing_real_assets": []
+    }
+  },
+  "premium_status": "ELIGIBILITY_UNVERIFIED",
+  "premium_eligible": false,
+  "premium_never_publishable": true,
+  "premium_selected_dynamic": [],
+  "fallback_positions": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "publishable_aplus_module_count": 0,
+  "checks": {
+    "capability_is_unknown_default": true,
+    "basic_has_five_modules": true,
+    "basic_order_correct": true,
+    "zero_ready_without_owner_facts": true,
+    "zero_publishable_aplus_modules": true,
+    "legacy_aplus_quarantined": true,
+    "evidence_rebuild_required_present": true,
+    "premium_draft_never_publishable": true,
+    "fallback_positions_1_to_5": true,
+    "no_aplus_hard_failures": true,
+    "zero_unsupported_publishable_claims": true,
+    "zero_unresolved_placeholders": true,
+    "zero_wrong_audience_leakage": true,
+    "zero_brand_ip_leakage": true,
+    "pageauditor_sees_aplus_fields": true,
+    "deterministic_aplus_hash": true
+  },
+  "all_checks_pass": true,
+  "status": "SESSION4_READY_FOR_REVIEW",
+  "note": "Full A+ proof artifacts (BASIC-APLUS-CONTENT.json, PREMIUM-APLUS-DRAFT.json, APLUS-ASSET-MANIFEST.json, APLUS-COMPLIANCE-REPORT.json, CREATIVE-BRIEF.md, CREATIVE-ASSET-CHECKLIST.json, BASIC-APLUS-CONTENT-BRIEF.md) are in runs/T2 (gitignored business data). This root gate carries only non-sensitive verification data.",
+  "deprecated_output_decision": {
+    "decision": "OPTION_2_DEPRECATE_OLDER_VARIANTS",
+    "authoritative_copy_ready": [
+      "listing.json",
+      "LISTING-COPY-READY.txt",
+      "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json"
+    ],
+    "deprecated_files": [
+      "PRODUCT-PAGE.json",
+      "PRODUCT-PAGE-BRIEF.md",
+      "CONTENT-COMPLIANCE-REPORT.json"
+    ],
+    "note": "No code writes or indexes the deprecated files; a non-sensitive DEPRECATED-OUTPUTS.json marker was written into runs/T2. One clear source of truth: listing.json + LISTING-COPY-READY.txt + SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json, regenerated deterministically."
+  }
+}

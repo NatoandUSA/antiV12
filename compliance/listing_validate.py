@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "listing"))
 import category_policy_registry as CPR
 import product_fact_loader as PFL
 import keyword_source_adapter as KSA
+import aplus_module_registry as AREG
 try:
     from ip_guard import check as tm_check
 except Exception:
@@ -140,6 +141,21 @@ def main():
         return str(a)
     aplus = [_mod_text(a) for a in (listing.get("aplus") or listing.get("aplus_modules") or listing.get("a_plus") or [])]
     image_text = listing.get("image_text",[]) or []
+
+    # ---- A+ CAPABILITY (Session 4) ----
+    # The evidence-aware A+ builder decides which modules are publishable. Validate the capability value
+    # and confirm nothing non-READY leaked into the publishable `aplus` field.
+    ap_cap = listing.get("aplus_capability")
+    ap_state = listing.get("aplus_state") or ""
+    if ap_cap is not None and ap_cap not in AREG.CAPABILITY_MODES:
+        fails.append(f"Invalid A+ capability '{ap_cap}' (expected one of {AREG.CAPABILITY_MODES})")
+    if aplus and not ap_state.startswith("READY_"):
+        fails.append(f"Publishable A+ field carries {len(aplus)} module(s) but A+ state is '{ap_state}' "
+                     f"— only READY A+ may be published")
+    ac = listing.get("aplus_content") if isinstance(listing.get("aplus_content"), dict) else None
+    if ac and not aplus and (ac.get("basic_ready_count") is not None):
+        warns.append(f"A+ not published: Basic modules READY {ac.get('basic_ready_count')}/"
+                     f"{ac.get('basic_module_count')} — {'APLUS_OWNER_FACTS_OR_ASSETS_REQUIRED'}")
     personalization = listing.get("personalization","") or ""
     ppc = (listing.get("ppc_exact",[]) or []) + (listing.get("ppc_phrase",[]) or [])
 

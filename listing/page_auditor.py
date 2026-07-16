@@ -48,6 +48,7 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import category_policy_registry as CPR
+import aplus_module_registry as AREG
 
 # statuses (low-level audit verdict — kept stable for existing callers)
 PASS = "PASS"
@@ -85,6 +86,9 @@ AUDITED_COPY_FIELDS = (
     ("item_highlights", "draft_only"),
     ("product_highlights", "draft_only"),
     ("aplus_draft", "excluded"),
+    # Session 4 — the evidence-aware A+ structure is validated by _audit_aplus_evidence; its READY module
+    # copy only reaches publishable copy through the already-audited `aplus` field.
+    ("aplus_content", "excluded"),
 )
 _COPY_FIELD_DISPOSITION = dict(AUDITED_COPY_FIELDS)
 # copy-ish field names that MUST be routed through the registry; present-but-unregistered is a hard fail.
@@ -467,6 +471,144 @@ def _audit_aplus(a, listing, results):
     results["aplus_results"] = ar
 
 
+def _audit_aplus_evidence(a, listing, results):
+    """Validate the Session 4 evidence-aware A+ structure (listing['aplus_content']).
+
+    Reports capability, module counts, per-module states and the Basic-fallback/Premium invariants. It
+    HARD-FAILS only on genuine safety violations — an invalid capability, a READY module that still has a
+    placeholder / no claim lineage / an unsupported claim / an over-limit body, a non-READY module leaking
+    into the publishable payload, a broken Basic fallback (positions must be 1..5), duplicate module keys
+    or positions, or a Premium seven-module set that is not eligible+confirmed reaching publishable copy.
+    An incomplete/blocked A+ (the T2 state) produces informational counts, never a hard failure — A+ is
+    optional enhanced content and must not, by being incomplete, demote a safe Product Detail Page."""
+    ac = listing.get("aplus_content")
+    if not isinstance(ac, dict):
+        results["aplus_evidence_results"] = {"present": False}
+        return
+    capability = listing.get("aplus_capability") or ac.get("capability")
+    er = {"present": True, "capability": capability,
+          "basic_module_count": ac.get("basic_module_count"),
+          "basic_ready_count": ac.get("basic_ready_count"),
+          "basic_ready": ac.get("basic_ready"),
+          "publishable_module_count": len(ac.get("publishable_modules") or []),
+          "module_states": {}, "premium_eligible": None, "selected_dynamic": [],
+          "fallback_positions": []}
+
+    # 1) capability must be one of the four modes (never silently defaulted).
+    if capability not in AREG.CAPABILITY_MODES:
+        a.fail("aplus_capability", f"invalid A+ capability {capability!r}; expected one of "
+                                   f"{AREG.CAPABILITY_MODES}")
+
+    basic = ac.get("basic_modules") or []
+    er["module_states"] = {m.get("module_key"): m.get("status") for m in basic}
+
+    # 2) expected Basic module count (0 for NO_A_PLUS, else exactly five) + unique keys and positions.
+    expected = 0 if capability == AREG.NO_A_PLUS else AREG.BASIC_MODULE_COUNT
+    if len(basic) != expected:
+        a.fail("aplus_module_count",
+               f"{capability} expects {expected} Basic modules, found {len(basic)}")
+    keys = [m.get("module_key") for m in basic]
+    positions = [m.get("position_slot") for m in basic]
+    if len(set(keys)) != len(keys):
+        a.fail("aplus_duplicate_module_key", f"duplicate A+ module keys: {keys}")
+    if len(set(positions)) != len(positions):
+        a.fail("aplus_duplicate_position", f"duplicate A+ position slots: {positions}")
+
+    # 3) per-module evidence gates for READY modules (module-specific evidence, lineage, placeholders,
+    #    unsupported claims, copy limits).
+    verified_norm = _verified_texts(listing, None).split()
+    for m in basic:
+        status = m.get("status")
+        if status not in AREG.MODULE_STATES:
+            a.fail("aplus_module_state", f"module {m.get('module_key')} has unknown state {status!r}")
+        if status != AREG.READY:
+            continue
+        mk, body = m.get("module_key"), m.get("body") or ""
+        if _PLACEHOLDER_RE_PA.findall(body):
+            a.fail("aplus_placeholder",
+                   f"READY A+ module {mk} still contains a placeholder: {body}")
+        if body and not m.get("claim_ids"):
+            a.fail("aplus_missing_lineage",
+                   f"READY A+ module {mk} carries factual copy but no claim lineage")
+        btoks = _tokens(body)
+        for phrase in UNSAFE_CLAIM_PHRASES:
+            pt = _norm(phrase).split()
+            if _contains_phrase(btoks, pt) and not _contains_phrase(verified_norm, pt):
+                a.fail("aplus_unsupported_claim",
+                       f"READY A+ module {mk} states unsupported claim '{phrase}' (no VERIFIED backing)")
+        if len(body) > AREG.BODY_MAX:
+            a.fail("aplus_copy_limit", f"READY A+ module {mk} body {len(body)} > {AREG.BODY_MAX} chars")
+        if len(m.get("headline") or "") > AREG.HEADLINE_MAX:
+            a.fail("aplus_copy_limit", f"READY A+ module {mk} headline exceeds {AREG.HEADLINE_MAX} chars")
+
+    # 4) real-photo / asset requirements: a READY module may not still owe a required real asset.
+    for m in basic:
+        if m.get("status") == AREG.READY:
+            es = m.get("evidence_summary") or {}
+            if es.get("missing_real_assets"):
+                a.fail("aplus_missing_asset",
+                       f"READY A+ module {m.get('module_key')} still needs real asset(s): "
+                       f"{es['missing_real_assets']}")
+
+    # 5) alt-text limits on any asset serving a READY module.
+    ready_keys = {m.get("module_key") for m in basic if m.get("status") == AREG.READY}
+    for asset in ac.get("asset_manifest") or []:
+        n = asset.get("alt_text_character_count") or 0
+        if asset.get("module_key") in ready_keys and n > AREG.ALT_TEXT_MAX:
+            a.fail("aplus_alt_text_limit",
+                   f"A+ asset {asset.get('asset_id')} alt text {n} > {AREG.ALT_TEXT_MAX} chars")
+
+    # 6) Basic fallback must always be reindexed to positions 1..5 (never a Premium slot number).
+    prem = ac.get("premium") or {}
+    fb = prem.get("basic_fallback") or []
+    er["fallback_positions"] = [m.get("position_slot") for m in fb]
+    if fb and er["fallback_positions"] != list(range(1, AREG.BASIC_MODULE_COUNT + 1)):
+        a.fail("aplus_fallback_positions",
+               f"Basic fallback positions must be 1..{AREG.BASIC_MODULE_COUNT}, got "
+               f"{er['fallback_positions']}")
+
+    # 7) Premium eligibility + draft separation.
+    er["premium_eligible"] = prem.get("premium_eligible")
+    er["selected_dynamic"] = prem.get("selected_dynamic_modules") or []
+    prem_modules = prem.get("modules") or []
+    if prem.get("premium_status") == "READY":
+        # a truly eligible seven-module Premium: must have seven modules, all READY, two distinct dynamic.
+        if len(prem_modules) != AREG.PREMIUM_MODULE_COUNT:
+            a.fail("aplus_premium_count",
+                   f"eligible Premium must have {AREG.PREMIUM_MODULE_COUNT} modules, found {len(prem_modules)}")
+        if len(set(er["selected_dynamic"])) != AREG.PREMIUM_DYNAMIC_COUNT:
+            a.fail("aplus_premium_dynamic",
+                   f"Premium needs {AREG.PREMIUM_DYNAMIC_COUNT} distinct eligible dynamic modules, got "
+                   f"{er['selected_dynamic']}")
+
+    # 8) the publishable payload may contain ONLY READY modules; a draft/blocked/eligibility-unverified
+    #    module must never leak into it (this is the core draft-vs-publishable separation).
+    ready_module_keys = ready_keys | {m.get("module_key") for m in prem_modules
+                                      if m.get("status") == AREG.READY}
+    for pm in ac.get("publishable_modules") or []:
+        mk = pm.get("module_key")
+        if mk and mk not in ready_module_keys:
+            a.fail("aplus_draft_leak",
+                   f"A+ module {mk} is in the publishable payload but is not READY")
+    # the publishable payload and the publishable `aplus` field must agree on count.
+    pub_field = _publishable_aplus(listing)
+    if isinstance(pub_field, list) and len(pub_field) != len(ac.get("publishable_modules") or []):
+        a.warning("aplus_publishable_sync",
+                  f"publishable aplus field has {len(pub_field)} modules but aplus_content lists "
+                  f"{len(ac.get('publishable_modules') or [])}")
+
+    # 9) an UNKNOWN-capability Premium draft must be marked never-publishable and stay out of publishable.
+    if capability == AREG.UNKNOWN_A_PLUS_CAPABILITY and prem:
+        if not prem.get("never_publishable"):
+            a.fail("aplus_unknown_premium",
+                   "UNKNOWN-capability Premium draft must be marked never_publishable "
+                   "(ELIGIBILITY_UNVERIFIED)")
+    results["aplus_evidence_results"] = er
+
+
+_PLACEHOLDER_RE_PA = re.compile(r"\{[a-zA-Z0-9_]+\}")
+
+
 def _audit_text_field_coverage(a, listing, results):
     """Enumerate every generated text field and its disposition, and hard-fail if any copy-bearing field
     is not routed through the registry (Session 3.1 PATCH 3: no silent bypass)."""
@@ -552,6 +694,7 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     _audit_description(a, listing, results)
     _audit_backend(a, listing, policy, results)
     _audit_aplus(a, listing, results)
+    _audit_aplus_evidence(a, listing, results)
     _audit_text_field_coverage(a, listing, results)
     _brand_screen(a, listing, [("title", title), ("description", description)]
                   + [(f"bullet {i}", b) for i, b in enumerate(bullets, 1)])

@@ -42,6 +42,9 @@ import bullet_engine as BE
 import description_engine as DE
 import page_auditor as PA
 import copy_package as CPKG
+import aplus_module_registry as AREG
+import aplus_builder as ABU
+import creative_brief_builder as CBB
 
 ITEM_HIGHLIGHTS_MAX = 125
 DEFAULT_CATEGORY = "apparel"
@@ -265,6 +268,35 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     }
     missing_requirements = [PA.APLUS_EVIDENCE_REBUILD_REQUIRED]
 
+    # Session 4 — the evidence-aware, capability-based A+ rebuild (ACT-011/012/013/014). The legacy draft
+    # above stays quarantined; this builder is the real, evidence-gated A+ content. A+ capability, real
+    # assets and dynamic data come from the creative brief (absent -> UNKNOWN capability, no assets, so
+    # every module blocks on OWNER_FACT_REQUIRED / REAL_PHOTO_REQUIRED — no fabrication).
+    aplus_capability_in = brief_in.get("aplus_capability")
+    aplus_assets = brief_in.get("aplus_assets") or []
+    aplus_dynamic_data = brief_in.get("aplus_dynamic_data") or {}
+    premium_confirmed = bool(brief_in.get("aplus_premium_confirmed"))
+    try:
+        aplus = ABU.build_aplus(aplus_capability_in, claims, facts_src, assets=aplus_assets,
+                                dynamic_data=aplus_dynamic_data, premium_confirmed=premium_confirmed,
+                                garment=product["garment_type"])
+    except AREG.InvalidCapabilityError as e:
+        return {"ok": False, "reason": str(e)}
+    aplus_capability = aplus.capability
+    aplus_content = aplus.listing_block()
+    aplus_pub_modules = aplus.publishable_modules()
+    # Only when the evidence-aware builder's own gates all pass (all five Basic READY, or the confirmed
+    # seven-module Premium) do we lift the legacy quarantine and populate the publishable A+ field. Until
+    # then the publishable `aplus` stays empty and the state stays BLOCKED_LEGACY_UNVERIFIED, exactly as
+    # Session 3.1 established — so incomplete A+ can never publish.
+    if aplus_pub_modules:
+        aplus_publishable = [{"headline": m["headline"], "copy": m["copy"]} for m in aplus_pub_modules]
+        aplus_state = "READY_" + aplus_capability
+        missing_requirements = []
+    else:
+        aplus_publishable = []
+        aplus_state = PA.APLUS_BLOCKED_LEGACY_UNVERIFIED
+
     image_plan = [
         "Main: real product, pure white bg, >=85% frame, no text/props, >=2000px",
         "Macro stitch close-up (REAL photo — embroidery proof)",
@@ -290,11 +322,14 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
         "bullets": bullets,
         "description": description,
         "backend": backend,
-        # PATCH 1: no legacy A+ in the publishable payload. The rendered legacy copy is kept only as a
-        # DRAFT_ONLY draft; the publishable A+ field is empty until the evidence-aware rebuild.
-        "aplus": [],
-        "aplus_state": PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
+        # Publishable A+ is populated ONLY when the evidence-aware builder's gates all pass (Session 4);
+        # otherwise it stays empty and the state stays BLOCKED_LEGACY_UNVERIFIED (Session 3.1 quarantine).
+        "aplus": aplus_publishable,
+        "aplus_state": aplus_state,
         "aplus_draft": aplus_draft,
+        # Session 4 — the evidence-aware, capability-based A+ payload (every module + its evidence gate).
+        "aplus_capability": aplus_capability,
+        "aplus_content": aplus_content,
         "missing_requirements": missing_requirements,
         "image_plan": image_plan,
         "price": product.get("price"),
@@ -363,7 +398,11 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
         "claim_evidence_source_sha256": claims.content_sha256(),
         "audit_status": audit["status"],
         "publishability": audit["publishability"],
-        "aplus_state": PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
+        "aplus_state": aplus_state,
+        "aplus_capability": aplus_capability,
+        "aplus_basic_ready": f"{aplus.basic_ready_count}/{len(aplus.basic_modules)}",
+        "aplus_publishable_module_count": len(aplus_pub_modules),
+        "aplus_compliance": aplus.to_compliance_report(),
         "missing_requirements": missing_requirements,
         "audit_hard_failures": audit["hard_failures"],
         "keywords_used": kws[:8],
@@ -425,11 +464,16 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     # item highlights are excluded from the paste-ready copy and manual-entry plan.
     CPKG.write_publishable_package(folder, listing)
 
+    # Session 4 — write the evidence-aware A+ artifacts + creative direction (deterministic canonical JSON).
+    ABU.write_aplus_outputs(folder, aplus)
+    CBB.write_creative_artifacts(folder, aplus, primary_keyword=primary)
+
     return {"ok": True, "listing": listing, "brief": brief, "keyword_source": src,
             "product_facts": facts_src, "category_policy": policy, "claim_evidence": claims,
             "title_result": title_res, "bullet_result": bullet_res, "description_result": desc_res,
             "audit": audit, "title_len": len(title), "title_limit": title_limit,
-            "owner_fact_required": sorted(owner_fact_required), "proof_required": proof_needed}
+            "owner_fact_required": sorted(owner_fact_required), "proof_required": proof_needed,
+            "aplus": aplus}
 
 
 def _claim_evidence_block(claims):

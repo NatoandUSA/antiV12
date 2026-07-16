@@ -462,6 +462,19 @@ function renderListingCopy(lc){
   if(lc.claim_evidence_sha256) html+=`<br><span class="muted">claim-evidence sha256 <code>${esc(lc.claim_evidence_sha256)}</code></span>`;
   const req=lc.owner_fact_required||[];
   if(req.length) html+=`<br><span style="color:#8a5220">OWNER_FACT_REQUIRED (${req.length}): ${esc(req.slice(0,16).join(', '))}${req.length>16?' …':''}</span>`;
+  // A+ content (Session 4 — evidence-aware capability-based A+)
+  const ae=lc.aplus_evidence;
+  if(ae){
+    html+=`<br><br><b>A+ content</b> — capability <code>${esc(ae.capability||'—')}</code>`;
+    html+=`<br>Basic modules READY <b>${ae.basic_ready_count}</b>/${ae.basic_module_count} · copy-ready: ${ae.copy_ready_included?'<b style="color:#1e7e34">included</b>':'<span style="color:#8a5220">not yet (APLUS_OWNER_FACTS_OR_ASSETS_REQUIRED)</span>'}`;
+    const ms=ae.module_states||{};
+    Object.keys(ms).forEach(k=>{ const ok=ms[k]==='READY'; html+=`<br>${ok?'✅':'⛔'} ${esc(k)} <span class="muted">[${esc(ms[k])}]</span>`; });
+    if((ae.missing_real_assets||[]).length) html+=`<br><span style="color:#8a5220">Real photos required: ${esc(ae.missing_real_assets.join(', '))}</span>`;
+    if((ae.missing_facts||[]).length) html+=`<br><span style="color:#8a5220">A+ facts required: ${esc(ae.missing_facts.slice(0,12).join(', '))}${ae.missing_facts.length>12?' …':''}</span>`;
+    if((ae.placeholder_blockers||[]).length) html+=`<br><span style="color:#c0392b">Placeholder blockers: ${esc(ae.placeholder_blockers.join(', '))}</span>`;
+    html+=`<br>Premium: ${ae.eligibility_unverified?'<span class="muted">ELIGIBILITY_UNVERIFIED draft (never published)</span>':(ae.premium_eligible?'<b style="color:#1e7e34">eligible</b>':'not eligible')}`;
+    if((ae.selected_dynamic_modules||[]).length) html+=` · dynamic: ${esc(ae.selected_dynamic_modules.join(', '))}`;
+  }
   // last valid / failed candidate
   if(lc.last_valid_listing) html+=`<br><br><b>Last valid listing</b> — ${esc(lc.last_valid_listing.status||'')} · out sha <code>${esc(String(lc.last_valid_listing.output_sha256||'').slice(0,16))}…</code>`;
   if(lc.failed_candidate) html+=`<br><span style="color:#c0392b">Last failed candidate: ${esc(lc.failed_candidate.status||'')} — ${(lc.failed_candidate.hard_failures||[]).length} hard failure(s) (last valid preserved)</span>`;

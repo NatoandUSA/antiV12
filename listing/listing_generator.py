@@ -41,6 +41,7 @@ import title_engine as TE
 import bullet_engine as BE
 import description_engine as DE
 import page_auditor as PA
+import copy_package as CPKG
 
 ITEM_HIGHLIGHTS_MAX = 125
 DEFAULT_CATEGORY = "apparel"
@@ -234,7 +235,12 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
                                      "production_time": product["production_time"]}.items() if v}
     modules = [APT.render(t, aplus_facts) for t in APT.select_modules(gaps, max_modules=7)]
     proof_needed = [m["headline"] for m in modules if m["requires_proof"]]
-    publishable_modules, blocked_modules = [], []
+    # Session 3.1 PATCH 1 — QUARANTINE LEGACY A+. The a_plus_templates library still carries unverified
+    # legacy claims (comfort/durability/production/shipping/measurement) and is only structurally audited,
+    # so even a placeholder-resolved module is NOT evidence-clean. Until the evidence-aware A+ rebuild
+    # lands (Session 4) legacy A+ is BLOCKED_LEGACY_UNVERIFIED: it is preserved as a DRAFT_ONLY draft,
+    # never emitted into the publishable `aplus` field, and it raises APLUS_EVIDENCE_REBUILD_REQUIRED.
+    resolved_modules, blocked_modules = [], []
     for m in modules:
         missing = re.findall(r"\{(\w+)\}", m["copy"])
         if missing:
@@ -245,7 +251,19 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
                     owner_fact_required.append(fld)
             blocked_modules.append(m)
         else:
-            publishable_modules.append(dict(m, publishable=True))
+            resolved_modules.append(dict(m, publishable=False))   # renders, but legacy → draft-only
+    aplus_draft = {
+        "state": "DRAFT_ONLY",
+        "content_state": PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
+        "reason": ("Legacy a_plus_templates copy carries unverified claims and is only structurally "
+                   "audited. Not evidence-clean; excluded from every publishable payload until the "
+                   "evidence-aware A+ rebuild (APLUS_EVIDENCE_REBUILD_REQUIRED)."),
+        "modules": [{"headline": m["headline"], "copy": m["copy"],
+                     "requires_proof": m["requires_proof"]} for m in resolved_modules],
+        "blocked_modules": [{"headline": m["headline"], "missing_facts": m["missing_facts"]}
+                            for m in blocked_modules],
+    }
+    missing_requirements = [PA.APLUS_EVIDENCE_REBUILD_REQUIRED]
 
     image_plan = [
         "Main: real product, pure white bg, >=85% frame, no text/props, >=2000px",
@@ -265,11 +283,19 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
         "category": category,
         "generated_by": "listing_generator_v2",
         "title": title,
+        # item_highlights is a legacy keyword-built field with no per-highlight claim lineage, so it is
+        # DRAFT_ONLY / OWNER_REVIEW_REQUIRED — screened for safety but excluded from publishable copy.
         "item_highlights": highlights,
+        "item_highlights_state": "DRAFT_ONLY_OWNER_REVIEW_REQUIRED",
         "bullets": bullets,
         "description": description,
         "backend": backend,
-        "aplus": [{"headline": m["headline"], "copy": m["copy"]} for m in publishable_modules],
+        # PATCH 1: no legacy A+ in the publishable payload. The rendered legacy copy is kept only as a
+        # DRAFT_ONLY draft; the publishable A+ field is empty until the evidence-aware rebuild.
+        "aplus": [],
+        "aplus_state": PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
+        "aplus_draft": aplus_draft,
+        "missing_requirements": missing_requirements,
         "image_plan": image_plan,
         "price": product.get("price"),
         "selected_keywords": {"primary": kws[:1], "secondary": kws[1:5], "backend": kws},
@@ -308,8 +334,10 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     audit = PA.audit_listing(listing, keyword_source=src, claim_evidence=claims,
                              product_facts=facts_src, policy=policy)
     listing["audit"] = audit
-    listing["publishable"] = audit["status"] != PA.BLOCKED
-    listing["publishability_status"] = audit["status"]
+    # PATCH 2: a SAFE_DRAFT_OWNER_FACTS_REQUIRED listing is NOT a publishable listing.
+    listing["publishability"] = audit["publishability"]
+    listing["publishable"] = audit["publishability"] == PA.PUBLISHABLE
+    listing["publishability_status"] = audit["publishability"]
 
     brief = {
         "schema_version": "2.4",
@@ -334,6 +362,9 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
                          "blocked": claims.blocked_count, "prohibited": claims.prohibited_count},
         "claim_evidence_source_sha256": claims.content_sha256(),
         "audit_status": audit["status"],
+        "publishability": audit["publishability"],
+        "aplus_state": PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
+        "missing_requirements": missing_requirements,
         "audit_hard_failures": audit["hard_failures"],
         "keywords_used": kws[:8],
         "product_fact_source": facts_src.source_file,
@@ -372,18 +403,27 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
           f"blocked {claims.blocked_count} · prohibited {claims.prohibited_count}", "",
           f"**PageAudit:** {audit['status']}"
           + (f" — {len(audit['hard_failures'])} hard failure(s)" if audit['hard_failures'] else ""), "",
-          f"**Item Highlights ({len(highlights)}/{ITEM_HIGHLIGHTS_MAX}):** {highlights}", "",
+          f"**Publishability:** {audit['publishability']}", "",
+          f"**Item Highlights (DRAFT_ONLY — owner review, excluded from publishable copy) "
+          f"({len(highlights)}/{ITEM_HIGHLIGHTS_MAX}):** {highlights}", "",
           "**Bullets (5 evidence-led jobs):**"] + \
          [f"- [{b['job']} · {b['publishability']}] {b['text'] or '(blocked — needs '
           + ', '.join(b['missing_requirements']) + ')'}" for b in bullet_res.to_list()] + \
-         ["", "**A+ modules (publishable):**"] + \
-         [f"- {m['headline']}" + ("  ⚠️ needs real photo" if m["requires_proof"] else "") for m in publishable_modules] + \
-         ["", "**A+ modules blocked (missing verified facts):**"] + \
+         ["", f"**A+ content:** ⛔ {PA.APLUS_BLOCKED_LEGACY_UNVERIFIED} — legacy templates are draft-only "
+          f"and excluded from publishable copy ({PA.APLUS_EVIDENCE_REBUILD_REQUIRED}).",
+          "", "**A+ legacy draft modules (DRAFT_ONLY — do NOT paste into Seller Central):**"] + \
+         ([f"- {m['headline']}" + ("  ⚠️ needs real photo" if m["requires_proof"] else "")
+           for m in resolved_modules] or ["- none"]) + \
+         ["", "**A+ legacy modules blocked (missing verified facts):**"] + \
          ([f"- {m['headline']} — needs {', '.join(m['missing_facts'])}" for m in blocked_modules] or ["- none"]) + \
          ["", "**Photo proof required before publish:** " + (", ".join(proof_needed) or "none"), "",
           "**10-photo plan:**"] + [f"{i+1}. {p}" for i, p in enumerate(image_plan)]
     with open(os.path.join(folder, "LISTING-BRIEF.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(md))
+
+    # PATCH 1/2: the owner-facing publishable package. Blocked A+, blocked bullets and the DRAFT_ONLY
+    # item highlights are excluded from the paste-ready copy and manual-entry plan.
+    CPKG.write_publishable_package(folder, listing)
 
     return {"ok": True, "listing": listing, "brief": brief, "keyword_source": src,
             "product_facts": facts_src, "category_policy": policy, "claim_evidence": claims,

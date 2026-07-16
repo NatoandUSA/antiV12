@@ -181,11 +181,14 @@ class EndToEndShadow(unittest.TestCase):
             p = os.path.join(d, f); doc = json.load(open(p))
             doc["decision"] = dec; doc["reviewer"] = "owner"; doc["reviewed_at"] = "2026-07-15"
             json.dump(doc, open(p, "w"))
-        # IP-clean listing + real demand/economics
+        # IP-clean AND evidence-clean listing + real demand/economics. (The copy must not assert a
+        # factual attribute with no verified backing: "cotton blend" and "made to order" were unsupported
+        # claims that Session 3.1 PATCH 3 now blocks — a genuinely unlockable listing carries neither.)
         json.dump({"title": "Personalized Nurse Sweatshirt Embroidered Crewneck with Name for Women",
-                   "bullets": ["Custom embroidered name for nurses", "Soft cotton blend crewneck",
-                               "Made to order gift", "Personalized nurse gift", "Real embroidery not printed"],
-                   "description": "Personalized nurse crewneck sweatshirt with real embroidery of the name you choose.",
+                   "bullets": ["Custom name embroidery for nurses", "Personalized nurse crewneck sweatshirt",
+                               "Embroidered with the name you choose", "Personalized nurse gift",
+                               "Embroidered design, not a printed graphic"],
+                   "description": "Personalized nurse crewneck sweatshirt embroidered with the name you choose.",
                    "backend": "nurse embroidered personalized custom gift crewneck women name",
                    "personalization": "name to embroider"}, open(os.path.join(d, "listing.json"), "w"))
         open(os.path.join(d, "demand-input.csv"), "w").write(

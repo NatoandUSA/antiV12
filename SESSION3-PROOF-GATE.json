@@ -40,6 +40,29 @@
     "CARE_PRODUCTION_PACKAGING_DELIVERY"
   ],
   "page_audit_status": "PASS_WITH_WARNINGS",
+  "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "aplus_state": "BLOCKED_LEGACY_UNVERIFIED",
+  "aplus_publishable_modules": 0,
+  "aplus_draft_modules": 2,
+  "missing_requirements": [
+    "APLUS_EVIDENCE_REBUILD_REQUIRED"
+  ],
+  "item_highlights_state": "DRAFT_ONLY_OWNER_REVIEW_REQUIRED",
+  "session3_1_safety": {
+    "publishability_model": [
+      "PUBLISHABLE",
+      "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+      "BLOCKED_UNSAFE"
+    ],
+    "legacy_aplus_quarantined": true,
+    "legacy_aplus_absent_from_copy_ready": true,
+    "legacy_aplus_absent_from_manual_entry_publishable": true,
+    "missing_evidence_is_non_publishable_not_advisory": true,
+    "item_highlights_excluded_from_publishable": true,
+    "every_text_field_audited_or_draft_or_excluded": true,
+    "last_safe_draft_and_last_publishable_stored_separately": true,
+    "safe_draft_did_not_promote_last_publishable": true
+  },
   "owner_fact_required": [
     "care_instructions",
     "color_options",
@@ -81,5 +104,5 @@
   },
   "all_checks_pass": true,
   "status": "SESSION3_READY_FOR_REVIEW",
-  "note": "Full local proof artifacts (CLAIM-EVIDENCE.json, PRODUCT-PAGE.json, PRODUCT-PAGE-BRIEF.md, LISTING-COPY-READY.txt, PAGE-AUDIT-REPORT.json, CONTENT-COMPLIANCE-REPORT.json, LAST-VALID-LISTING-METADATA.json, FAILED-LISTING-CANDIDATE.json) are in runs/T2, which is gitignored business data. This root gate carries only non-sensitive verification data."
+  "note": "Full local proof artifacts (CLAIM-EVIDENCE.json, LISTING-COPY-READY.txt, SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json, PAGE-AUDIT-REPORT.json, AUDITED-TEXT-FIELDS.json, LAST-SAFE-DRAFT-METADATA.json, LAST-VALID-LISTING-METADATA.json, FAILED-LISTING-CANDIDATE.json) are in runs/T2, which is gitignored business data. This root gate carries only non-sensitive verification data. Session 3.1 hardening: legacy A+ quarantined (BLOCKED_LEGACY_UNVERIFIED, draft-only, excluded from every publishable payload); safe drafts separated from publishable listings (SAFE_DRAFT_OWNER_FACTS_REQUIRED); missing claim evidence is non-publishable (never advisory); every generated text field is audited, draft-only, or excluded."
 }

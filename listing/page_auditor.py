@@ -18,14 +18,19 @@ What it audits (each returns hard_failures and/or warnings):
   BULLETS      exactly five, unique buyer jobs, unsupported claims, missing lineage, blocked jobs
   DESCRIPTION  unsupported claims/sections, unresolved placeholders, missing lineage
   BACKEND      byte ceiling, malformed type, rejected/risky terms
-  A+           list shape + no unresolved {placeholder} (structural only; A+ is not rebuilt here)
+  A+           publishable `aplus` prose is claim/leak/placeholder screened like other copy; legacy A+ is
+               quarantined (BLOCKED_LEGACY_UNVERIFIED) and its draft must not reach the publishable field
+  COVERAGE     every generated text field is audited / draft-only / excluded — none may silently bypass
 
 A claim phrase in visible copy is "supported" only if it also appears in a VERIFIED claim's text — so
 copy that quotes a verified fact passes, while a hardcoded/fabricated promise with no verified backing is
 blocked. Verified backing is read from an explicit claim_evidence argument, else from the listing's own
 embedded `claim_evidence` block, else treated as absent (conservative: unverifiable claims are blocked).
 
-Statuses: PASS · PASS_WITH_WARNINGS · BLOCKED.
+Statuses (low-level verdict): PASS · PASS_WITH_WARNINGS · BLOCKED.
+Publishability (Session 3.1): PUBLISHABLE · SAFE_DRAFT_OWNER_FACTS_REQUIRED · BLOCKED_UNSAFE. A safe draft
+that is only incomplete (blocked bullet jobs / description) because owner facts are missing is NOT a
+publishable listing — it can update the last-safe-draft artifact but never the last-publishable one.
 
 Public API:
   audit_listing(listing, keyword_source=None, claim_evidence=None, product_facts=None, policy=None) -> dict
@@ -44,13 +49,47 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import category_policy_registry as CPR
 
-# statuses
+# statuses (low-level audit verdict — kept stable for existing callers)
 PASS = "PASS"
 PASS_WITH_WARNINGS = "PASS_WITH_WARNINGS"
 BLOCKED = "BLOCKED"
 
+# publishability classification (Session 3.1) — a safe-but-incomplete draft is NOT a publishable listing.
+PUBLISHABLE = "PUBLISHABLE"
+SAFE_DRAFT_OWNER_FACTS_REQUIRED = "SAFE_DRAFT_OWNER_FACTS_REQUIRED"
+BLOCKED_UNSAFE = "BLOCKED_UNSAFE"
+
+# A+ content states — legacy A+ is quarantined until the evidence-aware rebuild lands (Session 4).
+APLUS_BLOCKED_LEGACY_UNVERIFIED = "BLOCKED_LEGACY_UNVERIFIED"
+APLUS_EVIDENCE_REBUILD_REQUIRED = "APLUS_EVIDENCE_REBUILD_REQUIRED"
+
 DEFAULT_CATEGORY = "apparel"
 ITEM_HIGHLIGHTS_MAX = 125
+
+# Every generated customer-facing text field the auditor is responsible for, and how it is handled:
+#   audited    -> screened for unsafe claims / leakage / placeholders; may enter publishable copy
+#   draft_only -> screened for safety but EXCLUDED from the publishable package (owner review first)
+#   excluded   -> quarantined; never part of publishable copy (e.g. legacy A+ draft)
+# No generated text field may silently bypass the auditor (Session 3.1 PATCH 3).
+AUDITED_COPY_FIELDS = (
+    ("title", "audited"),
+    ("bullets", "audited"),
+    ("bullet_points", "audited"),
+    ("description", "audited"),
+    ("backend", "audited"),
+    ("aplus", "audited"),
+    ("aplus_modules", "audited"),
+    ("a_plus", "audited"),
+    ("personalization", "audited"),
+    ("personalization_instructions", "audited"),
+    ("item_highlights", "draft_only"),
+    ("product_highlights", "draft_only"),
+    ("aplus_draft", "excluded"),
+)
+_COPY_FIELD_DISPOSITION = dict(AUDITED_COPY_FIELDS)
+# copy-ish field names that MUST be routed through the registry; present-but-unregistered is a hard fail.
+_SUSPECT_COPY_FIELDS = ("tagline", "subtitle", "subtitles", "highlights", "catalog_description",
+                        "catalog_copy", "a_plus_content", "aplus_copy", "marketing_copy", "promo_copy")
 
 # best-effort trademark/brand screen (same guard the compliance validator uses); optional.
 try:
@@ -394,17 +433,63 @@ def _audit_backend(a, listing, policy, results):
     results["backend_results"] = br
 
 
-def _audit_aplus(a, listing, results):
-    ap = listing.get("aplus") or listing.get("aplus_modules") or listing.get("a_plus")
+def _publishable_aplus(listing):
+    """The publishable A+ module list (aplus / aplus_modules / a_plus), or [] — NOT the legacy draft."""
+    ap = listing.get("aplus")
     if ap is None:
-        return
-    if not isinstance(ap, list):
+        ap = listing.get("aplus_modules") or listing.get("a_plus")
+    return ap if isinstance(ap, list) else ([] if ap is None else ap)
+
+
+def _audit_aplus(a, listing, results):
+    """Report the A+ state and enforce the legacy quarantine. Publishable A+ prose is claim/leak/
+    placeholder screened via copy_text (folded in at audit_listing); here we only guard the quarantine
+    and record the A+ state so PageAuditor callers can surface it."""
+    ap = _publishable_aplus(listing)
+    ap_is_list = isinstance(ap, list)
+    state = listing.get("aplus_state")
+    draft = listing.get("aplus_draft") if isinstance(listing.get("aplus_draft"), dict) else {}
+    ar = {"state": state or ("PRESENT" if ap else "NONE"),
+          "publishable_module_count": len(ap) if ap_is_list else 0,
+          "draft_state": draft.get("state"),
+          "draft_module_count": len(draft.get("modules") or []) if draft else 0}
+    if not ap_is_list:
         a.fail("aplus_shape", "aplus must be a list of modules")
-        return
-    for i, mod in enumerate(ap, 1):
-        text = _mod_text(mod)
-        for m in re.findall(r"\{[a-zA-Z0-9_]+\}", text):
-            a.fail("aplus_placeholder", f"A+ module {i} contains an unresolved placeholder {m}")
+    elif state == APLUS_BLOCKED_LEGACY_UNVERIFIED:
+        # legacy A+ is quarantined: it may exist only as a draft, never in the publishable aplus field.
+        if any(_mod_text(m).strip() for m in ap):
+            a.fail("aplus_quarantine",
+                   "A+ is BLOCKED_LEGACY_UNVERIFIED but the publishable 'aplus' field still carries "
+                   "module text — legacy A+ must stay draft-only")
+        a.warning("aplus_state",
+                  "A+ content is BLOCKED_LEGACY_UNVERIFIED (legacy templates, structurally audited only) "
+                  "— draft-only and excluded from publishable copy; APLUS_EVIDENCE_REBUILD_REQUIRED")
+    results["aplus_results"] = ar
+
+
+def _audit_text_field_coverage(a, listing, results):
+    """Enumerate every generated text field and its disposition, and hard-fail if any copy-bearing field
+    is not routed through the registry (Session 3.1 PATCH 3: no silent bypass)."""
+    def _text_of(val):
+        if isinstance(val, (list, tuple)):
+            return " ".join(x if isinstance(x, str) else _mod_text(x) for x in val)
+        if isinstance(val, dict):
+            return _mod_text(val)
+        return str(val or "")
+
+    registry = []
+    for field, disp in AUDITED_COPY_FIELDS:
+        present = bool(_text_of(listing.get(field)).strip())
+        registry.append({"field": field, "disposition": disp, "present": present})
+    unregistered = []
+    for field in _SUSPECT_COPY_FIELDS:
+        if _text_of(listing.get(field)).strip():
+            unregistered.append(field)
+            a.fail("unaudited_text_field",
+                   f"generated text field '{field}' bypasses the audited-field registry — every text "
+                   f"field must be audited, draft-only, or explicitly excluded")
+    results["audited_text_fields"] = {"registry": registry, "unregistered": sorted(unregistered),
+                                      "missing_requirements": list(listing.get("missing_requirements") or [])}
 
 
 def _brand_screen(a, listing, fields):
@@ -428,10 +513,12 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     a = _Audit()
     results = {}
     if not isinstance(listing, dict):
-        return {"status": BLOCKED, "hard_failures": [{"category": "shape",
+        return {"status": BLOCKED, "publishability": BLOCKED_UNSAFE, "hard_failures": [{"category": "shape",
                 "message": "listing is not a JSON object"}], "warnings": [], "field_results": {},
                 "keyword_results": {}, "claim_results": {}, "title_results": {}, "bullet_results": {},
-                "description_results": {}, "backend_results": {}, "source_hashes": {}}
+                "description_results": {}, "backend_results": {}, "aplus_results": {},
+                "audited_text_fields": {}, "publishability_reasons": ["not a JSON object"],
+                "source_hashes": {}}
 
     if policy is None:
         policy = CPR.resolve_category_policy(listing.get("category") or DEFAULT_CATEGORY,
@@ -444,11 +531,14 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     if isinstance(item_highlights, list):
         item_highlights = ", ".join(str(x) for x in item_highlights)
 
-    # The claim + keyword screens cover the fields this session governs (title, bullets, description,
-    # item highlights). A+ prose is NOT screened for claims here — A+ is audited structurally only
-    # (_audit_aplus) and is not rebuilt this session; screening its legacy copy would wrongly block a
-    # safe draft over out-of-scope A+ content.
-    copy_text = " ".join([title, description, item_highlights] + [str(b) for b in bullets])
+    # The claim + keyword screens cover every field that can reach publishable copy: title, bullets,
+    # description, item highlights, and the PUBLISHABLE A+ field. Legacy A+ is quarantined into
+    # `aplus_draft` (excluded, not folded in here); a listing that keeps legacy text in the publishable
+    # `aplus` field is caught by _audit_aplus. Screening publishable A+ prose enforces PATCH 3 — no A+
+    # claim reaches a copy-ready package without verified backing.
+    aplus_pub_text = " ".join(_mod_text(m) for m in _publishable_aplus(listing))
+    copy_text = " ".join([title, description, item_highlights, aplus_pub_text]
+                         + [str(b) for b in bullets])
     copy_tokens = _tokens(copy_text)
 
     if item_highlights and len(item_highlights) > ITEM_HIGHLIGHTS_MAX:
@@ -462,6 +552,7 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     _audit_description(a, listing, results)
     _audit_backend(a, listing, policy, results)
     _audit_aplus(a, listing, results)
+    _audit_text_field_coverage(a, listing, results)
     _brand_screen(a, listing, [("title", title), ("description", description)]
                   + [(f"bullet {i}", b) for i, b in enumerate(bullets, 1)])
 
@@ -483,7 +574,35 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
                   f"POLICY_VERIFICATION_REQUIRED: no verified policy for {policy.category_identifier}")
 
     status = BLOCKED if a.hard else (PASS_WITH_WARNINGS if a.warn else PASS)
-    return {"status": status, "hard_failures": a.hard, "warnings": a.warn, **results}
+    publishability, publishability_reasons = _classify_publishability(a, listing, results)
+    results["publishability"] = publishability
+    results["publishability_reasons"] = publishability_reasons
+    return {"status": status, "publishability": publishability, "hard_failures": a.hard,
+            "warnings": a.warn, **results}
+
+
+def _classify_publishability(a, listing, results):
+    """Map the audit into one of PUBLISHABLE / SAFE_DRAFT_OWNER_FACTS_REQUIRED / BLOCKED_UNSAFE.
+
+    - BLOCKED_UNSAFE: any hard failure (unsupported/prohibited/owner-review claims, keyword leakage,
+      source-hash conflict, title/backend/structure gate, unresolved placeholder, unaudited field, …).
+    - SAFE_DRAFT_OWNER_FACTS_REQUIRED: no unsafe finding, but an essential section is incomplete because
+      verified owner facts are missing (a blocked bullet job or an unpublishable description). Legacy A+
+      being quarantined is surfaced as APLUS_EVIDENCE_REBUILD_REQUIRED but does NOT by itself demote the
+      Product Detail Page — A+ is separate, optional enhanced content.
+    - PUBLISHABLE: no unsafe finding and every essential section is complete.
+    """
+    if a.hard:
+        return BLOCKED_UNSAFE, ["unsafe: " + h["category"] for h in a.hard]
+    reasons = []
+    if results.get("bullet_results", {}).get("blocked_jobs"):
+        reasons.append("bullet_jobs_incomplete:" + ",".join(results["bullet_results"]["blocked_jobs"]))
+    dm = listing.get("description_meta") or {}
+    if dm.get("publishability") == "BLOCKED_INCOMPLETE":
+        reasons.append("description_incomplete")
+    if reasons:
+        return SAFE_DRAFT_OWNER_FACTS_REQUIRED, reasons
+    return PUBLISHABLE, []
 
 
 def audit_verdict(listing, allow_warnings=True, **ctx):
@@ -514,34 +633,51 @@ def _sha256_text(text):
 
 def promote_if_safe(folder, listing, allow_warnings=True, generated_at=None, dest_name="listing.json",
                     **ctx):
-    """Audit a candidate listing and promote it to the last-valid listing ONLY if it is safe.
+    """Audit a candidate listing and store it according to its publishability (Session 3.1).
 
-    A blocked candidate never overwrites listing.json. Writes PAGE-AUDIT-REPORT.json always,
-    FAILED-LISTING-CANDIDATE.json when blocked, and LAST-VALID-LISTING-METADATA.json when promoted.
-    Returns a result dict.
+    - BLOCKED_UNSAFE               : nothing is stored — neither the last safe draft nor the last
+                                     publishable listing is touched; FAILED-LISTING-CANDIDATE.json is written.
+    - SAFE_DRAFT_OWNER_FACTS_REQ.  : the candidate is a safe but incomplete draft. It updates the last
+                                     SAFE DRAFT artifact and listing.json, but must NOT overwrite the last
+                                     PUBLISHABLE listing (that older, complete listing is preserved).
+    - PUBLISHABLE                  : updates both the last safe draft AND the last publishable listing.
+
+    Always writes PAGE-AUDIT-REPORT.json and AUDITED-TEXT-FIELDS.json. Keeps the backward-compatible
+    LAST-VALID-LISTING-METADATA.json, now annotated with `publishability`/`artifact_kind` so there is no
+    ambiguity about whether it points at a draft or a publishable listing. Returns a result dict.
     """
     audit = audit_listing(listing, **ctx)
+    publishability = audit["publishability"]
     stamp = generated_at or datetime.now(timezone.utc).isoformat()
     dest = os.path.join(folder, dest_name)
     candidate_text = json.dumps(listing, indent=2, ensure_ascii=False, sort_keys=True)
     input_hash = _sha256_text(candidate_text)
 
-    report = {"generated_at": stamp, "dest": dest_name, "input_sha256": input_hash, "audit": audit}
+    report = {"generated_at": stamp, "status": audit["status"], "publishability": publishability,
+              "dest": dest_name, "input_sha256": input_hash, "audit": audit}
     _atomic_write(os.path.join(folder, "PAGE-AUDIT-REPORT.json"),
                   json.dumps(report, indent=2, ensure_ascii=False))
+    _atomic_write(os.path.join(folder, "AUDITED-TEXT-FIELDS.json"),
+                  json.dumps({"generated_at": stamp, "publishability": publishability,
+                              **audit.get("audited_text_fields", {})}, indent=2, ensure_ascii=False))
 
-    promotable = audit["status"] == PASS or (allow_warnings and audit["status"] == PASS_WITH_WARNINGS)
+    promotable = publishability != BLOCKED_UNSAFE and (
+        audit["status"] == PASS or (allow_warnings and audit["status"] == PASS_WITH_WARNINGS))
     if not promotable:
-        failed = {"generated_at": stamp, "status": audit["status"], "input_sha256": input_hash,
-                  "hard_failures": audit["hard_failures"], "warnings": audit["warnings"],
-                  "candidate": listing,
-                  "note": "This candidate was BLOCKED and did NOT overwrite the last valid listing."}
+        failed = {"generated_at": stamp, "status": audit["status"], "publishability": publishability,
+                  "input_sha256": input_hash, "hard_failures": audit["hard_failures"],
+                  "warnings": audit["warnings"], "candidate": listing,
+                  "note": "This candidate was BLOCKED_UNSAFE and updated NEITHER the last safe draft nor "
+                          "the last publishable listing."}
         _atomic_write(os.path.join(folder, "FAILED-LISTING-CANDIDATE.json"),
                       json.dumps(failed, indent=2, ensure_ascii=False))
-        return {"promoted": False, "status": audit["status"], "audit": audit,
-                "input_sha256": input_hash, "dest": dest, "last_valid_preserved": os.path.exists(dest)}
+        return {"promoted": False, "status": audit["status"], "publishability": publishability,
+                "audit": audit, "input_sha256": input_hash, "dest": dest,
+                "last_valid_preserved": os.path.exists(dest),
+                "last_publishable_preserved": os.path.exists(
+                    os.path.join(folder, "LAST-PUBLISHABLE-LISTING-METADATA.json"))}
 
-    # promote: back up the prior valid listing, then atomically replace.
+    # promotable (publishable OR safe draft): back up the prior working listing, then atomically replace.
     if os.path.exists(dest):
         try:
             with open(dest, encoding="utf-8") as f:
@@ -554,13 +690,26 @@ def promote_if_safe(folder, listing, allow_warnings=True, generated_at=None, des
     output_text = json.dumps(output, indent=2, ensure_ascii=False)
     _atomic_write(dest, output_text)
     output_hash = _sha256_text(output_text)
-    meta = {"generated_at": stamp, "status": audit["status"], "dest": dest_name,
+
+    artifact_kind = "publishable_listing" if publishability == PUBLISHABLE else "safe_draft"
+    meta = {"generated_at": stamp, "status": audit["status"], "publishability": publishability,
+            "artifact_kind": artifact_kind, "dest": dest_name,
             "input_sha256": input_hash, "output_sha256": output_hash,
             "keyword_source_sha256": listing.get("keyword_source_sha256"),
             "product_fact_source_sha256": listing.get("product_fact_source_sha256"),
             "warnings": audit["warnings"]}
+    # a safe write always updates the last SAFE DRAFT (a publishable listing is also a valid safe draft).
+    _atomic_write(os.path.join(folder, "LAST-SAFE-DRAFT-METADATA.json"),
+                  json.dumps(meta, indent=2, ensure_ascii=False))
+    # backward-compatible last-valid artifact, now unambiguous about draft vs publishable.
     _atomic_write(os.path.join(folder, "LAST-VALID-LISTING-METADATA.json"),
                   json.dumps(meta, indent=2, ensure_ascii=False))
+    # only a fully PUBLISHABLE listing updates the last publishable artifact + snapshot.
+    if publishability == PUBLISHABLE:
+        _atomic_write(os.path.join(folder, "listing.publishable.json"), output_text)
+        _atomic_write(os.path.join(folder, "LAST-PUBLISHABLE-LISTING-METADATA.json"),
+                      json.dumps({**meta, "snapshot": "listing.publishable.json"}, indent=2,
+                                 ensure_ascii=False))
     # a promoted candidate clears any stale failed-candidate marker.
     fc = os.path.join(folder, "FAILED-LISTING-CANDIDATE.json")
     if os.path.exists(fc):
@@ -568,5 +717,6 @@ def promote_if_safe(folder, listing, allow_warnings=True, generated_at=None, des
             os.remove(fc)
         except OSError:
             pass
-    return {"promoted": True, "status": audit["status"], "audit": audit,
-            "input_sha256": input_hash, "output_sha256": output_hash, "dest": dest}
+    return {"promoted": True, "status": audit["status"], "publishability": publishability,
+            "artifact_kind": artifact_kind, "audit": audit, "input_sha256": input_hash,
+            "output_sha256": output_hash, "dest": dest}

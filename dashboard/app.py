@@ -323,26 +323,38 @@ def listing_copy_summary(folder, listing=None):
         "claim_evidence_sha256": (L.get("claim_evidence") or {}).get("source_content_sha256"),
         "owner_fact_required": L.get("owner_fact_required", []),
         "missing_claim_evidence": L.get("missing_claim_evidence", []),
-        "publishability_status": L.get("publishability_status") or audit.get("status"),
+        "missing_requirements": L.get("missing_requirements", []),
+        # PATCH 2: publishability is the classification the owner reads — a safe draft is NOT publishable.
+        "publishability": L.get("publishability") or audit.get("publishability"),
+        "publishability_status": L.get("publishability_status") or audit.get("publishability")
+        or audit.get("status"),
+        # PATCH 1: A+ is quarantined — the cockpit shows it is blocked and draft-only.
+        "aplus_state": L.get("aplus_state"),
+        "aplus_blocked_draft_only": L.get("aplus_state") == PA.APLUS_BLOCKED_LEGACY_UNVERIFIED,
+        "aplus_draft_module_count": len((L.get("aplus_draft") or {}).get("modules") or []),
+        "item_highlights_state": L.get("item_highlights_state"),
+        "audited_text_fields": audit.get("audited_text_fields", {}),
         "page_audit": {"status": audit.get("status"),
+                       "publishability": audit.get("publishability"),
                        "hard_failures": audit.get("hard_failures", []),
                        "warnings": audit.get("warnings", [])},
     }
-    # last-valid-listing state from the audit artifacts on disk.
-    meta_p = os.path.join(folder, "LAST-VALID-LISTING-METADATA.json")
-    failed_p = os.path.join(folder, "FAILED-LISTING-CANDIDATE.json")
-    if os.path.exists(meta_p):
-        try:
-            out["last_valid_listing"] = json.load(open(meta_p, encoding="utf-8"))
-        except Exception:
-            out["last_valid_listing"] = None
-    if os.path.exists(failed_p):
-        try:
-            fc = json.load(open(failed_p, encoding="utf-8"))
-            out["failed_candidate"] = {"status": fc.get("status"),
-                                       "hard_failures": fc.get("hard_failures", [])}
-        except Exception:
-            out["failed_candidate"] = None
+    # last-valid-listing state from the audit artifacts on disk — the last SAFE DRAFT and the last
+    # PUBLISHABLE listing are surfaced separately so the cockpit never conflates a draft with a listing.
+    def _read(name):
+        p = os.path.join(folder, name)
+        if os.path.exists(p):
+            try:
+                return json.load(open(p, encoding="utf-8"))
+            except Exception:
+                return None
+        return None
+    out["last_valid_listing"] = _read("LAST-VALID-LISTING-METADATA.json")
+    out["last_safe_draft"] = _read("LAST-SAFE-DRAFT-METADATA.json")
+    out["last_publishable_listing"] = _read("LAST-PUBLISHABLE-LISTING-METADATA.json")
+    fc = _read("FAILED-LISTING-CANDIDATE.json")
+    out["failed_candidate"] = {"status": fc.get("status"), "publishability": fc.get("publishability"),
+                               "hard_failures": fc.get("hard_failures", [])} if fc else None
     return out
 
 def snapshot(folder, seed=""):

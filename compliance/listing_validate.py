@@ -272,29 +272,25 @@ def main():
             except Exception:
                 kwsrc = None
         audit = PA.audit_listing(listing, keyword_source=kwsrc)
-        # The lineage-dependent claim screen (unsupported/owner-review/prohibited) can only PROVE a
-        # claim unsupported when the listing carries a claim_evidence block. This CLI validator is also
-        # run on hand-authored listings whose claims are verified through the separate gate evidence
-        # files, and it already owns claim accuracy via category_config + fact_contradictions — so when
-        # no lineage is present those findings are advisory here (they still HARD-block the dashboard
-        # safe-write path and the proof gate, which govern publishable output). Every other PageAuditor
-        # hard failure (keyword leakage, title/backend limits, structure, placeholders, hash) blocks.
-        has_lineage = isinstance(listing.get("claim_evidence"), dict)
-        LINEAGE_CLAIM_CATS = {"unsupported_claim", "owner_review_in_copy", "prohibited_claim"}
+        # Session 3.1 PATCH 3 — NO-EVIDENCE MEANS NON-PUBLISHABLE. A factual-claim violation is NEVER
+        # downgraded to an advisory warning just because the listing carries no claim_evidence lineage:
+        # missing evidence for a factual field is UNVERIFIED_BLOCKED and blocks. Every PageAuditor hard
+        # failure (unsupported/owner-review/prohibited claims, keyword leakage, title/backend limits,
+        # structure, placeholders, hash, unaudited fields) blocks here exactly as it does on the
+        # dashboard safe-write path and the proof gate.
         for h in audit["hard_failures"]:
             m = f"[PageAudit] {h['category']}: {h['message']}"
-            if h["category"] in LINEAGE_CLAIM_CATS and not has_lineage:
-                if m not in warns:
-                    warns.append(m + " — advisory: listing carries no claim_evidence lineage")
-            elif m not in fails:
+            if m not in fails:
                 fails.append(m)
         for w in audit["warnings"]:
             m = f"[PageAudit] {w['category']}: {w['message']}"
             if m not in warns:
                 warns.append(m)
         page_audit_status = audit["status"]
+        page_audit_publishability = audit["publishability"]
     except Exception as e:
         page_audit_status = "UNAVAILABLE"
+        page_audit_publishability = "UNAVAILABLE"
         warns.append(f"PageAudit unavailable: {e}")
 
     # ---- KEYWORD VERIFY vs master sheet ----
@@ -324,7 +320,8 @@ def main():
     fb = "  ⚠️ FALLBACK (POLICY_VERIFICATION_REQUIRED)" if policy.fallback_used else ""
     print(f"policy: {policy.category_identifier} · title hard limit {policy.title_hard_limit} · "
           f"recommended {policy.title_recommended_target} · backend ceiling {policy.backend_byte_ceiling}B{fb}")
-    print(f"PageAudit: {page_audit_status}  (shared listing.page_auditor — same authority as dashboard safe-write)")
+    print(f"PageAudit: {page_audit_status} · publishability {page_audit_publishability}  "
+          f"(shared listing.page_auditor — same authority as dashboard safe-write)")
     if pf_note:
         print(f"product facts: {pf_note}")
     if fails:

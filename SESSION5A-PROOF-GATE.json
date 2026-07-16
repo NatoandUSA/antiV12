@@ -1,0 +1,109 @@
+{
+  "session": "5A",
+  "acts_implemented": [
+    "ACT-009 backend search-term optimizer",
+    "ACT-010 item highlights"
+  ],
+  "run_folder": "runs/T2",
+  "keyword_source": {
+    "file": "MASTER-KEYWORDS-LEAN.json",
+    "schema": "MASTER_KEYWORDS_LEAN",
+    "run_id": "kwrun_98495e7b22",
+    "sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+    "legacy_unsafe": false,
+    "tier_A": 74,
+    "tier_B": 378,
+    "tier_C": 0
+  },
+  "backend": {
+    "string": "quarter zip pullover women rn labor and delivery sweater up fleece nursing hoodie crewneck cna med surg holiday school this prays the face registered navy blue pink crew neck custom embroidered womens future postpartum week practitioner emergency er",
+    "bytes_used": 249,
+    "byte_ceiling": 249,
+    "bytes_remaining": 0,
+    "byte_safe": true,
+    "included_count": 38,
+    "excluded_total": 7862,
+    "excluded_summary": {
+      "ALREADY_FULLY_COVERED": 577,
+      "BYTE_LIMIT": 525,
+      "DUPLICATE_TOKEN": 471,
+      "INELIGIBLE_TIER": 1986,
+      "MALFORMED": 12,
+      "OWNER_APPROVAL_REQUIRED": 2671,
+      "WRONG_AUDIENCE": 461,
+      "WRONG_OCCASION": 410,
+      "WRONG_PRODUCT": 749
+    },
+    "risk_results_counts": {
+      "rejected": 1986,
+      "wrong_audience": 461,
+      "wrong_product": 749,
+      "wrong_occasion": 410,
+      "brand_ip": 0,
+      "trademark_or_ip": 0,
+      "explicit_conflict": 0,
+      "malformed": 0,
+      "owner_approval_required": 2671
+    },
+    "keyword_leakage": [],
+    "risky_included_terms": [],
+    "every_included_has_provenance": true,
+    "content_sha256": "caba1d91e10ef3555ec4a08329c9b159524b6fa4778a8dee934e071108ce1270"
+  },
+  "item_highlights": {
+    "category_support_state": "SUPPORTED",
+    "publishable_count": 0,
+    "blocked_count": 11,
+    "publishable_texts": [],
+    "no_generic_filler": true,
+    "content_sha256": "ff641c947d4f9ee739d96dae2d7fe76fa6a276402122e4b8f2a93ba0382a917b"
+  },
+  "audit": {
+    "status": "PASS_WITH_WARNINGS",
+    "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+    "hard_failures": [],
+    "backend_results": {
+      "bytes_used": 249,
+      "byte_ceiling": 249,
+      "type_ok": true,
+      "audit_present": true,
+      "included_count": 38,
+      "excluded_count": 7862,
+      "no_cut_tokens": true,
+      "all_included_have_provenance": true,
+      "all_included_have_reason": true,
+      "deterministic_order": true,
+      "no_risky_terms": true,
+      "source_hash": "OK"
+    },
+    "item_highlights_results": {
+      "supported": true,
+      "capability_state": "SUPPORTED",
+      "publishable_count": 0,
+      "blocked_count": 11,
+      "unique_concepts": true,
+      "within_limits": true
+    }
+  },
+  "determinism": {
+    "backend_deterministic": true,
+    "item_highlights_deterministic": true
+  },
+  "safe_write": {
+    "promoted": true,
+    "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+    "artifact_kind": "safe_draft",
+    "last_publishable_preserved": true
+  },
+  "artifacts_written": [
+    "listing.json",
+    "PRODUCT-PAGE.json",
+    "BACKEND-SEARCH-TERMS.json",
+    "BACKEND-SEARCH-TERMS-AUDIT.json",
+    "ITEM-HIGHLIGHTS.json",
+    "LISTING-COPY-READY.txt",
+    "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json",
+    "PAGE-AUDIT-REPORT.json"
+  ],
+  "status": "SESSION5A_READY_FOR_REVIEW"
+}

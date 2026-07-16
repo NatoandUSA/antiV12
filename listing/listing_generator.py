@@ -40,6 +40,8 @@ import claim_evidence as CE
 import title_engine as TE
 import bullet_engine as BE
 import description_engine as DE
+import backend_optimizer as BO
+import item_highlights_builder as IHB
 import page_auditor as PA
 import copy_package as CPKG
 import aplus_module_registry as AREG
@@ -164,6 +166,13 @@ def _is_us_shipping_verified(facts_src):
     return False
 
 
+def _brand_terms(facts_src):
+    """The verified brand, if any — passed to the backend optimizer so a brand token can never enter the
+    backend (on top of the adapter's own BRAND_TERM risk screen). Unknown brand -> no extra screen term."""
+    brand = facts_src.publishable_value("brand")
+    return [brand] if brand else []
+
+
 def _audience_from_keywords(kws):
     AUD = ["nurse", "teacher", "mom", "mama", "dad", "nurse practitioner", "rn", "grandma",
            "coach", "bride", "student", "vet", "doctor", "firefighter", "police"]
@@ -227,8 +236,28 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     desc_res = DE.build_description(claims, primary, eligible_keywords=kws)
     description = desc_res.description_text
 
-    highlights = build_item_highlights(kws, product)
-    backend = build_backend(kws, product, title=title, byte_ceiling=policy.backend_byte_ceiling)
+    # ACT-010 — category-capability & claim-aware item highlights. Publishable highlights come ONLY from
+    # VERIFIED claims when the category supports the field; with no verified facts (the T2 state) this is
+    # empty and nothing generic is invented. The legacy keyword-built string below is kept DRAFT_ONLY.
+    ih_result = IHB.build_item_highlights_content(claims, policy, keyword_source=src,
+                                                  product_facts=facts_src, title=title, bullets=bullets,
+                                                  description=description)
+    for fld in ih_result.owner_fact_required:
+        if fld not in owner_fact_required:
+            owner_fact_required.append(fld)
+    # only PUBLISHABLE item-highlight text is actually visible on the page — so backend incremental-coverage
+    # is measured against it (not the draft-only legacy string, which never publishes).
+    ih_visible = " ".join(ih_result.publishable_texts())
+
+    # ACT-009 — evidence-aware, byte-safe, audited backend optimizer (replaces the naive build_backend).
+    # Draws only from the source's ELIGIBLE keywords, counts UTF-8 bytes against the policy ceiling, never
+    # cuts a token, and records provenance + a reason for every included/excluded term.
+    backend_opt = BO.optimize_backend(src, policy=policy, title=title, bullets=bullets,
+                                      description=description, item_highlights=ih_visible,
+                                      claim_evidence=claims, brand_terms=_brand_terms(facts_src))
+    backend = backend_opt.backend_search_terms_string
+
+    highlights = build_item_highlights(kws, product)   # legacy draft-only string (<=125 chars, kept for compat)
 
     # A+ facts: only verified values, so an unresolved {placeholder} marks a module non-publishable
     # instead of printing a fabricated value or a literal "{fabric}" (ACT-006 / ACT-014-safe).
@@ -319,9 +348,17 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
         # DRAFT_ONLY / OWNER_REVIEW_REQUIRED — screened for safety but excluded from publishable copy.
         "item_highlights": highlights,
         "item_highlights_state": "DRAFT_ONLY_OWNER_REVIEW_REQUIRED",
+        # ACT-010 — the capability- & evidence-aware item highlights. `item_highlights_publishable` is the
+        # audited, publishable list (empty unless the category supports the field AND verified claims back
+        # it); `item_highlights_content` is the full structured payload (excluded from publishable copy).
+        "item_highlights_publishable": ih_result.publishable_highlights,
+        "item_highlights_content": ih_result.listing_block(),
+        "item_highlights_capability_state": ih_result.category_support_state,
         "bullets": bullets,
         "description": description,
         "backend": backend,
+        # ACT-009 — the byte audit for the backend string (provenance + inclusion/exclusion reasons).
+        "backend_audit": backend_opt.audit(),
         # Publishable A+ is populated ONLY when the evidence-aware builder's gates all pass (Session 4);
         # otherwise it stays empty and the state stays BLOCKED_LEGACY_UNVERIFIED (Session 3.1 quarantine).
         "aplus": aplus_publishable,
@@ -468,12 +505,16 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     ABU.write_aplus_outputs(folder, aplus)
     CBB.write_creative_artifacts(folder, aplus, primary_keyword=primary)
 
+    # Session 5A — write the backend optimizer + item-highlights artifacts (deterministic canonical JSON).
+    BO.write_backend_outputs(folder, backend_opt)
+    IHB.write_item_highlights(folder, ih_result)
+
     return {"ok": True, "listing": listing, "brief": brief, "keyword_source": src,
             "product_facts": facts_src, "category_policy": policy, "claim_evidence": claims,
             "title_result": title_res, "bullet_result": bullet_res, "description_result": desc_res,
             "audit": audit, "title_len": len(title), "title_limit": title_limit,
             "owner_fact_required": sorted(owner_fact_required), "proof_required": proof_needed,
-            "aplus": aplus}
+            "aplus": aplus, "backend_optimization": backend_opt, "item_highlights_result": ih_result}
 
 
 def _claim_evidence_block(claims):

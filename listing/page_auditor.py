@@ -49,6 +49,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import category_policy_registry as CPR
 import aplus_module_registry as AREG
+import backend_optimizer as BO
+import item_highlights_builder as IHB
 
 # statuses (low-level audit verdict — kept stable for existing callers)
 PASS = "PASS"
@@ -85,6 +87,11 @@ AUDITED_COPY_FIELDS = (
     ("personalization_instructions", "audited"),
     ("item_highlights", "draft_only"),
     ("product_highlights", "draft_only"),
+    # Session 5A — the capability/evidence-aware item highlights. `item_highlights_publishable` is audited
+    # like other publishable copy; `item_highlights_content` is the structured payload (validated by
+    # _audit_item_highlights) and never reaches publishable copy directly.
+    ("item_highlights_publishable", "audited"),
+    ("item_highlights_content", "excluded"),
     ("aplus_draft", "excluded"),
     # Session 4 — the evidence-aware A+ structure is validated by _audit_aplus_evidence; its READY module
     # copy only reaches publishable copy through the already-audited `aplus` field.
@@ -418,7 +425,10 @@ def _audit_description(a, listing, results):
 
 
 def _audit_backend(a, listing, policy, results):
-    br = {"bytes_used": 0, "byte_ceiling": policy.backend_byte_ceiling, "type_ok": True}
+    br = {"bytes_used": 0, "byte_ceiling": policy.backend_byte_ceiling, "type_ok": True,
+          "audit_present": False, "included_count": 0, "excluded_count": 0, "no_cut_tokens": True,
+          "all_included_have_provenance": True, "all_included_have_reason": True,
+          "deterministic_order": True, "no_risky_terms": True, "source_hash": "not_checked"}
     backend = listing.get("backend")
     if backend is None:
         results["backend_results"] = br
@@ -434,7 +444,135 @@ def _audit_backend(a, listing, policy, results):
         a.fail("backend_overflow",
                f"backend {nb} bytes > {policy.backend_byte_ceiling} "
                f"({policy.category_identifier} backend byte ceiling)")
+    audit = listing.get("backend_audit")
+    if isinstance(audit, dict):
+        _audit_backend_provenance(a, listing, backend, policy, audit, br)
     results["backend_results"] = br
+
+
+def _audit_backend_provenance(a, listing, backend, policy, audit, br):
+    """Validate the ACT-009 backend audit: byte accounting, no cut/hidden/reordered tokens, provenance +
+    a reason for every included token, no risky included term, and source-hash consistency."""
+    br["audit_present"] = True
+    included = audit.get("included_terms") or []
+    br["included_count"] = len(included)
+    br["excluded_count"] = audit.get("excluded_count", len(audit.get("excluded_terms") or []))
+    tokens = backend.split()
+    included_terms = [str(t.get("term")) for t in included]
+
+    if audit.get("bytes_used") != len(backend.encode("utf-8")):
+        a.fail("backend_byte_mismatch",
+               f"backend_audit bytes_used {audit.get('bytes_used')} != actual "
+               f"{len(backend.encode('utf-8'))} bytes")
+    if audit.get("byte_ceiling") != policy.backend_byte_ceiling:
+        a.fail("backend_ceiling_source",
+               f"backend_audit ceiling {audit.get('byte_ceiling')} != category policy "
+               f"{policy.backend_byte_ceiling} (backend ceiling must come from the shared registry)")
+    # the backend string tokens must equal the included_terms in order — this is what proves no token was
+    # cut, no hidden unaudited token slipped in, and the deterministic ordering was preserved.
+    if tokens != included_terms:
+        # every backend token still traces to an included term? then it is unaudited/reordered, not cut.
+        br["no_cut_tokens"] = all(t in set(included_terms) for t in tokens)
+        br["deterministic_order"] = False
+        a.fail("backend_provenance_order",
+               "backend string tokens do not match backend_audit included_terms in order — a backend token "
+               "is cut, unaudited, or reordered")
+    if len(tokens) != len(set(tokens)):
+        a.fail("backend_duplicate_token", "backend string contains duplicate tokens")
+    for t in included:
+        if not t.get("inclusion_reason"):
+            br["all_included_have_reason"] = False
+            a.fail("backend_missing_reason",
+                   f"backend included term '{t.get('term')}' carries no inclusion reason")
+        if not (t.get("source_keyword") and t.get("source_sha256")):
+            br["all_included_have_provenance"] = False
+            a.fail("backend_missing_provenance",
+                   f"backend included term '{t.get('term')}' carries no source provenance")
+        if t.get("blocking_risks"):
+            br["no_risky_terms"] = False
+            a.fail("backend_risky_term",
+                   f"backend included term '{t.get('term')}' carries blocking risks {t.get('blocking_risks')}")
+    sh = (audit.get("source_hashes") or {}).get("keyword_source_sha256")
+    lh = listing.get("keyword_source_sha256")
+    if sh and lh and sh != lh:
+        br["source_hash"] = "MISMATCH"
+        a.fail("backend_source_hash",
+               f"backend_audit keyword_source_sha256 {sh[:16]}… != listing {lh[:16]}…")
+    elif sh:
+        br["source_hash"] = "OK"
+
+
+def _audit_item_highlights(a, listing, policy, results):
+    """Validate the ACT-010 item highlights: category-field support, VERIFIED facts + claim lineage, no
+    unsupported claims / placeholders, unique concepts, and the policy count/character limits. An empty
+    (optional) publishable set is fine and never demotes an otherwise-safe draft; an UNSAFE publishable
+    highlight is a hard failure and prevents PUBLISHABLE."""
+    ih = {"supported": None, "capability_state": None, "publishable_count": 0, "blocked_count": None,
+          "unique_concepts": True, "within_limits": True}
+    content = listing.get("item_highlights_content")
+    pub = listing.get("item_highlights_publishable")
+    if pub is None and not isinstance(content, dict):
+        results["item_highlights_results"] = ih
+        return
+    supported = policy.supports_item_highlights()
+    ih["supported"] = supported
+    max_count = policy.item_highlights_max_count or IHB.DEFAULT_MAX_COUNT
+    char_limit = policy.item_highlights_character_limit or IHB.DEFAULT_CHARACTER_LIMIT
+    pub = pub if isinstance(pub, list) else []
+    ih["publishable_count"] = len(pub)
+    if isinstance(content, dict):
+        ih["capability_state"] = content.get("category_support_state")
+        ih["blocked_count"] = content.get("blocked_count")
+
+    # a publishable item highlight requires a category that supports the field.
+    if pub and not supported:
+        a.fail("item_highlights_unsupported",
+               "publishable item highlights are present but the category does not support item_highlights")
+    exp_state = IHB.SUPPORTED if supported else IHB.UNSUPPORTED_BY_CATEGORY
+    if isinstance(content, dict) and content.get("category_support_state") not in (None, exp_state):
+        a.fail("item_highlights_capability",
+               f"item_highlights capability {content.get('category_support_state')} != policy {exp_state}")
+
+    verified_norm = _verified_texts(listing, None).split()
+    concepts = []
+    for h in pub:
+        text = (h.get("text") or "") if isinstance(h, dict) else str(h)
+        concepts.append(h.get("concept") if isinstance(h, dict) else None)
+        if isinstance(h, dict) and h.get("publishability_status") not in (None, IHB.PUBLISHABLE):
+            a.fail("item_highlights_state",
+                   f"item highlight {h.get('highlight_id')} is in the publishable payload but its status is "
+                   f"{h.get('publishability_status')}")
+        if isinstance(h, dict) and h.get("verification_state") not in (None, "VERIFIED"):
+            a.fail("item_highlights_unverified",
+                   f"publishable item highlight {h.get('highlight_id')} is not VERIFIED "
+                   f"({h.get('verification_state')})")
+        if text and not (isinstance(h, dict) and h.get("claim_ids")):
+            a.fail("item_highlights_missing_lineage",
+                   f"publishable item highlight {(h.get('highlight_id') if isinstance(h, dict) else '')} "
+                   f"carries text but no claim lineage")
+        if _PLACEHOLDER_RE_PA.findall(text):
+            a.fail("item_highlights_placeholder",
+                   f"publishable item highlight contains an unresolved placeholder: {text}")
+        htoks = _tokens(text)
+        for phrase in UNSAFE_CLAIM_PHRASES:
+            pt = _norm(phrase).split()
+            if _contains_phrase(htoks, pt) and not _contains_phrase(verified_norm, pt):
+                a.fail("item_highlights_unsupported_claim",
+                       f"publishable item highlight states unsupported claim '{phrase}' (no VERIFIED backing)")
+        if len(text) > char_limit:
+            ih["within_limits"] = False
+            a.fail("item_highlights_limit",
+                   f"publishable item highlight {len(text)} chars > {char_limit} "
+                   f"({policy.category_identifier} item-highlights character limit)")
+    real_concepts = [c for c in concepts if c]
+    if len(set(real_concepts)) != len(real_concepts):
+        ih["unique_concepts"] = False
+        a.fail("item_highlights_duplicate_concept",
+               f"publishable item highlights repeat a concept: {sorted(real_concepts)}")
+    if len(pub) > max_count:
+        a.fail("item_highlights_count",
+               f"{len(pub)} publishable item highlights > policy maximum {max_count}")
+    results["item_highlights_results"] = ih
 
 
 def _publishable_aplus(listing):
@@ -679,7 +817,9 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     # `aplus` field is caught by _audit_aplus. Screening publishable A+ prose enforces PATCH 3 — no A+
     # claim reaches a copy-ready package without verified backing.
     aplus_pub_text = " ".join(_mod_text(m) for m in _publishable_aplus(listing))
-    copy_text = " ".join([title, description, item_highlights, aplus_pub_text]
+    ih_pub = listing.get("item_highlights_publishable")
+    ih_pub_text = " ".join(_mod_text(m) for m in ih_pub) if isinstance(ih_pub, list) else ""
+    copy_text = " ".join([title, description, item_highlights, ih_pub_text, aplus_pub_text]
                          + [str(b) for b in bullets])
     copy_tokens = _tokens(copy_text)
 
@@ -693,6 +833,7 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     _audit_bullets(a, listing, claim_evidence, results)
     _audit_description(a, listing, results)
     _audit_backend(a, listing, policy, results)
+    _audit_item_highlights(a, listing, policy, results)
     _audit_aplus(a, listing, results)
     _audit_aplus_evidence(a, listing, results)
     _audit_text_field_coverage(a, listing, results)

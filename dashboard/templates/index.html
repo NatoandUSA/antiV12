@@ -475,6 +475,27 @@ function renderListingCopy(lc){
     html+=`<br>Premium: ${ae.eligibility_unverified?'<span class="muted">ELIGIBILITY_UNVERIFIED draft (never published)</span>':(ae.premium_eligible?'<b style="color:#1e7e34">eligible</b>':'not eligible')}`;
     if((ae.selected_dynamic_modules||[]).length) html+=` · dynamic: ${esc(ae.selected_dynamic_modules.join(', '))}`;
   }
+  // backend optimizer (Session 5A — ACT-009: audited, byte-safe backend search terms)
+  const bo=lc.backend_optimizer;
+  if(bo){
+    html+=`<br><br><b>Backend search terms</b> — <span class="${(bo.byte_ceiling!=null&&bo.bytes_used>bo.byte_ceiling)?'no':'ok'}">${bo.bytes_used} bytes${bo.byte_ceiling!=null?('/'+bo.byte_ceiling):''}</span>${bo.bytes_remaining!=null?` · ${bo.bytes_remaining} remaining`:''}`;
+    if(bo.audit_present){
+      html+=`<br>included <b>${bo.included_count}</b> · excluded ${bo.excluded_count} · visible overlap ${(bo.visible_field_overlap||[]).length} · incremental ${bo.incremental_coverage_count}`;
+      const rr=bo.risk_results||{}; const riskTotal=Object.values(rr).reduce((a,b)=>a+(b||0),0);
+      html+=`<br><span class="${riskTotal>0?'muted':'ok'}">risk-screened out: rejected ${rr.rejected||0} · wrong-audience ${rr.wrong_audience||0} · wrong-product ${rr.wrong_product||0} · wrong-occasion ${rr.wrong_occasion||0} · brand/IP ${(rr.brand_ip||0)+(rr.trademark_or_ip||0)}</span>`;
+      if(bo.source_sha256) html+=`<br><span class="muted">source sha256 <code>${esc(String(bo.source_sha256).slice(0,16))}…</code></span>`;
+    }
+    html+=`<br><code style="word-break:break-all">${esc(bo.backend||'')}</code>`;
+  }
+  // item highlights (Session 5A — ACT-010: category-capability & claim-aware)
+  const ic=lc.item_highlights_capability;
+  if(ic){
+    const sup=ic.category_support_state==='SUPPORTED';
+    html+=`<br><br><b>Item highlights</b> — category <span class="${sup?'ok':'no'}">${esc(ic.category_support_state||'—')}</span> · generated ${ic.generated_count} · publishable <b>${ic.publishable_count}</b> · blocked ${ic.blocked_count}`;
+    (ic.publishable||[]).forEach(h=>{ html+=`<br>✅ ${esc(h.concept||'')}: ${esc(h.text||'')} <span class="muted">${(h.claim_ids||[]).join(', ')}</span>`; });
+    if((ic.missing_facts||[]).length) html+=`<br><span style="color:#8a5220">Item-highlight facts required: ${esc(ic.missing_facts.slice(0,12).join(', '))}${ic.missing_facts.length>12?' …':''}</span>`;
+    (ic.manual_review||[]).slice(0,8).forEach(r=>{ html+=`<br>⛔ ${esc(r.concept||'')} <span class="muted">[${esc(r.reason||'')}]</span>`; });
+  }
   // last valid / failed candidate
   if(lc.last_valid_listing) html+=`<br><br><b>Last valid listing</b> — ${esc(lc.last_valid_listing.status||'')} · out sha <code>${esc(String(lc.last_valid_listing.output_sha256||'').slice(0,16))}…</code>`;
   if(lc.failed_candidate) html+=`<br><span style="color:#c0392b">Last failed candidate: ${esc(lc.failed_candidate.status||'')} — ${(lc.failed_candidate.hard_failures||[]).length} hard failure(s) (last valid preserved)</span>`;

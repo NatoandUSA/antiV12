@@ -88,6 +88,9 @@ class CategoryPolicy:
     bullet_character_limit: object = None
     description_character_limit: object = None
     backend_byte_ceiling: int = 249
+    # Item-highlights (ACT-010) limits come from THIS registry — there is no second limit source.
+    item_highlights_max_count: object = None
+    item_highlights_character_limit: object = None
     supported_catalog_fields: list = field(default_factory=list)
     unsupported_catalog_fields: list = field(default_factory=list)
     policy_source: str = ""
@@ -101,6 +104,10 @@ class CategoryPolicy:
 
     def supports_field(self, catalog_field):
         return catalog_field in self.supported_catalog_fields
+
+    def supports_item_highlights(self):
+        """True only when this category declares the item_highlights catalog field (ACT-010)."""
+        return self.supports_field("item_highlights")
 
 
 # ---------------------------------------------------------------- validation
@@ -136,6 +143,8 @@ def validate_policy_record(record):
     _pos_int("bullet_count", allow_none=True)
     _pos_int("bullet_character_limit", allow_none=True)
     _pos_int("description_character_limit", allow_none=True)
+    _pos_int("item_highlights_max_count", allow_none=True)
+    _pos_int("item_highlights_character_limit", allow_none=True)
 
     for key in ("marketplace", "product_category", "category_identifier", "policy_source"):
         v = record.get(key)
@@ -166,6 +175,8 @@ def _record_to_policy(record, fallback_used=False, warning_state=WARNING_NONE):
         bullet_character_limit=record.get("bullet_character_limit"),
         description_character_limit=record.get("description_character_limit"),
         backend_byte_ceiling=record["backend_byte_ceiling"],
+        item_highlights_max_count=record.get("item_highlights_max_count"),
+        item_highlights_character_limit=record.get("item_highlights_character_limit"),
         supported_catalog_fields=list(record.get("supported_catalog_fields") or []),
         unsupported_catalog_fields=list(record.get("unsupported_catalog_fields") or []),
         policy_source=record.get("policy_source", ""),
@@ -295,6 +306,11 @@ def get_backend_byte_ceiling(category, marketplace=DEFAULT_MARKETPLACE, registry
 
 def get_supported_catalog_fields(category, marketplace=DEFAULT_MARKETPLACE, registry=None):
     return resolve_category_policy(category, marketplace, registry=registry).supported_catalog_fields
+
+
+def get_item_highlights_max_count(category, marketplace=DEFAULT_MARKETPLACE, registry=None):
+    """The item-highlights allowed count for a category, from the shared registry (None when unset)."""
+    return resolve_category_policy(category, marketplace, registry=registry).item_highlights_max_count
 
 
 def main():

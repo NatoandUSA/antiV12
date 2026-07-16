@@ -80,6 +80,40 @@ def _description_publishable(listing):
     return desc.strip() or None
 
 
+def _backend_audit_summary(listing):
+    """A compact backend inclusion/exclusion summary for the manual-entry plan (ACT-009)."""
+    audit = listing.get("backend_audit") if isinstance(listing.get("backend_audit"), dict) else {}
+    backend = listing.get("backend") or ""
+    return {
+        "backend_search_terms": backend,
+        "bytes_used": audit.get("bytes_used", len(backend.encode("utf-8"))),
+        "byte_ceiling": audit.get("byte_ceiling"),
+        "bytes_remaining": audit.get("bytes_remaining"),
+        "included_count": audit.get("included_count"),
+        "excluded_count": audit.get("excluded_count"),
+        "excluded_summary": audit.get("excluded_summary", {}),
+        "risk_results": {k: v.get("count") if isinstance(v, dict) else None
+                         for k, v in (audit.get("risk_results") or {}).items()},
+    }
+
+
+def _publishable_item_highlights(listing):
+    """(publishable_highlights, supported, ready). Verified item highlights are pasted only when the category
+    supports the field, at least one VERIFIED highlight exists, and the whole page is PUBLISHABLE — mirroring
+    A+ and the description, so a SAFE_DRAFT or BLOCKED_UNSAFE page never pastes them. Returns [] when not
+    ready. (The highlights are still individually verified and stay visible in the structured payload.)"""
+    content = listing.get("item_highlights_content") if isinstance(listing.get("item_highlights_content"),
+                                                                    dict) else {}
+    supported = (listing.get("item_highlights_capability_state") == "SUPPORTED"
+                 or content.get("category_support_state") == "SUPPORTED")
+    pub = listing.get("item_highlights_publishable")
+    pub = [h for h in pub if isinstance(h, dict) and (h.get("text") or "").strip()] \
+        if isinstance(pub, list) else []
+    publishability = listing.get("publishability") or (listing.get("audit") or {}).get("publishability")
+    ready = supported and bool(pub) and publishability == "PUBLISHABLE"
+    return (pub if ready else []), supported, ready
+
+
 def build_copy_ready_text(listing):
     """The paste-ready copy plus a separated 'not ready' section. Blocked A+ copy is never included."""
     title = listing.get("title") or ""
@@ -100,6 +134,14 @@ def build_copy_ready_text(listing):
     L += ["", "DESCRIPTION"]
     L += [description if description else "(held back — no verified section)"]
     L += ["", f"BACKEND SEARCH TERMS ({len(backend.encode('utf-8'))} bytes)", backend, ""]
+
+    # Item highlights are pasted ONLY when the category supports the field AND every included highlight is a
+    # VERIFIED, traceable attribute (Session 5A). Blocked/unsupported highlights never reach this section.
+    ih_pub, ih_supported, ih_ready = _publishable_item_highlights(listing)
+    if ih_ready:
+        L += ["ITEM HIGHLIGHTS (verified, paste-ready)"]
+        L += [f"* {h.get('text')}" for h in ih_pub]
+        L += [""]
 
     # A+ content is pasted ONLY when the evidence-aware builder's gates all passed (Session 4).
     aplus_modules, aplus_capability, aplus_ready = _aplus_publishable(listing)
@@ -126,11 +168,21 @@ def build_copy_ready_text(listing):
               f"facts and REAL photos, regenerate, and re-audit before any A+ module can be pasted.",
               f"A+ CONTENT: {APLUS_BLOCKED_LEGACY_UNVERIFIED} — legacy templates remain draft-only and NOT "
               f"evidence-clean. Do NOT paste A+ ({APLUS_EVIDENCE_REBUILD_REQUIRED})."]
-    # item highlights — draft-only, owner review.
+    # item highlights — capability/evidence state (Session 5A) + the legacy draft-only keyword string.
+    content = listing.get("item_highlights_content") if isinstance(listing.get("item_highlights_content"),
+                                                                   dict) else {}
+    if content and not ih_ready:
+        if not ih_supported:
+            L += ["ITEM HIGHLIGHTS: UNSUPPORTED_BY_CATEGORY — this category does not support the "
+                  "item_highlights field; nothing is published (see the manual-review report)."]
+        else:
+            blocked = content.get("blocked_count")
+            L += [f"ITEM HIGHLIGHTS: no publishable highlights yet ({blocked} concept(s) held back for "
+                  f"missing verified facts) — supply the owner facts and regenerate."]
     ih = listing.get("item_highlights") or ""
     if ih:
-        L += [f"ITEM HIGHLIGHTS ({listing.get('item_highlights_state', 'DRAFT_ONLY')} — owner review "
-              f"before use, excluded from paste-ready copy): {ih}"]
+        L += [f"ITEM HIGHLIGHTS ({listing.get('item_highlights_state', 'DRAFT_ONLY')} — legacy keyword "
+              f"draft, owner review before use, excluded from paste-ready copy): {ih}"]
     ofr = listing.get("owner_fact_required") or []
     if ofr:
         L += [f"OWNER_FACT_REQUIRED: {', '.join(ofr)}"]
@@ -149,6 +201,9 @@ def build_manual_entry_plan(listing):
     publishability = listing.get("publishability") or (listing.get("audit") or {}).get("publishability")
 
     aplus_modules, aplus_capability, aplus_ready = _aplus_publishable(listing)
+    ih_pub, ih_supported, ih_ready = _publishable_item_highlights(listing)
+    ih_content = listing.get("item_highlights_content") if isinstance(listing.get("item_highlights_content"),
+                                                                      dict) else {}
 
     plan = {
         "publishability": publishability,
@@ -158,11 +213,24 @@ def build_manual_entry_plan(listing):
             "description": description,
             "backend_search_terms": backend,
         },
+        # ACT-009 — the backend byte count + inclusion/exclusion audit summary the owner reviews.
+        "backend_audit": _backend_audit_summary(listing),
+        # ACT-010 — the item-highlights capability + missing-facts + blocked-reason state.
+        "item_highlights_state": {
+            "capability_state": listing.get("item_highlights_capability_state")
+            or ih_content.get("category_support_state"),
+            "supported": ih_supported,
+            "publishable_count": len(ih_pub),
+            "blocked_count": ih_content.get("blocked_count"),
+            "owner_fact_required": ih_content.get("owner_fact_required", []),
+            "manual_review_report": ih_content.get("manual_review_report", []),
+        },
         "do_not_paste": {
-            "item_highlights": {
+            "item_highlights_legacy_draft": {
                 "state": listing.get("item_highlights_state", "DRAFT_ONLY_OWNER_REVIEW_REQUIRED"),
                 "value": listing.get("item_highlights") or "",
-                "instruction": "Owner review required before use; excluded from the publishable payload.",
+                "instruction": "Legacy keyword draft — owner review required before use; excluded from the "
+                               "publishable payload.",
             },
             "blocked_bullets": [{"job": b.get("job"), "bullet_number": b.get("bullet_number"),
                                  "missing_requirements": b.get("missing_requirements", [])}
@@ -171,6 +239,20 @@ def build_manual_entry_plan(listing):
         "owner_fact_required": listing.get("owner_fact_required") or [],
         "missing_requirements": listing.get("missing_requirements") or [],
     }
+    # publishable item highlights (verified, traceable) may be pasted; otherwise they are held back with the
+    # capability/blocked state above and never enter safe_to_paste.
+    if ih_ready:
+        plan["safe_to_paste"]["item_highlights"] = [{"highlight_id": h.get("highlight_id"),
+                                                      "concept": h.get("concept"), "text": h.get("text"),
+                                                      "claim_ids": h.get("claim_ids", [])} for h in ih_pub]
+    else:
+        plan["do_not_paste"]["item_highlights"] = {
+            "capability_state": listing.get("item_highlights_capability_state")
+            or ih_content.get("category_support_state"),
+            "instruction": ("This category does not support item_highlights — do NOT paste."
+                            if not ih_supported else
+                            "No verified item highlights yet — supply the owner facts and regenerate."),
+        }
     # A+ inclusion: only READY A+ enters safe_to_paste. When A+ is not READY the plan explicitly forbids
     # pasting it — the manual-entry plan never instructs the owner to paste blocked or draft A+ content.
     premium_draft = _aplus_premium_draft_note(listing)
@@ -193,6 +275,8 @@ def build_manual_entry_plan(listing):
     if publishability == "PUBLISHABLE":
         plan["instructions"] = [
             "Paste the title, five bullets, description and backend search terms into Seller Central.",
+            ("Paste the verified item highlights from safe_to_paste.item_highlights." if ih_ready
+             else "Do NOT paste any item highlights — none are verified/supported yet."),
             ("Paste the READY A+ modules from safe_to_paste.aplus." if aplus_ready
              else "Do NOT paste any A+ content — the evidence-aware A+ is not READY yet."),
         ]

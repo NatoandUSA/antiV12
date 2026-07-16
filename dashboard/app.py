@@ -281,6 +281,8 @@ def category_policy_summary(folder, listing=None):
         "category": p.product_category, "category_identifier": p.category_identifier,
         "title_hard_limit": p.title_hard_limit, "title_recommended_target": p.title_recommended_target,
         "backend_byte_ceiling": p.backend_byte_ceiling, "item_highlights_max": ITEM_HIGHLIGHTS_MAX,
+        "item_highlights_max_count": p.item_highlights_max_count,
+        "item_highlights_supported": p.supports_item_highlights(),
         "fallback_used": p.fallback_used, "warning_state": p.warning_state,
         "policy_source": p.policy_source,
     }
@@ -330,6 +332,52 @@ def _aplus_evidence_summary(L):
     }
 
 
+def _backend_optimizer_summary(L):
+    """Session 5A cockpit view of the audited backend optimizer (ACT-009): the string, byte usage,
+    included/excluded counts, visible overlap, incremental coverage, per-risk exclusion counts, source hash."""
+    audit = L.get("backend_audit") if isinstance(L.get("backend_audit"), dict) else None
+    backend = L.get("backend") or ""
+    if not audit:
+        return {"backend": backend, "bytes_used": len(backend.encode("utf-8")), "audit_present": False}
+    return {
+        "backend": backend,
+        "bytes_used": audit.get("bytes_used"),
+        "byte_ceiling": audit.get("byte_ceiling"),
+        "bytes_remaining": audit.get("bytes_remaining"),
+        "included_count": audit.get("included_count"),
+        "excluded_count": audit.get("excluded_count"),
+        "visible_field_overlap": (audit.get("visible_field_overlap") or [])[:20],
+        "incremental_coverage_count": len(audit.get("incremental_coverage") or []),
+        "excluded_summary": audit.get("excluded_summary", {}),
+        "risk_results": {k: (v.get("count") if isinstance(v, dict) else v)
+                         for k, v in (audit.get("risk_results") or {}).items()},
+        "source_sha256": (audit.get("source_hashes") or {}).get("keyword_source_sha256"),
+        "audit_present": True,
+    }
+
+
+def _item_highlights_capability_summary(L):
+    """Session 5A cockpit view of the capability/evidence-aware item highlights (ACT-010): category support,
+    generated/publishable/blocked counts, per-highlight claim lineage, missing facts, exclusion reasons."""
+    content = L.get("item_highlights_content") if isinstance(L.get("item_highlights_content"), dict) else None
+    if not content:
+        return None
+    pub = content.get("publishable_highlights") or []
+    return {
+        "category_support_state": content.get("category_support_state"),
+        "max_count": content.get("max_count"),
+        "generated_count": len(content.get("highlights") or []),
+        "publishable_count": content.get("publishable_count"),
+        "blocked_count": content.get("blocked_count"),
+        "publishable": [{"concept": h.get("concept"), "text": h.get("text"),
+                         "claim_ids": h.get("claim_ids", [])} for h in pub],
+        "missing_facts": content.get("owner_fact_required", []),
+        "manual_review": [{"concept": r.get("concept"),
+                           "reason": r.get("exclusion_reason") or r.get("publishability_status")}
+                          for r in (content.get("manual_review_report") or [])],
+    }
+
+
 def listing_copy_summary(folder, listing=None):
     """Session 3 cockpit view (ACT-005/007/008/015): title candidates + scores, recommended title and
     mobile preview, the five bullet jobs and their publishability, verified/owner-review/blocked claim
@@ -365,6 +413,9 @@ def listing_copy_summary(folder, listing=None):
         "aplus_draft_module_count": len((L.get("aplus_draft") or {}).get("modules") or []),
         # Session 4 — the evidence-aware, capability-based A+ state.
         "aplus_evidence": _aplus_evidence_summary(L),
+        # Session 5A — the audited backend optimizer + capability/evidence-aware item highlights.
+        "backend_optimizer": _backend_optimizer_summary(L),
+        "item_highlights_capability": _item_highlights_capability_summary(L),
         "item_highlights_state": L.get("item_highlights_state"),
         "audited_text_fields": audit.get("audited_text_fields", {}),
         "page_audit": {"status": audit.get("status"),

@@ -130,24 +130,27 @@ def parse_asins(folder):
                     "reviews": c[4], "rev": c[5], "ful": c[6], "brand": c[7], "note": c[8][:160]})
     return out
 
-def load_keyword_source(folder):
+def load_keyword_source(folder, allow_legacy_unsafe=False):
     """The SAME authoritative source the listing generator uses -> (source|None, error|None).
 
     The dashboard used to read master-keywords.xlsx "Top Picks" on its own, so it could show a
     different keyword truth than the listing (ACT-002). Both now go through the shared adapter, which
-    is why they report the same source SHA-256.
+    is why they report the same source SHA-256. Legacy stays opt-in here too, and a blocked legacy
+    project reports an actionable error instead of an empty keyword list.
     """
     try:
-        return KSA.load_keyword_source(folder, allow_legacy_unsafe=True), None
-    except KSA.NoKeywordSourceError:
+        return KSA.load_keyword_source(folder, allow_legacy_unsafe=allow_legacy_unsafe), None
+    except KSA.NoKeywordSourceError as e:
+        if e.legacy_blocked:
+            return None, str(e)                # legacy exists but is not enabled — say so
         return None, None                      # nothing researched yet — not an error to show
     except KSA.KeywordSourceError as e:
         return None, str(e)                    # malformed/incompatible — surface it, never fall back
 
 
-def parse_keywords(folder, source=None):
+def parse_keywords(folder, source=None, allow_legacy_unsafe=False):
     """Ranked keyword rows for the cockpit, from the authoritative source only."""
-    src = source or load_keyword_source(folder)[0]
+    src = source or load_keyword_source(folder, allow_legacy_unsafe)[0]
     if not src:
         return []
     rows = []
@@ -163,10 +166,10 @@ def parse_keywords(folder, source=None):
     return rows
 
 
-def keyword_source_summary(folder, source=None, error=None):
+def keyword_source_summary(folder, source=None, error=None, allow_legacy_unsafe=False):
     """Source identity + tier/eligibility counts for the cockpit header."""
     if source is None and error is None:
-        source, error = load_keyword_source(folder)
+        source, error = load_keyword_source(folder, allow_legacy_unsafe)
     if error:
         return {"error": error}
     if not source:

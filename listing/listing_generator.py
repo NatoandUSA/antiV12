@@ -131,13 +131,13 @@ def build_backend(keywords, product, title=""):
     return " ".join(out)
 
 
-def generate(folder, seed="", allow_legacy_unsafe=True):
+def generate(folder, seed="", allow_legacy_unsafe=False):
     """Build the listing draft from the authoritative keyword source.
 
-    allow_legacy_unsafe defaults to True so projects that only ever had KEYWORD-INTELLIGENCE.json keep
-    working, but legacy is now the LAST resort and is never silent: an approved production or lean source
-    always wins, and legacy use is stamped legacy_unsafe=True with UNVERIFIED_SOURCE warnings. Pass False
-    to require an authoritative source.
+    Legacy KEYWORD-INTELLIGENCE.json is UNVERIFIED_SOURCE and is never read by default: a legacy-only
+    project fails with an actionable error rather than quietly producing a listing from unverified data.
+    Pass allow_legacy_unsafe=True to authorize reading it — that authorizes the SOURCE only, and its
+    REVIEW/untiered/rejected records still will not allocate.
     """
     try:
         src = KSA.load_keyword_source(folder, allow_legacy_unsafe=allow_legacy_unsafe)

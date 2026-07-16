@@ -205,43 +205,129 @@ class LeanProject(unittest.TestCase):
             self.assertNotIn(phrase, src.eligible_phrases())
 
 
-class LegacyProject(unittest.TestCase):
-    """A project that only ever had KEYWORD-INTELLIGENCE.json still works — but is marked unsafe."""
+class LegacyOptIn(unittest.TestCase):
+    """Legacy is UNVERIFIED_SOURCE: never read by default, and opting in authorizes the SOURCE only."""
 
     def setUp(self):
         self.d = tempfile.mkdtemp()
         write_json(self.d, "KEYWORD-INTELLIGENCE.json",
-                   {"schema_version": "2.4", "count": 2,
-                    "top": [{"keyword": "nurse sweatshirt", "score": 99, "sv": 4663,
+                   {"schema_version": "2.4", "count": 6,
+                    "top": [{"keyword": "nurse sweatshirt", "tier": "A", "score": 99, "sv": 4663,
                              "confidence": "MEDIUM"},
-                            {"keyword": "nurse crewneck", "score": 80, "sv": 900,
-                             "confidence": "LOW"}]})
+                            {"keyword": "nurse crewneck", "tier": "B", "score": 80, "sv": 900,
+                             "confidence": "LOW"},
+                            {"keyword": "nurse gift", "tier": "C", "score": 70, "sv": 500},
+                            {"keyword": "rn pullover maybe", "tier": "Review", "score": 60, "sv": 400},
+                            {"keyword": "untiered phrase", "score": 50, "sv": 300},
+                            {"keyword": "teacher sweatshirt", "tier": "Rejected", "score": 95,
+                             "sv": 9999}]})
         write_gaps(self.d)
 
     def tearDown(self):
         shutil.rmtree(self.d, ignore_errors=True)
 
-    def test_legacy_listing_is_marked_legacy_unsafe(self):
-        L = LG.generate(self.d)["listing"]
+    # -- default blocks legacy ---------------------------------------
+    def test_default_listing_call_blocks_a_legacy_only_project(self):
+        r = LG.generate(self.d)
+        self.assertFalse(r["ok"])
+        self.assertIn("legacy", r["reason"].lower())
+
+    def test_legacy_only_failure_is_actionable_not_empty(self):
+        r = LG.generate(self.d)
+        reason = r["reason"]
+        self.assertIn("KEYWORD-INTELLIGENCE.json", reason)
+        self.assertIn("allow_legacy_unsafe=True", reason)
+        self.assertIn("MASTER-KEYWORDS-LEAN.json", reason)     # tells the owner the safe way out
+
+    def test_default_dashboard_call_blocks_and_reports_the_reason(self):
+        s = DASH.keyword_source_summary(self.d)
+        self.assertIn("error", s)
+        self.assertIn("legacy", s["error"].lower())
+        self.assertEqual(DASH.parse_keywords(self.d), [])      # never silently populated
+
+    def test_adapter_default_blocks_legacy(self):
+        with self.assertRaises(KSA.NoKeywordSourceError) as cm:
+            KSA.load_keyword_source(self.d)
+        self.assertTrue(cm.exception.legacy_blocked)
+        self.assertEqual(cm.exception.blocked_legacy_files, ["KEYWORD-INTELLIGENCE.json"])
+
+    # -- explicit opt-in enables ingestion ---------------------------
+    def test_explicit_opt_in_enables_legacy_ingestion(self):
+        L = LG.generate(self.d, allow_legacy_unsafe=True)["listing"]
         self.assertEqual(L["keyword_source_file"], "KEYWORD-INTELLIGENCE.json")
         self.assertEqual(L["keyword_source_mode"], KSA.MODE_LEGACY_UNSAFE)
         self.assertTrue(L["legacy_unsafe"])
         self.assertTrue(any(KSA.WARN_LEGACY_UNVERIFIED in w for w in L["keyword_source_warnings"]))
 
-    def test_listing_can_require_an_authoritative_source(self):
-        r = LG.generate(self.d, allow_legacy_unsafe=False)
-        self.assertFalse(r["ok"])
-        self.assertIn("blocked", r["reason"])
+    # -- opt-in is not record approval -------------------------------
+    def test_legacy_A_B_C_remain_usable(self):
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        self.assertEqual(src.eligible_phrases(), ["nurse sweatshirt", "nurse crewneck", "nurse gift"])
+        by = {r["keyword_normalized"]: r for r in src.keywords}
+        self.assertEqual(by["nurse sweatshirt"]["normalized_tier"], KSA.TIER_A)
+        self.assertEqual(by["nurse crewneck"]["normalized_tier"], KSA.TIER_B)
+        self.assertEqual(by["nurse gift"]["normalized_tier"], KSA.TIER_C)
 
-    def test_legacy_listing_and_dashboard_still_agree(self):
-        L = LG.generate(self.d)["listing"]
-        s = DASH.keyword_source_summary(self.d)
+    def test_legacy_REVIEW_is_not_automatically_allocatable(self):
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        r = {x["keyword_normalized"]: x for x in src.keywords}["rn pullover maybe"]
+        self.assertEqual(r["normalized_tier"], KSA.REVIEW)
+        self.assertFalse(r["eligible"])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", r["exclusion_reasons"])
+        self.assertNotIn("rn pullover maybe", src.eligible_phrases())
+
+    def test_untiered_legacy_record_is_not_automatically_allocatable(self):
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        r = {x["keyword_normalized"]: x for x in src.keywords}["untiered phrase"]
+        self.assertEqual(r["normalized_tier"], KSA.REVIEW)
+        self.assertFalse(r["eligible"])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", r["exclusion_reasons"])
+
+    def test_rejected_legacy_record_never_allocates(self):
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        r = {x["keyword_normalized"]: x for x in src.keywords}["teacher sweatshirt"]
+        self.assertEqual(r["normalized_tier"], KSA.REJECTED)
+        self.assertFalse(r["eligible"])
+        self.assertNotIn("teacher sweatshirt", src.eligible_phrases())
+
+    def test_ambiguous_legacy_records_never_reach_the_listing_or_dashboard(self):
+        L = LG.generate(self.d, allow_legacy_unsafe=True)["listing"]
+        dash = [r["keyword"] for r in DASH.parse_keywords(self.d, allow_legacy_unsafe=True)]
+        allocated = json.dumps(L["selected_keywords"]).lower()
+        for phrase in ("rn pullover maybe", "untiered phrase", "teacher sweatshirt"):
+            self.assertNotIn(phrase, allocated)
+            self.assertNotIn(phrase, dash)
+        self.assertNotIn("teacher", L["backend"].lower())
+
+    def test_owner_approved_legacy_review_record_becomes_allocatable(self):
+        write_json(self.d, "KEYWORD-INTELLIGENCE.json",
+                   {"schema_version": "2.4",
+                    "top": [{"keyword": "rn pullover maybe", "tier": "Review", "sv": 400,
+                             "owner_status": "approved"}]})
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        self.assertEqual(src.eligible_phrases(), ["rn pullover maybe"])
+
+    def test_legacy_source_warns_that_records_are_held_back(self):
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        self.assertTrue(any("stay" in w and "ineligible" in w for w in src.warnings))
+
+    # -- consumers still agree ---------------------------------------
+    def test_legacy_listing_and_dashboard_report_the_same_sha256(self):
+        L = LG.generate(self.d, allow_legacy_unsafe=True)["listing"]
+        s = DASH.keyword_source_summary(self.d, allow_legacy_unsafe=True)
         self.assertEqual(L["keyword_source_sha256"], s["sha256"])
+        self.assertEqual(L["keyword_source_file"], s["file"])
         self.assertTrue(s["legacy_unsafe"])
 
     def test_legacy_preserves_the_engine_ranking_order(self):
-        self.assertEqual([r["keyword"] for r in DASH.parse_keywords(self.d)],
-                         ["nurse sweatshirt", "nurse crewneck"])
+        self.assertEqual([r["keyword"] for r in DASH.parse_keywords(self.d, allow_legacy_unsafe=True)],
+                         ["nurse sweatshirt", "nurse crewneck", "nurse gift"])
+
+    def test_authoritative_source_still_wins_over_legacy_by_default(self):
+        write_json(self.d, "MASTER-KEYWORDS-LEAN.json", lean_doc(fixture_records()))
+        L = LG.generate(self.d)["listing"]                     # default call now succeeds
+        self.assertEqual(L["keyword_source_file"], "MASTER-KEYWORDS-LEAN.json")
+        self.assertFalse(L["legacy_unsafe"])
 
 
 class MalformedProject(unittest.TestCase):

@@ -92,10 +92,25 @@ class SourcePriority(Base):
     def test_legacy_is_blocked_unless_enabled(self):
         write(self.d, "KEYWORD-INTELLIGENCE.json", legacy_doc())
         with self.assertRaises(KSA.NoKeywordSourceError):
-            KSA.load_keyword_source(self.d)
+            KSA.load_keyword_source(self.d)                  # default must not read legacy
         src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
         self.assertEqual(src.source_mode, KSA.MODE_LEGACY_UNSAFE)
         self.assertTrue(src.legacy_unsafe)
+
+    def test_blocked_legacy_error_is_actionable_and_distinguishable(self):
+        write(self.d, "KEYWORD-INTELLIGENCE.json", legacy_doc())
+        with self.assertRaises(KSA.NoKeywordSourceError) as cm:
+            KSA.load_keyword_source(self.d)
+        e = cm.exception
+        self.assertTrue(e.legacy_blocked)
+        self.assertEqual(e.blocked_legacy_files, ["KEYWORD-INTELLIGENCE.json"])
+        self.assertIn("allow_legacy_unsafe=True", str(e))
+
+    def test_empty_folder_error_is_not_a_blocked_legacy_error(self):
+        with self.assertRaises(KSA.NoKeywordSourceError) as cm:
+            KSA.load_keyword_source(self.d)
+        self.assertFalse(cm.exception.legacy_blocked)
+        self.assertEqual(cm.exception.blocked_legacy_files, [])
 
     def test_legacy_records_keep_unverified_source_warning(self):
         write(self.d, "KEYWORD-INTELLIGENCE.json", legacy_doc())
@@ -183,6 +198,62 @@ class TierMapping(Base):
         write(self.d, "KEYWORD-INTELLIGENCE.json", legacy_doc())
         src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
         self.assertEqual(src.keywords[0]["normalized_tier"], KSA.REVIEW)
+
+
+class LegacyEligibilityMatrix(Base):
+    """Opting into an unverified SOURCE is not approval of an ambiguous RECORD."""
+
+    MATRIX = [("A", KSA.TIER_A, True), ("B", KSA.TIER_B, True), ("C", KSA.TIER_C, True),
+              ("Review", KSA.REVIEW, False), ("REVIEW", KSA.REVIEW, False),
+              ("ZZZ_unknown", KSA.REVIEW, False), (None, KSA.REVIEW, False),
+              ("Rejected", KSA.REJECTED, False), ("REJECTED", KSA.REJECTED, False)]
+
+    def test_legacy_tier_eligibility_matrix(self):
+        for source_tier, expected_tier, allocatable in self.MATRIX:
+            with self.subTest(tier=source_tier):
+                d = tempfile.mkdtemp()
+                try:
+                    rec = {"keyword": "phrase", "sv": 100}
+                    if source_tier is not None:
+                        rec["tier"] = source_tier
+                    write(d, "KEYWORD-INTELLIGENCE.json", legacy_doc([rec]))
+                    src = KSA.load_keyword_source(d, allow_legacy_unsafe=True)
+                    r = src.keywords[0]
+                    self.assertEqual(r["normalized_tier"], expected_tier)
+                    self.assertEqual(r["eligible"], allocatable)
+                    self.assertEqual(src.eligible_phrases(), ["phrase"] if allocatable else [])
+                finally:
+                    shutil.rmtree(d, ignore_errors=True)
+
+    def test_legacy_mode_does_not_widen_eligibility(self):
+        """The identical record is ineligible whether it arrives via lean or via legacy."""
+        write(self.d, "KEYWORD-INTELLIGENCE.json", legacy_doc([{"keyword": "x", "tier": "Review"}]))
+        legacy = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        os.remove(os.path.join(self.d, "KEYWORD-INTELLIGENCE.json"))
+        write(self.d, "MASTER-KEYWORDS-LEAN.json", lean_doc([lean_kw("x", "REVIEW")]))
+        lean = KSA.load_keyword_source(self.d)
+        self.assertEqual(legacy.keywords[0]["eligible"], lean.keywords[0]["eligible"], False)
+        self.assertEqual(legacy.eligible_phrases(), lean.eligible_phrases(), [])
+
+    def test_legacy_review_with_owner_approval_allocates(self):
+        write(self.d, "KEYWORD-INTELLIGENCE.json",
+              legacy_doc([{"keyword": "x", "tier": "Review", "owner_status": "approved"}]))
+        self.assertEqual(KSA.load_keyword_source(self.d, allow_legacy_unsafe=True).eligible_phrases(),
+                         ["x"])
+
+    def test_legacy_rejected_with_owner_approval_still_never_allocates(self):
+        write(self.d, "KEYWORD-INTELLIGENCE.json",
+              legacy_doc([{"keyword": "x", "tier": "Rejected", "owner_status": "approved"}]))
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        self.assertFalse(src.keywords[0]["eligible"])
+        self.assertEqual(src.eligible_phrases(), [])
+
+    def test_legacy_blocking_risk_still_blocks_a_tiered_record(self):
+        write(self.d, "KEYWORD-INTELLIGENCE.json",
+              legacy_doc([{"keyword": "x", "tier": "A", "risk_flags": ["wrong_audience:teacher"]}]))
+        src = KSA.load_keyword_source(self.d, allow_legacy_unsafe=True)
+        self.assertFalse(src.keywords[0]["eligible"])
+        self.assertEqual(src.eligible_phrases(), [])
 
 
 class SchemaDetection(Base):
@@ -346,13 +417,15 @@ class RiskAndEligibility(Base):
         src = KSA.load_keyword_source(self.d)
         self.assertEqual(src.eligible_phrases(), ["a"])
 
-    def test_approved_outlier_is_eligible_but_not_auto_allocated(self):
+    def test_owner_approved_outlier_may_allocate(self):
+        """Approval is exactly what lets OUTLIER/RESIDUE/REVIEW enter automatic allocation."""
         write(self.d, "MASTER-KEYWORDS.json",
-              prod_doc([prod_kw("o", "OUTLIER_OPPORTUNITY", owner_status="approved")]))
+              prod_doc([prod_kw("o", "OUTLIER_OPPORTUNITY", owner_status="approved"),
+                        prod_kw("r", "RESIDUE_RELEVANT")]))
         src = KSA.load_keyword_source(self.d)
         self.assertTrue(src.keywords[0]["eligible"])
-        self.assertEqual(src.eligible_phrases(), [])            # OUTLIER is not an allocatable tier
-        self.assertEqual(src.eligible_phrases(tiers=(KSA.OUTLIER,)), ["o"])
+        self.assertEqual(src.eligible_phrases(), ["o"])          # approved outlier allocates
+        self.assertEqual(src.eligible_phrases(tiers=(KSA.TIER_A,)), [])   # tiers= narrows further
 
     def test_empty_keyword_phrase_is_malformed_and_ineligible(self):
         write(self.d, "MASTER-KEYWORDS-LEAN.json", lean_doc([lean_kw("   ", "A_CORE")]))

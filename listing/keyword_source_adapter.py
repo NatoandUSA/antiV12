@@ -21,10 +21,12 @@ this module exists to prevent.
 Eligibility:
   * REJECTED is never eligible, in any mode.
   * A blocking risk flag is never eligible.
-  * REVIEW / OUTLIER / RESIDUE need an explicitly approved owner_status to enter automatic allocation.
-  * LEGACY_UNSAFE records keep an UNVERIFIED_SOURCE warning. Passing allow_legacy_unsafe=True IS the
-    caller's explicit approval of an unverified source, so untiered legacy records stay usable; without
-    that opt-in the source is not selected at all. REJECTED and blocking risks still win over it.
+  * REVIEW / OUTLIER / RESIDUE need an explicitly approved owner_status to enter automatic allocation,
+    in EVERY mode including LEGACY_UNSAFE.
+  * allow_legacy_unsafe=True authorizes READING the legacy source. It is not record-level approval: a
+    legacy record that is REVIEW, untiered or of an unknown tier normalizes to REVIEW and stays
+    ineligible until an owner approves that record. Legacy A/B/C map to TIER_A/B/C and may allocate.
+    Every legacy record keeps an UNVERIFIED_SOURCE warning.
 """
 from __future__ import annotations
 
@@ -61,6 +63,7 @@ LEGACY_TIER_MAP = {"A": TIER_A, "B": TIER_B, "C": TIER_C, "REVIEW": REVIEW, "REJ
 LEGACY_UNKNOWN_TIER = REVIEW
 
 TIER_STRENGTH = {TIER_A: 6, TIER_B: 5, TIER_C: 4, OUTLIER: 3, RESIDUE: 2, REVIEW: 1, REJECTED: 0}
+# Tiers that allocate on their own; every other tier needs an approved owner_status (or never allocates).
 ALLOCATABLE_TIERS = (TIER_A, TIER_B, TIER_C)
 OWNER_APPROVAL_TIERS = (REVIEW, OUTLIER, RESIDUE)
 APPROVED_OWNER_STATUS = ("approved", "owner_approved", "approved_by_owner", "owner_confirmed")
@@ -137,10 +140,17 @@ class SchemaConflictError(KeywordSourceError):
 
 
 class NoKeywordSourceError(KeywordSourceError):
-    """No usable source. Carries what was found so the caller can explain it."""
+    """No usable source.
 
-    def __init__(self, folder, message):
+    blocked_legacy_files distinguishes "nothing researched yet" (empty) from "legacy data exists but
+    was not explicitly enabled" — the caller must be able to say which, instead of showing an empty
+    keyword list for both.
+    """
+
+    def __init__(self, folder, message, blocked_legacy_files=()):
         self.folder = folder
+        self.blocked_legacy_files = list(blocked_legacy_files)
+        self.legacy_blocked = bool(blocked_legacy_files)
         super().__init__(message)
 
 
@@ -385,22 +395,24 @@ def _normalize_record(raw, schema, mode, source_file, run_id, order):
     if mode == MODE_LEGACY_UNSAFE:
         warnings.append(WARN_LEGACY_UNVERIFIED)
     rec["warnings"] = sorted(set(warnings))
-    _evaluate_eligibility(rec, mode)
+    _evaluate_eligibility(rec)
     return rec
 
 
-def _evaluate_eligibility(rec, mode):
+def _evaluate_eligibility(rec):
     """REJECTED never becomes eligible; blocking risks never become eligible; REVIEW/OUTLIER/RESIDUE
-    need approved owner status before automatic allocation."""
+    need approved owner status before automatic allocation.
+
+    Mode does not soften this. Authorizing an unverified SOURCE (allow_legacy_unsafe=True) is not
+    approval of an ambiguous RECORD, so a legacy REVIEW/untiered/unknown-tier record stays ineligible
+    exactly like an authoritative one.
+    """
     reasons = []
     if rec["normalized_tier"] == REJECTED:
         reasons.append("REJECTED_TIER")
     reasons += [f"BLOCKING_RISK:{r}" for r in rec["blocking_risks"]]
     if rec["normalized_tier"] in OWNER_APPROVAL_TIERS and not rec["owner_approved"]:
-        # In LEGACY_UNSAFE the caller's explicit allow_legacy_unsafe=True is the approval; the record
-        # still carries UNVERIFIED_SOURCE. REJECTED and blocking risks above still exclude it.
-        if mode != MODE_LEGACY_UNSAFE:
-            reasons.append("OWNER_APPROVAL_REQUIRED")
+        reasons.append("OWNER_APPROVAL_REQUIRED")
     rec["exclusion_reasons"] = sorted(set(reasons))
     rec["eligible"] = not reasons
     return rec
@@ -489,21 +501,15 @@ class NormalizedKeywordSource:
         self.legacy_unsafe = source_mode == MODE_LEGACY_UNSAFE
 
     # -- views ------------------------------------------------------
-    @property
-    def allocation_tiers(self):
-        """Tiers that may enter automatic allocation.
-
-        A legacy source carries no tier vocabulary, so its records normalize to REVIEW. There the
-        caller's explicit allow_legacy_unsafe=True is the approval, so REVIEW is allocatable and every
-        record keeps UNVERIFIED_SOURCE. An authoritative source keeps REVIEW out unless the owner
-        approved the record individually.
-        """
-        return ALLOCATABLE_TIERS + (REVIEW,) if self.legacy_unsafe else ALLOCATABLE_TIERS
-
     def eligible_keywords(self, tiers=None):
-        """Records safe for automatic listing allocation, strongest first."""
-        tiers = self.allocation_tiers if tiers is None else tiers
-        return [r for r in self.keywords if r["eligible"] and r["normalized_tier"] in tiers]
+        """Records safe for automatic listing allocation, strongest first.
+
+        Eligibility alone decides this, in every mode: TIER_A/B/C allocate; REJECTED and blocking risks
+        never do; REVIEW/OUTLIER/RESIDUE allocate only once an owner approves the record. Pass `tiers`
+        to narrow further.
+        """
+        recs = [r for r in self.keywords if r["eligible"]]
+        return recs if tiers is None else [r for r in recs if r["normalized_tier"] in tiers]
 
     def eligible_phrases(self, tiers=None):
         return [r["keyword_exact"] for r in self.eligible_keywords(tiers)]
@@ -582,10 +588,19 @@ def find_source(folder, allow_legacy_unsafe=False):
             blocked.append(filename)
             continue
         return path, filename, schema, mode
-    hint = (f"legacy source(s) {blocked} exist but are blocked; pass allow_legacy_unsafe=True to use them "
-            f"(they are UNVERIFIED_SOURCE)" if blocked else
-            f"expected one of {[f for f, _, _ in SOURCE_PRIORITY]}")
-    raise NoKeywordSourceError(folder, f"no usable keyword source in {folder}: {hint}")
+    if blocked:
+        raise NoKeywordSourceError(
+            folder,
+            f"legacy keyword data ({', '.join(blocked)}) is the only source in {folder} and legacy mode "
+            f"is not enabled. Legacy data is UNVERIFIED_SOURCE and is never used by default. To proceed, "
+            f"either build an approved authoritative source (MASTER-KEYWORDS-LEAN.json via "
+            f"research/master_keyword_builder.py, or MASTER-KEYWORDS.json) — recommended — or opt in "
+            f"explicitly with allow_legacy_unsafe=True, which authorizes reading the legacy file but "
+            f"still will not allocate its REVIEW/untiered/rejected records.",
+            blocked_legacy_files=blocked)
+    raise NoKeywordSourceError(
+        folder, f"no keyword source in {folder}: expected one of "
+                f"{[f for f, _, _ in SOURCE_PRIORITY]}. Run the keyword research step first.")
 
 
 def load_keyword_source(folder, allow_legacy_unsafe=False):
@@ -614,6 +629,12 @@ def load_keyword_source(folder, allow_legacy_unsafe=False):
 
     records = [_normalize_record(r, schema, mode, filename, run_id, i)
                for i, r in enumerate(raw_records)]
+    if mode == MODE_LEGACY_UNSAFE:
+        held = sum(1 for r in records if "OWNER_APPROVAL_REQUIRED" in r["exclusion_reasons"])
+        if held:
+            warnings.append(f"LEGACY_UNSAFE: {held} legacy record(s) are REVIEW/untiered and stay "
+                            f"ineligible — enabling legacy mode authorizes reading the source, not "
+                            f"approving its ambiguous records")
     records = resolve_duplicates(records)
     records.sort(key=_sort_key(schema))
     for r in records:

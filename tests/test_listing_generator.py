@@ -12,6 +12,26 @@ import a_plus_templates as APT
 import app as DASH
 
 
+def lean_master(d, phrases):
+    """An approved lean source — the authoritative input the generator is required to use.
+
+    These tests used to rely on KEYWORD-INTELLIGENCE.json alone, which is now UNVERIFIED_SOURCE and
+    opt-in only. The assertions below are unchanged; only the keyword source is migrated.
+    """
+    records = [{"keyword_exact": p, "keyword_normalized": p.lower(), "tier": "A_CORE",
+                "owner_status": "auto", "reason_codes": ["EXACT_INTENT"], "risk_flags": [],
+                "search_volume": sv, "simple_competitor_coverage_pct": cov, "best_rank": 5,
+                "median_rank": 20, "batch_support": {"B1_CORE_MONEY": 6}, "observation_count": 1}
+               for p, sv, cov in phrases]
+    doc = {"run_metadata": {"run_id": "kwrun_listing_tests", "schema_version": "1.0.0"},
+           "target_profile": {"seed": "personalized nurse sweatshirt"},
+           "quality_summary": {"counts": {"A_CORE": len(records)}, "total_keywords": len(records)},
+           "downstream_policy": {"mode": "transition", "lean_master_status": "available"},
+           "keywords": records}
+    with open(os.path.join(d, "MASTER-KEYWORDS-LEAN.json"), "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2)
+
+
 def project():
     d = tempfile.mkdtemp()
     pd.DataFrame([
@@ -24,6 +44,9 @@ def project():
         {"ASIN": "B02", "Title": "Cute Nurse Shirt Print", "Price": 24.99, "Review Count": 15, "Images": 4},
     ]).to_excel(os.path.join(d, "xray_nurse.xlsx"), index=False)
     KI.run(d); CG.run(d)
+    lean_master(d, [("personalized nurse sweatshirt", 1900, 90.0),
+                    ("custom nurse gift", 1400, 60.0),
+                    ("embroidered nurse crewneck", 820, 45.0)])
     return d
 
 
@@ -67,6 +90,12 @@ class Generator(unittest.TestCase):
         d = tempfile.mkdtemp()
         r = LG.generate(d, "")
         self.assertFalse(r["ok"])
+
+    def test_uses_the_authoritative_lean_source_not_the_legacy_file(self):
+        d = project()                                   # holds BOTH legacy intel and a lean master
+        L = LG.generate(d)["listing"]
+        self.assertEqual(L["keyword_source_file"], "MASTER-KEYWORDS-LEAN.json")
+        self.assertFalse(L["legacy_unsafe"])
 
     def test_backend_within_249_bytes(self):
         d = project()

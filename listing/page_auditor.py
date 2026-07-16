@@ -424,26 +424,68 @@ def _audit_description(a, listing, results):
     results["description_results"] = dr
 
 
+def _backend_semantic_findings(backend):
+    """Session 5A.1 — detect semantic token soup in a backend STRING, independent of any audit metadata:
+    orphan stopwords, standalone unexplained numbers, single-character low-information tokens, suspicious
+    concatenations, and unrecognized (no-vowel, non-credential) abbreviations. Each finding is a
+    (category, token) pair. These are the unambiguous, context-free junk classes — a phrase-context
+    problem (a broken design fragment, a conflicting garment) is caught from the audit metadata instead."""
+    findings = []
+    for tok in backend.split():
+        if tok in BO._STOPWORDS:
+            findings.append(("backend_orphan_stopword", tok))
+        elif tok.isdigit():
+            findings.append(("backend_unexplained_number", tok))
+        elif len(tok) < BO.MIN_TOKEN_LEN:
+            findings.append(("backend_low_information", tok))
+        elif BO._is_suspicious_concatenation(tok):
+            findings.append(("backend_suspicious_concatenation", tok))
+        elif BO._is_unrecognized_abbreviation(tok):
+            findings.append(("backend_unrecognized_abbreviation", tok))
+    return findings
+
+
 def _audit_backend(a, listing, policy, results):
     br = {"bytes_used": 0, "byte_ceiling": policy.backend_byte_ceiling, "type_ok": True,
           "audit_present": False, "included_count": 0, "excluded_count": 0, "no_cut_tokens": True,
           "all_included_have_provenance": True, "all_included_have_reason": True,
-          "deterministic_order": True, "no_risky_terms": True, "source_hash": "not_checked"}
+          "deterministic_order": True, "no_risky_terms": True, "source_hash": "not_checked",
+          # Session 5A.1 — separate, explicit sub-results (PATCH 6).
+          "byte_safety": "PASS", "risk_safety": "not_checked", "semantic_quality": "PASS",
+          "phrase_integrity": "not_checked", "product_compatibility": "not_checked",
+          "audience_occasion_compatibility": "not_checked", "semantic_findings": []}
     backend = listing.get("backend")
     if backend is None:
         results["backend_results"] = br
         return
     if not isinstance(backend, str):
         br["type_ok"] = False
+        br["byte_safety"] = "FAIL"
         a.fail("backend_type", f"backend must be a string, got {type(backend).__name__}")
         results["backend_results"] = br
         return
     nb = len(backend.encode("utf-8"))
     br["bytes_used"] = nb
     if nb > policy.backend_byte_ceiling:
+        br["byte_safety"] = "FAIL"
         a.fail("backend_overflow",
                f"backend {nb} bytes > {policy.backend_byte_ceiling} "
                f"({policy.category_identifier} backend byte ceiling)")
+
+    # semantic-quality screen on the STRING — a backend carrying token soup is never publishable.
+    findings = _backend_semantic_findings(backend)
+    br["semantic_findings"] = [{"category": c, "token": t} for c, t in findings]
+    if findings:
+        br["semantic_quality"] = "FAIL"
+        seen = set()
+        for cat, tok in findings:
+            key = (cat, tok)
+            if key in seen:
+                continue
+            seen.add(key)
+            a.fail(cat, f"backend term '{tok}' is a {cat.replace('backend_', '').replace('_', ' ')} "
+                        f"with no independent search value")
+
     audit = listing.get("backend_audit")
     if isinstance(audit, dict):
         _audit_backend_provenance(a, listing, backend, policy, audit, br)
@@ -492,6 +534,39 @@ def _audit_backend_provenance(a, listing, backend, policy, audit, br):
             br["no_risky_terms"] = False
             a.fail("backend_risky_term",
                    f"backend included term '{t.get('term')}' carries blocking risks {t.get('blocking_risks')}")
+
+    # Session 5A.1 — separate audit-driven sub-results (PATCH 6): risk safety, product compatibility,
+    # audience/occasion compatibility, and phrase integrity, all read from the included-term metadata.
+    br["risk_safety"] = "PASS" if br["no_risky_terms"] else "FAIL"
+
+    conflict_states = (BO.PT_CONFLICT, BO.PT_UNVERIFIED)
+    leaked_types = [t.get("term") for t in included if t.get("product_type_result") in conflict_states]
+    if leaked_types:
+        br["product_compatibility"] = "FAIL"
+        a.fail("backend_product_type_conflict",
+               f"backend published unverified/conflicting garment type(s): {sorted(set(leaked_types))}")
+    else:
+        br["product_compatibility"] = "PASS"
+
+    ao = audit.get("audience_occasion_results") or {}
+    supported = set(ao.get("supported_occasions") or [])
+    leaked_occ = [tok for tok in tokens if tok in BO._OCCASION_TERMS and tok not in supported]
+    if leaked_occ:
+        br["audience_occasion_compatibility"] = "FAIL"
+        a.fail("backend_unsupported_occasion",
+               f"backend published unsupported occasion term(s): {sorted(set(leaked_occ))}")
+    else:
+        br["audience_occasion_compatibility"] = "PASS"
+
+    # phrase integrity: every stopword-free specialty-phrase token keeps its unit provenance, and no
+    # orphan stopword survived (the string scan already flags any that did).
+    phrase_ok = all(t.get("unit") for t in included if t.get("unit_type") == "specialty_phrase")
+    br["phrase_integrity"] = "PASS" if (phrase_ok and br["semantic_quality"] == "PASS"
+                                        and br["deterministic_order"]) else "FAIL"
+    if not phrase_ok:
+        a.fail("backend_phrase_integrity",
+               "a backend specialty-phrase token lost its phrase-unit provenance")
+
     sh = (audit.get("source_hashes") or {}).get("keyword_source_sha256")
     lh = listing.get("keyword_source_sha256")
     if sh and lh and sh != lh:

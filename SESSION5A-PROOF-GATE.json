@@ -1,5 +1,5 @@
 {
-  "session": "5A",
+  "session": "5A.1",
   "acts_implemented": [
     "ACT-009 backend search-term optimizer",
     "ACT-010 item highlights"
@@ -16,20 +16,27 @@
     "tier_C": 0
   },
   "backend": {
-    "string": "quarter zip pullover women rn labor and delivery sweater up fleece nursing hoodie crewneck cna med surg holiday school this prays the face registered navy blue pink crew neck custom embroidered womens future postpartum week practitioner emergency er",
+    "string": "pullover women rn labor delivery fleece nursing crewneck cna med surg registered navy blue pink crew neck custom embroidered womens future postpartum practitioner emergency lpn er icu hospice nicu oncology peds cvicu cardiac gifts bulk men graduates",
     "bytes_used": 249,
     "byte_ceiling": 249,
     "bytes_remaining": 0,
     "byte_safe": true,
-    "included_count": 38,
-    "excluded_total": 7862,
+    "included_count": 37,
+    "excluded_total": 7863,
     "excluded_summary": {
-      "ALREADY_FULLY_COVERED": 577,
-      "BYTE_LIMIT": 525,
-      "DUPLICATE_TOKEN": 471,
+      "ALREADY_FULLY_COVERED": 418,
+      "BROKEN_PHRASE_FRAGMENT": 69,
+      "BYTE_LIMIT": 102,
+      "DUPLICATE_TOKEN": 556,
       "INELIGIBLE_TIER": 1986,
-      "MALFORMED": 12,
+      "LOW_INFORMATION_TOKEN": 32,
+      "ORPHAN_STOPWORD": 186,
       "OWNER_APPROVAL_REQUIRED": 2671,
+      "PRODUCT_TYPE_CONFLICT": 79,
+      "PRODUCT_TYPE_UNVERIFIED": 24,
+      "UNEXPLAINED_NUMBER": 11,
+      "UNRECOGNIZED_ABBREVIATION": 3,
+      "UNSUPPORTED_OCCASION": 106,
       "WRONG_AUDIENCE": 461,
       "WRONG_OCCASION": 410,
       "WRONG_PRODUCT": 749
@@ -45,10 +52,85 @@
       "malformed": 0,
       "owner_approval_required": 2671
     },
+    "semantic_quality": {
+      "min_incremental_coverage": 1,
+      "min_semantic_score": 0,
+      "bytes_remaining": 0,
+      "stopped_before_ceiling": false,
+      "excluded_low_information": 32,
+      "excluded_orphan_stopwords": 186,
+      "excluded_unexplained_numbers": 11,
+      "excluded_suspicious_concatenations": 0,
+      "excluded_broken_fragments": 69,
+      "excluded_unrecognized_abbreviations": 3,
+      "excluded_low_incremental_coverage": 0
+    },
+    "product_type_results": {
+      "verified_garment_identity": [
+        "sweatshirt"
+      ],
+      "verified": [
+        "sweatshirt"
+      ],
+      "compatible_synonym": [
+        "crew",
+        "crewneck",
+        "neck",
+        "pullover",
+        "sweatshirts"
+      ],
+      "unverified_excluded": [
+        "half",
+        "quarter",
+        "zip"
+      ],
+      "conflict_excluded": [
+        "hoodie",
+        "hoodies",
+        "jackets",
+        "shirts",
+        "sweater",
+        "sweaters",
+        "tshirts"
+      ]
+    },
+    "audience_occasion_results": {
+      "supported_occasions": [],
+      "rejected_occasions": [
+        "appreciation",
+        "ceremony",
+        "day",
+        "fall",
+        "holiday",
+        "pinning",
+        "school",
+        "week"
+      ],
+      "audience_terms": [
+        "cardiac",
+        "delivery",
+        "emergency",
+        "er",
+        "future",
+        "graduates",
+        "hospice",
+        "icu",
+        "labor",
+        "med",
+        "nicu",
+        "nursing",
+        "oncology",
+        "peds",
+        "postpartum",
+        "practitioner",
+        "registered",
+        "surg"
+      ]
+    },
     "keyword_leakage": [],
     "risky_included_terms": [],
     "every_included_has_provenance": true,
-    "content_sha256": "caba1d91e10ef3555ec4a08329c9b159524b6fa4778a8dee934e071108ce1270"
+    "content_sha256": "d48e93792ed03ff84b16e21dec62706c16376867f15e25aa4c2e3967296ba62d"
   },
   "item_highlights": {
     "category_support_state": "SUPPORTED",
@@ -67,14 +149,21 @@
       "byte_ceiling": 249,
       "type_ok": true,
       "audit_present": true,
-      "included_count": 38,
-      "excluded_count": 7862,
+      "included_count": 37,
+      "excluded_count": 7863,
       "no_cut_tokens": true,
       "all_included_have_provenance": true,
       "all_included_have_reason": true,
       "deterministic_order": true,
       "no_risky_terms": true,
-      "source_hash": "OK"
+      "source_hash": "OK",
+      "byte_safety": "PASS",
+      "risk_safety": "PASS",
+      "semantic_quality": "PASS",
+      "phrase_integrity": "PASS",
+      "product_compatibility": "PASS",
+      "audience_occasion_compatibility": "PASS",
+      "semantic_findings": []
     },
     "item_highlights_results": {
       "supported": true,
@@ -105,5 +194,6 @@
     "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json",
     "PAGE-AUDIT-REPORT.json"
   ],
-  "status": "SESSION5A_READY_FOR_REVIEW"
+  "status": "SESSION5A_READY_FOR_REVIEW",
+  "patch": "phrase-aware semantic quality (backend terms)"
 }

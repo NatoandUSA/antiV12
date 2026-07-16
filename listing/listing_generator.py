@@ -254,7 +254,8 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     # cuts a token, and records provenance + a reason for every included/excluded term.
     backend_opt = BO.optimize_backend(src, policy=policy, title=title, bullets=bullets,
                                       description=description, item_highlights=ih_visible,
-                                      claim_evidence=claims, brand_terms=_brand_terms(facts_src))
+                                      claim_evidence=claims, brand_terms=_brand_terms(facts_src),
+                                      product_facts=facts_src, primary_keyword=primary)
     backend = backend_opt.backend_search_terms_string
 
     highlights = build_item_highlights(kws, product)   # legacy draft-only string (<=125 chars, kept for compat)

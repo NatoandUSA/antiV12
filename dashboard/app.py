@@ -31,6 +31,8 @@ ROOT = os.path.dirname(HERE)                      # toolkit root
 RUNS = os.path.join(ROOT, "runs")
 PY = sys.executable or "python3"
 sys.path.insert(0, os.path.join(ROOT, "core"))
+sys.path.insert(0, os.path.join(ROOT, "listing"))
+import keyword_source_adapter as KSA
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # 64 MB uploads
@@ -128,42 +130,58 @@ def parse_asins(folder):
                     "reviews": c[4], "rev": c[5], "ful": c[6], "brand": c[7], "note": c[8][:160]})
     return out
 
-def parse_keywords(folder):
-    """Read master-keywords.xlsx 'Top Picks' -> ranked keyword rows."""
-    p = os.path.join(folder, "master-keywords.xlsx")
-    if not os.path.exists(p):
-        return []
+def load_keyword_source(folder):
+    """The SAME authoritative source the listing generator uses -> (source|None, error|None).
+
+    The dashboard used to read master-keywords.xlsx "Top Picks" on its own, so it could show a
+    different keyword truth than the listing (ACT-002). Both now go through the shared adapter, which
+    is why they report the same source SHA-256.
+    """
     try:
-        import pandas as pd
-        xl = pd.ExcelFile(p)
-        sheet = "Top Picks" if "Top Picks" in xl.sheet_names else xl.sheet_names[0]
-        df = xl.parse(sheet).fillna("")
-    except Exception:
+        return KSA.load_keyword_source(folder, allow_legacy_unsafe=True), None
+    except KSA.NoKeywordSourceError:
+        return None, None                      # nothing researched yet — not an error to show
+    except KSA.KeywordSourceError as e:
+        return None, str(e)                    # malformed/incompatible — surface it, never fall back
+
+
+def parse_keywords(folder, source=None):
+    """Ranked keyword rows for the cockpit, from the authoritative source only."""
+    src = source or load_keyword_source(folder)[0]
+    if not src:
         return []
-    cols = {c.lower().strip(): c for c in df.columns}
-    def pick(*names):
-        for n in names:
-            if n in cols:
-                return cols[n]
-        return None
-    kw_c = pick("keyword", "keyword phrase", "phrase", "search terms")
-    sv_c = pick("search volume", "search vol", "sv", "amazon_sv")
-    op_c = pick("opportunity", "opportunity score", "score")
-    it_c = pick("intent", "bucket", "type")
-    pl_c = pick("placement", "use in", "where")
     rows = []
-    for _, r in df.iterrows():
-        kw = str(r[kw_c]).strip() if kw_c else ""
-        if not kw:
-            continue
+    for r in src.eligible_keywords()[:20]:
+        sv = r["search_volume"]
         rows.append({
-            "keyword": kw,
-            "sv": str(r[sv_c]).strip() if sv_c else "",
-            "opportunity": str(r[op_c]).strip() if op_c else "",
-            "intent": str(r[it_c]).strip() if it_c else "",
-            "placement": str(r[pl_c]).strip() if pl_c else "",
+            "keyword": r["keyword_exact"],
+            "sv": str(int(sv)) if sv is not None else "",
+            "opportunity": "",                 # not a field of the authoritative source — never invented
+            "intent": r["normalized_tier"],
+            "placement": "",
         })
-    return rows[:20]
+    return rows
+
+
+def keyword_source_summary(folder, source=None, error=None):
+    """Source identity + tier/eligibility counts for the cockpit header."""
+    if source is None and error is None:
+        source, error = load_keyword_source(folder)
+    if error:
+        return {"error": error}
+    if not source:
+        return {}
+    tiers = source.tier_counts
+    return {
+        "file": source.source_file, "schema": source.source_schema,
+        "run_id": source.source_run_id, "mode": source.source_mode,
+        "sha256": source.source_sha256, "legacy_unsafe": source.legacy_unsafe,
+        "tier_a": tiers.get(KSA.TIER_A, 0), "tier_b": tiers.get(KSA.TIER_B, 0),
+        "review": tiers.get(KSA.REVIEW, 0), "rejected": tiers.get(KSA.REJECTED, 0),
+        "excluded": source.eligibility_counts["ineligible"],
+        "eligible": source.eligibility_counts["eligible"],
+        "warnings": source.warnings,
+    }
 
 def parse_seeds(folder):
     """Read NEW-SEEDS.md -> [{seed, note}]."""
@@ -248,10 +266,12 @@ def read_listing(folder):
     return None
 
 def snapshot(folder, seed=""):
+    src, src_err = load_keyword_source(folder)      # loaded once, shared by both views below
     return {
         "asins": parse_asins(folder),
         "batch_meta": parse_batches_meta(folder),
-        "keywords": parse_keywords(folder),
+        "keywords": parse_keywords(folder, source=src),
+        "keyword_source": keyword_source_summary(folder, source=src, error=src_err),
         "seeds": parse_seeds(folder),
         "intel": parse_intel(folder),
         "gaps": parse_gaps(folder),

@@ -209,7 +209,18 @@ def build_evidence_matrix(folder, batches=None, min_overlap=0.5):
             "source_observations": [{k: v for k, v in o.items() if k != "_date"} for o in obs],
         })
     out.sort(key=lambda x: x["keyword_normalized"])
+    # An approved batch with no matching export silently removes that batch's evidence and depresses
+    # the A_CORE count, so say so explicitly instead of leaving it to be inferred from the file list.
+    matched_ids = sorted({rec["batch_match"]["batch_id"] for rec in sources
+                          if rec.get("batch_match") and rec["batch_match"].get("matched")
+                          and rec["rows_loaded"]})
+    unmatched = [{"batch_id": b,
+                  "reason": f"no Cerebro export in this folder matched approved batch {b}; its keyword "
+                            f"evidence is missing from this run and cross-batch support is understated"}
+                 for b in (batches or {}) if b not in matched_ids]
     return {"source_validation": {"files": sources,
                                   "approved_batches": {k: len(v) for k, v in (batches or {}).items()},
+                                  "matched_batches": matched_ids,
+                                  "unmatched_batches": unmatched,
                                   "total_keywords": len(out)},
             "keywords": out}

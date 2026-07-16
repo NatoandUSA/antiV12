@@ -202,6 +202,7 @@
      <div class="card"><h2>2 · ASIN batches — ranked by priority</h2><div id="asins"><div class="empty">Run analysis to see your ASINs, ranked #1 first and split into batches of 10 for Cerebro.</div></div></div>
 
      <div class="card"><h2>3 · Best keywords &amp; expansion seeds</h2>
+       <div class="muted" id="kwsource" style="margin-bottom:8px">—</div>
        <div style="font-weight:700;font-size:12.5px;color:var(--mut);margin-bottom:8px">TOP 5 KEYWORDS — build the listing around these</div>
        <div class="grid g5" id="kwtop"><div class="empty">—</div></div>
        <div style="font-weight:700;font-size:12.5px;color:var(--mut);margin:16px 0 8px">5 EXPANSION SEEDS — your next products</div>
@@ -338,6 +339,17 @@ function render(s){
       navigator.clipboard.writeText(b.dataset.ids).then(()=>toast('Batch copied — paste into Cerebro'));
     }));
   }else a.innerHTML=`<div class="empty">No ASIN yet — upload an Xray export <b>and type a seed phrase</b>, then Run. Both are required (the seed decides which listings count).</div>`;
+  // keyword source — the listing generator reads this exact file/hash, so both must agree
+  const ks=s.keyword_source||{}, kse=$('#kwsource');
+  if(ks.error){
+    kse.innerHTML=`<span style="color:#c0392b">⚠️ Keyword source error — ${esc(ks.error)}</span>`;
+  }else if(ks.file){
+    const warn=ks.legacy_unsafe?' <b style="color:#c0392b">LEGACY_UNSAFE</b>':'';
+    kse.innerHTML=`Source <b>${esc(ks.file)}</b> · ${esc(ks.schema)} · run ${esc(ks.run_id||'—')} · `
+      +`mode ${esc(ks.mode)}${warn}<br>sha256 <code>${esc(ks.sha256||'')}</code><br>`
+      +`Tier A ${ks.tier_a} · Tier B ${ks.tier_b} · review ${ks.review} · rejected ${ks.rejected} · excluded ${ks.excluded}`
+      +((ks.warnings&&ks.warnings.length)?`<br>⚠️ ${esc(ks.warnings.join(' · '))}`:'');
+  }else kse.textContent='No authoritative keyword source yet.';
   // keywords
   const kt=$('#kwtop');
   if(s.keywords&&s.keywords.length){

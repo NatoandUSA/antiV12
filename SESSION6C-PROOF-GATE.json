@@ -1,0 +1,194 @@
+{
+  "allocated_unique_keyword_count": 24,
+  "allocation_outcome_counts": {
+    "DEFERRED_OWNER_FACT_REQUIRED": 2,
+    "DEFERRED_TO_LATER_STAGE": 2,
+    "PARAPHRASED_NATURALLY": 8,
+    "REJECTED_DUPLICATION": 5,
+    "USED": 10
+  },
+  "allocation_outcomes_total": 27,
+  "amazon_account_actions": 0,
+  "aplus_engine_executed": false,
+  "artifact_location": "runs/<product>/phase6/6C  (gitignored; contains paid-source-derived data)",
+  "assignment_record_count": 27,
+  "atomic_write_result": "PASS (temp .tmp-6c- sibling + fsync + os.replace; validate-before-commit)",
+  "backend_byte_count": 246,
+  "backend_byte_limit": 249,
+  "backend_rejected_candidate_count": 4,
+  "backend_selected_candidate_count": 9,
+  "baseline_test_total": 1127,
+  "blocked_claim_promotion_count": 0,
+  "bullet_states": [
+    {
+      "bullet": 1,
+      "job": "PRODUCT_AND_PERSONALIZATION",
+      "state": "EMPTY_OWNER_FACT_REQUIRED"
+    },
+    {
+      "bullet": 2,
+      "job": "EMBROIDERY_OR_DECORATION_PROOF",
+      "state": "EMPTY_CLAIM_EVIDENCE_MISSING"
+    },
+    {
+      "bullet": 3,
+      "job": "FIT_SIZE_COLOR_ORDER_ACCURACY",
+      "state": "EMPTY_CLAIM_EVIDENCE_MISSING"
+    },
+    {
+      "bullet": 4,
+      "job": "CARE_PRODUCTION_PACKAGING_DELIVERY",
+      "state": "EMPTY_CLAIM_EVIDENCE_MISSING"
+    },
+    {
+      "bullet": 5,
+      "job": "RECIPIENT_OCCASION_USE",
+      "state": "EMPTY_OWNER_FACT_REQUIRED"
+    }
+  ],
+  "checkpoint_tag": "phase6c-checkpoint-5fd59bf",
+  "compilation_result": "PASS (compileall listing compliance dashboard research core tests amz_fbm scripts production)",
+  "connectivity_policy_status": "OWNER_APPROVED_AMAZON_BOUNDARY_CLOSED",
+  "deferred_field_states": {
+    "aplus": "DEFERRED_OWNER_FACT_REQUIRED",
+    "image_alt_text": "DEFERRED_TO_LATER_STAGE",
+    "listing_image_text": "DEFERRED_TO_LATER_STAGE"
+  },
+  "dependency_hashes": {
+    "allocation_map_sha256": "d09d3d8a1052dbc81aca9ff37d9a567f2b98546d48d6135ccf9c701cdb023c5a",
+    "claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+    "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+    "phase6a_manifest_sha256": "99f54e5b8104201ee7875e88fb0d1b5c66bbff09e7e37946171a22f7f198ca5b",
+    "phase6b_manifest_sha256": "e8d0bac89bde058d6e983aea5d8ada4fb2eb900b2e4a61f3490dcf6359ea158a",
+    "product_facts_sha256": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274"
+  },
+  "description_char_count": 19,
+  "description_state": "SAFE_DRAFT",
+  "description_text": "A nurse sweatshirt.",
+  "deterministic_pdp_content_sha256": "b48214a36ec094a2a2d8c11f282399df789970836bf0bf22f097567bddce8de5",
+  "duplicate_pdp_authority_count": 0,
+  "external_network_attempts": 0,
+  "fabricated_owner_fact_count": 0,
+  "final_commit": "eb65863",
+  "final_status": "SESSION6C_READY_FOR_REVIEW",
+  "full_test_runtime_seconds": 123,
+  "full_test_total": 1219,
+  "gift_recipient_reconciliation": {
+    "gift_claim_verified": false,
+    "gift_language_status": "CLAIM_EVIDENCE_MISSING",
+    "occasion_claim_state": "UNVERIFIED_BLOCKED",
+    "recipient_claim_state": "VERIFIED",
+    "result": "Only the recipient/nurse audience claim is VERIFIED; gift + personalization + occasion remain UNVERIFIED_BLOCKED and are deferred from all published copy."
+  },
+  "item_highlight_state": "CLAIM_EVIDENCE_MISSING",
+  "keyword_source_filename": "MASTER-KEYWORDS-LEAN.json",
+  "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "known_limitations": [
+    "The safe draft is intentionally minimal: with zero verified physical facts, only the product + audience identity is publishable; all five bullets and item highlights are deferred.",
+    "Backend candidate 'selected vs rejected' is an advisory reconciliation against the optimizer's byte-safe output; the optimizer (not the 6B candidate list) is the backend authority.",
+    "A+, image-overlay text, and image alt text are deferred to a later, owner-approved stage."
+  ],
+  "last_valid_protection": "PASS (a validation failure raises and leaves prior 6C outputs intact)",
+  "leakage_counts": {
+    "blocked_claim_promotion": 0,
+    "brand_ip_leakage": 0,
+    "fabricated_owner_facts": 0,
+    "rejected_leakage": 0,
+    "unsupported_physical_claims": 0,
+    "wrong_audience_leakage": 0,
+    "wrong_occasion_leakage": 0,
+    "wrong_product_leakage": 0
+  },
+  "listing_publishability_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "new_listing_generator_introduced": false,
+  "owner_fact_dependency_count": 25,
+  "page_audit_status": "PASS_WITH_WARNINGS",
+  "pdp_assembler_authority": "production/product_detail_page.py",
+  "pdp_assembler_public_api": [
+    "load_phase6c_dependencies",
+    "reconcile_phase6b_keyword_counts",
+    "assemble_title_options",
+    "assemble_bullets",
+    "assemble_description",
+    "assemble_backend_search_terms",
+    "evaluate_item_highlights",
+    "run_page_audit",
+    "build_allocation_outcomes",
+    "assemble_product_detail_page",
+    "write_phase6c_artifacts",
+    "verify_phase6c_artifacts"
+  ],
+  "phase": "Phase 6C — Product Detail Page Assembly",
+  "phase5_certification_status": "RELEASE1_CERTIFIED",
+  "phase6a_dependency_status": "VERIFIED",
+  "phase6b_dependency_status": "VERIFIED_READY_FOR_6C",
+  "phase6c_state": "SAFE_PDP_OWNER_FACTS_REQUIRED",
+  "phase6d_6f_artifact_count": 0,
+  "product_identity": {
+    "audience": "nurses",
+    "category": "apparel",
+    "category_identifier": "US:apparel",
+    "market_identity_core": "Nurse Sweatshirt",
+    "product_id": "T2",
+    "product_type": "sweatshirt"
+  },
+  "proof_workspace": "T2",
+  "ready_for_next_stage": true,
+  "real_asset_dependency_count": 7,
+  "recommended_next_stage_scope": "Phase 6D — creative-layer planning (A+ + image plan) over the verified safe draft, under the same evidence gates. Not authorized in this session.",
+  "recommended_title": "Nurse Sweatshirt",
+  "recommended_title_char_count": 16,
+  "recommended_title_state": "RECOMMENDED_SAFE_DRAFT",
+  "required_artifacts": [
+    "PRODUCT-DETAIL-PAGE.json",
+    "TITLE-OPTIONS.json",
+    "BULLETS.json",
+    "DESCRIPTION.txt",
+    "BACKEND-SEARCH-TERMS.json"
+  ],
+  "required_owner_actions": [
+    "Supply verified material/fabric composition, sizes offered, real measurements, colours, decoration method, and personalization fields (with real evidence, not AI mockups) to unlock the blocked bullets, description detail, and item highlights.",
+    "Review FIELD-BLOCKERS.json for the exact owner fact / real-asset photo each blocked field needs."
+  ],
+  "reuse_justification_result": "PASS: every reused assignment is REUSE_JUSTIFIED with a distinct field purpose and incremental semantic value",
+  "reused_keyword_count": 1,
+  "reused_phase5_authorities": [
+    "listing.title_engine.build_titles",
+    "listing.bullet_engine.build_bullets",
+    "listing.description_engine.build_description",
+    "listing.backend_optimizer.optimize_backend",
+    "listing.item_highlights_builder.build_item_highlights_content",
+    "listing.page_auditor.audit_listing",
+    "listing.claim_evidence.build_claim_evidence",
+    "listing.product_fact_loader.load_product_facts",
+    "listing.category_policy_registry.resolve_category_policy",
+    "listing.keyword_allocation_planner (6A dep + 6B allocation + physical-claim gate)",
+    "production.product_workspace (canonical json / hash / atomic write template)"
+  ],
+  "safe_draft_bullet_count": 0,
+  "sanitization": [
+    "no paid keyword rows (only the safe 2-word market-identity draft is shown)",
+    "no backend search-terms string",
+    "no private/absolute filesystem paths",
+    "no usernames, credentials, private metrics, or environment dumps"
+  ],
+  "selected_unique_keyword_count": 56,
+  "session": "6C",
+  "starting_commit": "5fd59bf",
+  "support_artifacts": [
+    "ITEM-HIGHLIGHTS.json",
+    "PAGE-AUDIT-REPORT.json",
+    "FIELD-BLOCKERS.json",
+    "PHASE6C-COPY-LINEAGE.json"
+  ],
+  "targeted_test_total": 92,
+  "three_mode_determinism": "PASS",
+  "tier_a_count": 74,
+  "tier_b_count": 378,
+  "title_candidate_count": 2,
+  "title_hard_limit": 75,
+  "two_run_determinism": "PASS",
+  "unallocated_unique_keyword_count": 32,
+  "unique_count_reconciliation": "PASS: allocated_unique(24) + unallocated_unique(32) = selected_unique(56)",
+  "unsupported_physical_claim_count": 0
+}

@@ -232,7 +232,9 @@ def build_item_highlights_content(claim_evidence, policy, keyword_source=None, p
         claim = claim_evidence.claim(concept) if claim_evidence is not None else None
         if not claim:
             continue
-        state = claim["verification_state"]
+        # consume the EFFECTIVE (atomicity-gated) state, never the raw verification_state — a compound /
+        # mixed claim must never promote a blocked component into a published highlight (Session 6C.1).
+        state = claim.get("effective_evidence_state") or claim["verification_state"]
         text = claim.get("proposed_text")
         hid = "IH-" + concept.upper()
         source_fields = claim.get("source_fact_fields") or []

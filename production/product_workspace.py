@@ -1240,17 +1240,22 @@ def validate_claim_evidence(doc):
         errors.append("claim evidence came from a foreign authority (schema_version mismatch)")
     claims = doc.get("claims", {})
     ids = set()
-    valid_states = (CE.VERIFIED, CE.SUPPORTED_OWNER_REVIEW, CE.UNVERIFIED_BLOCKED, CE.PROHIBITED)
     for concept, rec in claims.items():
         cid = rec.get("claim_id")
         if not cid or cid in ids:
             errors.append(f"duplicate/empty claim_id for {concept}")
         ids.add(cid)
-        if rec.get("verification_state") not in valid_states:
+        if rec.get("verification_state") not in CE.CLAIM_STATES:
             errors.append(f"invalid claim state for {concept}")
-        # a blocked/prohibited claim must never be labelled publishable.
-        if rec.get("verification_state") != CE.VERIFIED and rec.get("publishable"):
+        if rec.get("effective_evidence_state") not in CE.EFFECTIVE_STATES:
+            errors.append(f"invalid effective_evidence_state for {concept}")
+        # publishability is decided by the EFFECTIVE (atomicity-gated) state, never the raw one — a
+        # blocked / mixed-compound claim must never be labelled publishable (Session 6C.1).
+        if rec.get("effective_evidence_state") != CE.VERIFIED and rec.get("publishable"):
             errors.append(f"blocked claim {cid} labelled publishable")
+        # atomicity: no stored claim may be a mixed/compound VERIFIED claim.
+        for v in CE.validate_claim_record(rec):
+            errors.append(f"{concept}: {v}")
     body = {k: v for k, v in doc.items() if k not in ("content_sha256", "generated_at")}
     if doc.get("content_sha256") != hashlib.sha256(canonical_json(body).encode()).hexdigest():
         errors.append("claim-evidence content_sha256 does not recompute")

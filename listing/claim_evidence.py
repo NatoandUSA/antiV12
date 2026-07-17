@@ -45,7 +45,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import product_fact_loader as PFL
 
-CLAIM_EVIDENCE_SCHEMA_VERSION = "1.0.0"
+# 1.1.0 (Session 6C.1): every claim now carries ATOMIC semantic components + an effective evidence
+# state. A claim record may not receive a stronger effective state than its least-supported material
+# component, so a compound text can never inherit one component's verification (see ATOMIC-CLAIM RULE).
+CLAIM_EVIDENCE_SCHEMA_VERSION = "1.1.0"
 CLAIM_EVIDENCE_FILENAME = "CLAIM-EVIDENCE.json"
 
 # claim states
@@ -53,9 +56,71 @@ VERIFIED = "VERIFIED"
 SUPPORTED_OWNER_REVIEW = "SUPPORTED_OWNER_REVIEW"
 UNVERIFIED_BLOCKED = "UNVERIFIED_BLOCKED"
 PROHIBITED = "PROHIBITED"
+# a compound claim whose components disagree on evidence — blocked, and NEVER treated as VERIFIED.
+MIXED_EVIDENCE_BLOCKED = "MIXED_EVIDENCE_BLOCKED"
 
 # only VERIFIED claims may enter publishable copy in unattended generation.
 PUBLISHABLE_STATES = (VERIFIED,)
+
+# every state a stored claim record may legally carry (verification_state stays one of the classic four;
+# effective_evidence_state may additionally be MIXED_EVIDENCE_BLOCKED).
+CLAIM_STATES = (VERIFIED, SUPPORTED_OWNER_REVIEW, UNVERIFIED_BLOCKED, PROHIBITED)
+EFFECTIVE_STATES = CLAIM_STATES + (MIXED_EVIDENCE_BLOCKED,)
+# worst-wins ordering when a claim carries several material components (lower = weaker/less supported).
+_STATE_RANK = {PROHIBITED: 0, MIXED_EVIDENCE_BLOCKED: 1, UNVERIFIED_BLOCKED: 2,
+               SUPPORTED_OWNER_REVIEW: 3, VERIFIED: 4}
+
+# ---------------------------------------------------------------- semantic component vocabulary
+# The material semantic components a claim's canonical text may assert. A claim is ATOMIC when its text
+# asserts exactly one gated component (or every asserted component is independently VERIFIED). Reuse an
+# existing type; do NOT invent free-form component names.
+COMP_PRODUCT_IDENTITY = "PRODUCT_IDENTITY"
+COMP_RECIPIENT = "RECIPIENT"
+COMP_AUDIENCE = "AUDIENCE"
+COMP_GIFT_OR_OCCASION = "GIFT_OR_OCCASION"
+COMP_PERSONALIZATION = "PERSONALIZATION"
+COMP_DECORATION_METHOD = "DECORATION_METHOD"
+COMP_MATERIAL = "MATERIAL"
+COMP_COLOR = "COLOR"
+COMP_SIZE = "SIZE"
+COMP_FIT = "FIT"
+COMP_CARE = "CARE"
+COMP_PACKAGING = "PACKAGING"
+COMP_PRODUCTION_TIME = "PRODUCTION_TIME"
+COMP_SHIPPING_TIME = "SHIPPING_TIME"
+COMP_PHYSICAL_QUALITY = "PHYSICAL_QUALITY"
+SEMANTIC_COMPONENTS = (
+    COMP_PRODUCT_IDENTITY, COMP_RECIPIENT, COMP_AUDIENCE, COMP_GIFT_OR_OCCASION, COMP_PERSONALIZATION,
+    COMP_DECORATION_METHOD, COMP_MATERIAL, COMP_COLOR, COMP_SIZE, COMP_FIT, COMP_CARE, COMP_PACKAGING,
+    COMP_PRODUCTION_TIME, COMP_SHIPPING_TIME, COMP_PHYSICAL_QUALITY,
+)
+
+# A narrow, secondary guard (NOT the primary authority — the primary authority is a claim's declared
+# components + fact/evidence lineage): if a claim's canonical/display text contains one of these
+# qualifier words, the mapped component MUST be one of the claim's own VERIFIED components, otherwise the
+# text is smuggling an unsupported concept and the claim is blocked. Word-boundary matched, lowercase.
+_QUALIFIER_COMPONENTS = {
+    COMP_PERSONALIZATION: ("personalized", "personalised", "personalize", "personalization",
+                           "custom", "customized", "customised", "customizable", "monogram",
+                           "monogrammed", "monogramming", "engraved", "initials"),
+    COMP_GIFT_OR_OCCASION: ("gift", "gifts"),
+    COMP_DECORATION_METHOD: ("embroidered", "embroidery", "stitched", "satin", "tatami", "printed",
+                             "screenprint", "applique"),
+    COMP_MATERIAL: ("cotton", "polyester", "fleece", "wool", "cashmere", "linen", "spandex", "nylon",
+                    "rayon", "flannel"),
+}
+# typed reason codes returned by the atomicity validator (documented vocabulary).
+R_NOT_ATOMIC = "CLAIM_NOT_ATOMIC"
+R_UNSUPPORTED_COMPONENT = "UNSUPPORTED_CLAIM_COMPONENT"
+R_MIXED_COMPONENTS = "MIXED_EVIDENCE_COMPONENTS"
+R_PERSONALIZATION_MISSING = "PERSONALIZATION_EVIDENCE_MISSING"
+R_GIFT_MISSING = "GIFT_EVIDENCE_MISSING"
+R_DECORATION_MISSING = "DECORATION_EVIDENCE_MISSING"
+R_MATERIAL_MISSING = "MATERIAL_EVIDENCE_MISSING"
+_COMPONENT_MISSING_REASON = {
+    COMP_PERSONALIZATION: R_PERSONALIZATION_MISSING, COMP_GIFT_OR_OCCASION: R_GIFT_MISSING,
+    COMP_DECORATION_METHOD: R_DECORATION_MISSING, COMP_MATERIAL: R_MATERIAL_MISSING,
+}
 
 
 def _joined(value):
@@ -84,13 +149,21 @@ class ClaimSpec:
     are encoded — the concept is never allowed to read a neighbouring fact).
     """
 
-    def __init__(self, concept, claim_type, evidence_fields, text, guard=None, keyword_source=None):
+    def __init__(self, concept, claim_type, evidence_fields, text, guard=None, keyword_source=None,
+                 components=(), free_text=False):
         self.concept = concept
         self.claim_type = claim_type
         self.evidence_fields = tuple(evidence_fields)
         self._text = text                 # callable(value) -> str
         self._guard = guard               # optional callable(value) -> bool (value must qualify)
         self.keyword_source = keyword_source  # optional keyword_context key that can also verify it
+        # the material semantic component(s) this claim's canonical text asserts. A single component ==
+        # an atomic claim. Its evidence is the claim's own evidence — never borrowed from a neighbour.
+        self.components = tuple(components)
+        # free_text: the canonical text IS the owner-verified value (a differentiator the owner attested
+        # verbatim), so every component the text asserts is itself owner-backed — the secondary qualifier
+        # scan does not treat those words as smuggled. Template claims (recipient/material/…) are False.
+        self.free_text = free_text
 
     def text_for(self, value):
         return self._text(value)
@@ -106,51 +179,68 @@ def _embroider_machine(v):
 
 CLAIM_SPECS = [
     ClaimSpec("decoration_method", "decoration", ("decoration_method",),
-              lambda v: f"Decorated with {str(v).lower()}."),
+              lambda v: f"Decorated with {str(v).lower()}.", components=(COMP_DECORATION_METHOD,)),
     ClaimSpec("real_machine_embroidery", "decoration", ("decoration_method",),
-              lambda v: "Real machine embroidery, not a printed graphic.", guard=_embroider_machine),
+              lambda v: "Real machine embroidery, not a printed graphic.", guard=_embroider_machine,
+              components=(COMP_DECORATION_METHOD,)),
     ClaimSpec("satin_stitch", "decoration", ("decoration_method",),
               lambda v: "Raised satin-stitch embroidery.",
-              guard=lambda v: "satin" in str(v).lower()),
+              guard=lambda v: "satin" in str(v).lower(), components=(COMP_DECORATION_METHOD,)),
     ClaimSpec("tatami_fill", "decoration", ("decoration_method",),
-              lambda v: "Tatami-fill embroidery.", guard=lambda v: "tatami" in str(v).lower()),
+              lambda v: "Tatami-fill embroidery.", guard=lambda v: "tatami" in str(v).lower(),
+              components=(COMP_DECORATION_METHOD,)),
     ClaimSpec("personalization_fields", "personalization", ("personalization_fields",),
-              lambda v: f"Add {_joined(v)} during checkout."),
+              lambda v: f"Add {_joined(v)} during checkout.", components=(COMP_PERSONALIZATION,)),
     # exact personalization is a promise, not the presence of a field -> needs its own explicit fact.
     ClaimSpec("exact_personalization_promise", "personalization", (),
-              lambda v: "Embroidered exactly as you enter it."),
+              lambda v: "Embroidered exactly as you enter it.",
+              components=(COMP_PERSONALIZATION, COMP_DECORATION_METHOD)),
     ClaimSpec("material_composition", "material", ("material_composition", "material"),
-              lambda v: f"Made from {_joined(v)}."),
+              lambda v: f"Made from {_joined(v)}.", components=(COMP_MATERIAL,)),
     # softness/comfort is a sensory claim; it is never read off a material name or measurements.
     ClaimSpec("softness_comfort", "comfort", (),
-              lambda v: "Soft and comfortable to wear."),
-    ClaimSpec("fit", "fit", ("fit",), lambda v: f"{str(v).capitalize()} fit."),
+              lambda v: "Soft and comfortable to wear.", components=(COMP_PHYSICAL_QUALITY,)),
+    ClaimSpec("fit", "fit", ("fit",), lambda v: f"{str(v).capitalize()} fit.", components=(COMP_FIT,)),
     ClaimSpec("size_range", "size", ("size_range",),
-              lambda v: f"Available in sizes {_joined(v)}."),
+              lambda v: f"Available in sizes {_joined(v)}.", components=(COMP_SIZE,)),
     ClaimSpec("color_options", "color", ("color_options",),
-              lambda v: f"Available in {_joined(v)}."),
+              lambda v: f"Available in {_joined(v)}.", components=(COMP_COLOR,)),
     ClaimSpec("measurements", "size", ("measurements",),
-              lambda v: f"Measurements: {_joined(v)}."),
-    ClaimSpec("care", "care", ("care_instructions",), lambda v: f"Care: {_joined(v)}."),
+              lambda v: f"Measurements: {_joined(v)}.", components=(COMP_SIZE,)),
+    ClaimSpec("care", "care", ("care_instructions",), lambda v: f"Care: {_joined(v)}.",
+              components=(COMP_CARE,)),
     ClaimSpec("production_location", "production", ("production_location",),
-              lambda v: f"Made in {v}."),
+              lambda v: f"Made in {v}.", components=(COMP_PRODUCTION_TIME,)),
     ClaimSpec("production_time", "production", ("production_time_range",),
-              lambda v: f"Production time: {v}."),
+              lambda v: f"Production time: {v}.", components=(COMP_PRODUCTION_TIME,)),
     ClaimSpec("handling_time", "fulfillment", ("handling_time",),
-              lambda v: f"Handling time: {v}."),
+              lambda v: f"Handling time: {v}.", components=(COMP_SHIPPING_TIME,)),
     ClaimSpec("shipping_method", "fulfillment", ("shipping_method",),
-              lambda v: _shipping_text(v) if _has_us_shipping(v) else f"Shipping: {v}."),
+              lambda v: _shipping_text(v) if _has_us_shipping(v) else f"Shipping: {v}.",
+              components=(COMP_SHIPPING_TIME,)),
     # tracking is not implied by "there is shipping" -> a dedicated tracking fact.
-    ClaimSpec("tracking", "fulfillment", ("tracking",), lambda v: "Order tracking included."),
-    ClaimSpec("packaging", "fulfillment", ("packaging",), lambda v: f"Arrives in {v}."),
+    ClaimSpec("tracking", "fulfillment", ("tracking",), lambda v: "Order tracking included.",
+              components=(COMP_SHIPPING_TIME,)),
+    ClaimSpec("packaging", "fulfillment", ("packaging",), lambda v: f"Arrives in {v}.",
+              components=(COMP_PACKAGING,)),
     # durability is never read off embroidery presence -> needs its own explicit fact.
-    ClaimSpec("durability", "durability", (), lambda v: "Made to last."),
+    ClaimSpec("durability", "durability", (), lambda v: "Made to last.",
+              components=(COMP_PHYSICAL_QUALITY,)),
     # made-to-order is never read off personalization -> needs its own explicit fact.
-    ClaimSpec("made_to_order", "production", (), lambda v: "Made to order after you purchase."),
+    ClaimSpec("made_to_order", "production", (), lambda v: "Made to order after you purchase.",
+              components=(COMP_PRODUCTION_TIME,)),
+    # ATOMIC recipient (Session 6C.1): the canonical text asserts ONLY the RECIPIENT component. It must
+    # never carry personalization / gift language — those are independent claims below with their own
+    # evidence. "For nurses." is verified from the approved audience; personalization + gift are not.
     ClaimSpec("recipient", "audience", ("audience",),
-              lambda v: f"A personalized gift for {v}.", keyword_source="audience"),
-    ClaimSpec("occasion", "occasion", ("occasion",), lambda v: f"Great for {v}."),
-    ClaimSpec("differentiator", "differentiator", ("verified_differentiator",), lambda v: str(v)),
+              lambda v: f"For {v}.", keyword_source="audience", components=(COMP_RECIPIENT,)),
+    ClaimSpec("occasion", "occasion", ("occasion",), lambda v: f"Great for {v}.",
+              components=(COMP_GIFT_OR_OCCASION,)),
+    # gift suitability is its OWN claim, never inferred from recipient identity -> needs explicit evidence.
+    ClaimSpec("gift", "gift", (), lambda v: "Suitable as a gift.",
+              components=(COMP_GIFT_OR_OCCASION,)),
+    ClaimSpec("differentiator", "differentiator", ("verified_differentiator",), lambda v: str(v),
+              components=(COMP_PHYSICAL_QUALITY,), free_text=True),
 ]
 CLAIM_CONCEPTS = tuple(s.concept for s in CLAIM_SPECS)
 _SPEC_BY_CONCEPT = {s.concept: s for s in CLAIM_SPECS}
@@ -160,6 +250,120 @@ _SPEC_BY_CONCEPT = {s.concept: s for s in CLAIM_SPECS}
 def _claim_id(concept):
     """Deterministic, human-readable claim id (stable across identical runs)."""
     return "CLM-" + concept.upper()
+
+
+def _evidence_value_tokens(source_evidence):
+    """Lowercase word tokens of every backing fact/keyword VALUE. These are the claim's own verified
+    evidence (e.g. a 'gift box' packaging value), so a qualifier word inside them is NOT smuggled — only
+    the template's fixed framing words ('A personalized gift for …') can smuggle an unsupported concept."""
+    import re
+    out = set()
+    for rec in (source_evidence or {}).values():
+        val = rec.get("value") if isinstance(rec, dict) else None
+        if val is None:
+            continue
+        text = " ".join(str(x) for x in val) if isinstance(val, (list, tuple)) else str(val)
+        out.update(re.findall(r"[a-z]+", text.lower()))
+    return out
+
+
+def _text_qualifier_components(text, exclude=()):
+    """The semantic components a canonical/display text ASSERTS via qualifier words (secondary guard).
+
+    `exclude` are the claim's own verified value tokens, which are skipped so only the template's fixed
+    framing words are scanned. e.g. 'A personalized gift for nurses' -> {PERSONALIZATION, GIFT_OR_OCCASION}.
+    """
+    import re
+    toks = set(re.findall(r"[a-z]+", str(text or "").lower())) - set(exclude)
+    found = set()
+    for comp, words in _QUALIFIER_COMPONENTS.items():
+        if toks & set(words):
+            found.add(comp)
+    return found
+
+
+def resolve_atomic_components(declared_components, verification_state, proposed_text, free_text=False,
+                              value_tokens=()):
+    """Resolve a claim into atomic semantic components + an effective evidence state.
+
+    A claim may NOT hold a stronger effective state than its least-supported material component. A
+    canonical text that asserts a component the claim does not independently back (a compound / mixed
+    claim) is blocked: MIXED_EVIDENCE_BLOCKED when the base claim was VERIFIED, else the worst state.
+
+    free_text=True means the whole canonical text is the owner-verified value, so every component the
+    text asserts is itself owner-backed (never smuggled) — used only for owner-attested differentiators.
+    value_tokens are the claim's own verified value words, skipped by the qualifier scan.
+
+    Returns (semantic_components, effective_state, reason_codes).
+    """
+    declared = set(declared_components)
+    text_comps = _text_qualifier_components(proposed_text, exclude=value_tokens) if proposed_text else set()
+    if free_text:
+        declared = declared | text_comps          # owner attested the whole text -> all backed
+        foreign = []
+    else:
+        foreign = sorted(text_comps - declared)
+    declared = sorted(declared)
+
+    components = [{"component": c, "evidence_state": verification_state,
+                   "supported": verification_state == VERIFIED} for c in declared]
+    components += [{"component": c, "evidence_state": UNVERIFIED_BLOCKED, "supported": False}
+                  for c in foreign]
+
+    reasons = []
+    if not components:
+        effective = verification_state
+    elif foreign:
+        reasons += [R_NOT_ATOMIC, R_UNSUPPORTED_COMPONENT]
+        reasons += [_COMPONENT_MISSING_REASON[c] for c in foreign if c in _COMPONENT_MISSING_REASON]
+        if verification_state == VERIFIED:
+            reasons.append(R_MIXED_COMPONENTS)
+            effective = MIXED_EVIDENCE_BLOCKED
+        else:
+            effective = min((c["evidence_state"] for c in components), key=lambda s: _STATE_RANK[s])
+    else:
+        # every declared component shares the claim's own evidence -> worst == the claim's state.
+        effective = min((c["evidence_state"] for c in components), key=lambda s: _STATE_RANK[s])
+    return components, effective, sorted(set(reasons))
+
+
+def claim_content_sha256(record):
+    """Deterministic per-claim content hash (excludes its own hash field) — lineage checkable."""
+    body = {k: v for k, v in record.items() if k != "content_sha256"}
+    return hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
+
+
+def validate_claim_record(record):
+    """Re-derive a stored claim record's atomicity and return typed violations (empty == safe).
+
+    This is the guard that makes an OLD unsafe compound record (e.g. a VERIFIED
+    "A personalized gift for nurses.") FAIL on read — its canonical text asserts PERSONALIZATION +
+    GIFT_OR_OCCASION components the RECIPIENT claim never backed, so it can never be trusted as VERIFIED.
+    """
+    violations = []
+    # authoritative declared set comes from the spec when the concept is known; else from the record.
+    spec = _SPEC_BY_CONCEPT.get(record.get("normalized_concept"))
+    declared = list(spec.components) if spec else [c["component"] for c in
+                                                   record.get("semantic_components", [])]
+    vstate = record.get("verification_state")
+    _comps, effective, reasons = resolve_atomic_components(
+        declared, vstate, record.get("proposed_text"), free_text=bool(spec and spec.free_text),
+        value_tokens=_evidence_value_tokens(record.get("source_evidence")))
+    if record.get("effective_evidence_state", effective) != effective:
+        violations.append("effective_evidence_state does not recompute")
+    if effective != VERIFIED and record.get("publishable"):
+        violations.append(f"{record.get('claim_id')} is publishable but effective state is {effective}")
+    if vstate == VERIFIED and effective == MIXED_EVIDENCE_BLOCKED:
+        violations.append(f"{record.get('claim_id')} is a MIXED compound VERIFIED claim: {reasons}")
+    if "content_sha256" in record and record["content_sha256"] != claim_content_sha256(record):
+        violations.append(f"{record.get('claim_id')} content_sha256 does not recompute")
+    return violations
+
+
+def _claim_declared_components(record):
+    spec = _SPEC_BY_CONCEPT.get(record.get("normalized_concept"))
+    return list(spec.components) if spec else [c["component"] for c in
+                                               record.get("semantic_components", [])]
 
 
 def _evaluate(spec, facts, keyword_context, prohibited):
@@ -230,22 +434,37 @@ def _evaluate(spec, facts, keyword_context, prohibited):
 def build_claim_record(spec, facts, keyword_context, prohibited):
     state, value, source_fields, source_evidence, reasons, warnings, owner_status, updated_at = \
         _evaluate(spec, facts, keyword_context, prohibited)
-    proposed = spec.text_for(value) if value is not None else spec.text_for("")
-    publishable = state in PUBLISHABLE_STATES
-    return {
+    proposed = (spec.text_for(value) if value is not None else spec.text_for("")) \
+        if state in (VERIFIED, SUPPORTED_OWNER_REVIEW) else None
+
+    # ATOMIC CLAIM RULE: derive the semantic components + the effective evidence state. A claim is
+    # publishable ONLY when its EFFECTIVE state is VERIFIED, so a compound/mixed text can never inherit
+    # one component's verification. For the current spec set every claim is atomic (one gated component),
+    # so effective == verification_state unless a foreign qualifier is smuggled into the text.
+    components, effective, atom_reasons = resolve_atomic_components(
+        spec.components, state, proposed, free_text=spec.free_text,
+        value_tokens=_evidence_value_tokens(source_evidence))
+    publishable = effective in PUBLISHABLE_STATES
+    record = {
         "claim_id": _claim_id(spec.concept),
         "claim_type": spec.claim_type,
         "normalized_concept": spec.concept,
-        "proposed_text": proposed if state in (VERIFIED, SUPPORTED_OWNER_REVIEW) else None,
+        "canonical_claim": proposed,
+        "proposed_text": proposed,
+        "semantic_components": components,
         "source_fact_fields": sorted(set(source_fields)),
         "source_evidence": source_evidence,
         "verification_state": state,
+        "effective_evidence_state": effective,
         "owner_status": owner_status,
         "publishable": publishable,
         "reasons": sorted(set(reasons)),
+        "atomicity_reason_codes": atom_reasons,
         "warnings": sorted(set(warnings)),
         "updated_at": updated_at,
     }
+    record["content_sha256"] = claim_content_sha256(record)
+    return record
 
 
 # ---------------------------------------------------------------- result
@@ -268,6 +487,11 @@ class ClaimEvidence:
     def state(self, concept):
         c = self.claims.get(concept)
         return c["verification_state"] if c else None
+
+    def effective_state(self, concept):
+        """The gated, atomicity-aware state that decides publishability (never weaker→stronger)."""
+        c = self.claims.get(concept)
+        return c["effective_evidence_state"] if c else None
 
     def is_publishable(self, concept):
         c = self.claims.get(concept)
@@ -302,11 +526,22 @@ class ClaimEvidence:
         return len(self.by_state(PROHIBITED))
 
     @property
+    def mixed_evidence_count(self):
+        return sum(1 for c in self.claims.values()
+                   if c["effective_evidence_state"] == MIXED_EVIDENCE_BLOCKED)
+
+    @property
+    def atomicity_ok(self):
+        """True when no claim is a mixed/compound VERIFIED claim (the ATOMIC-CLAIM invariant holds)."""
+        return not audit_claim_evidence(self)["violations"]
+
+    @property
     def missing_evidence_requirements(self):
         """Concepts that could not be verified and the fact fields that would verify them."""
         out = []
         for c in self.claims.values():
-            if c["verification_state"] in (UNVERIFIED_BLOCKED, SUPPORTED_OWNER_REVIEW):
+            if c["effective_evidence_state"] in (UNVERIFIED_BLOCKED, SUPPORTED_OWNER_REVIEW,
+                                                 MIXED_EVIDENCE_BLOCKED):
                 spec = _SPEC_BY_CONCEPT[c["normalized_concept"]]
                 out.append({"concept": c["normalized_concept"], "claim_id": c["claim_id"],
                             "state": c["verification_state"],
@@ -330,6 +565,7 @@ class ClaimEvidence:
             "owner_review_count": self.owner_review_count,
             "blocked_count": self.blocked_count,
             "prohibited_count": self.prohibited_count,
+            "mixed_evidence_count": self.mixed_evidence_count,
             "missing_evidence_requirements": self.missing_evidence_requirements,
             "warnings": list(self.warnings),
         }
@@ -371,6 +607,24 @@ def build_claim_evidence(facts, keyword_context=None, prohibited_concepts=()):
     return ClaimEvidence(source_product_fact_file=facts.source_file,
                          source_product_fact_sha256=facts.source_sha256,
                          claims=claims, keyword_context=keyword_context, warnings=warnings)
+
+
+def audit_claim_evidence(evidence):
+    """Audit a built ClaimEvidence (or a loaded claim dict) for the ATOMIC-CLAIM invariant.
+
+    Returns {"ok": bool, "violations": [...], "mixed_evidence_claims": [...]}. A violation means a claim
+    holds a stronger effective/publishable state than its least-supported component allows — the exact
+    defect Session 6C.1 repairs. Consumers/proof scripts call this to prove no unsafe compound survives.
+    """
+    claims = evidence.claims if isinstance(evidence, ClaimEvidence) else dict(evidence or {})
+    violations, mixed = [], []
+    for concept, rec in claims.items():
+        for v in validate_claim_record(rec):
+            violations.append(f"{concept}: {v}")
+        if rec.get("effective_evidence_state") == MIXED_EVIDENCE_BLOCKED:
+            mixed.append(rec.get("claim_id"))
+    return {"ok": not violations, "violations": sorted(violations),
+            "mixed_evidence_claims": sorted(mixed)}
 
 
 def write_claim_evidence(folder, evidence=None, facts=None, keyword_context=None,

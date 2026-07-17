@@ -1,0 +1,38 @@
+# AMZ FBM Toolkit — installable local package (Session 5C / ACT-018, ACT-019).
+#
+# Offline-first, local-only. Install editable with NO network fetch:
+#     python -m pip install --no-deps -e .
+# then use the `amz-fbm` console command. The version is NOT duplicated here; it
+# is read from config.yaml via amz_fbm.__version__ (one authority).
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amz-fbm-toolkit"
+description = "Private, offline, localhost-only AMZ FBM listing toolkit and Windows launcher"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+# Runtime dependencies are already installed in the owner's environment. They are
+# listed here for completeness but installation uses --no-deps (no downloads).
+dependencies = [
+    "flask>=3.0",
+    "pyyaml>=6.0",
+    "pandas>=1.5",
+    "openpyxl>=3.0",
+    "pillow>=9.0",
+    "requests>=2.28",
+]
+
+[project.scripts]
+amz-fbm = "amz_fbm.cli:main"
+
+[tool.setuptools]
+# Only the launcher package is installed. The existing toolkit modules (core/,
+# listing/, dashboard/, ...) are resolved at runtime from PROJECT_ROOT via the
+# same sys.path convention the dashboard already uses — they are not repackaged.
+packages = ["amz_fbm"]
+
+[tool.setuptools.dynamic]
+version = { attr = "amz_fbm.__version__" }

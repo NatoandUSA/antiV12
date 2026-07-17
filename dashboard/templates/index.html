@@ -633,6 +633,19 @@ ccStatus();
   }catch(e){}
 })();
 
+// local install + instance panel (Session 5C / Part M) — never shows secrets
+(async()=>{
+  try{const lc=await fetch('/api/local').then(r=>r.json());
+    const on=(b,y,n)=>`<span style="color:${b?'#8fe0b4':'#9aa4ad'}">${b?y:n}</span>`;
+    const i=lc.instance||{};
+    $('#safetypanel').innerHTML+=
+      `<div style="font-weight:600;color:#c9d3dc;margin:6px 0 3px">🖥️ Local install</div>`+
+      `<div>Installed: ${on(lc.installed,'YES','no')}${lc.install_version?' · v'+esc(lc.install_version):''}</div>`+
+      `<div>Instance: ${esc(i.status||'—')} · pid ${esc(String(i.pid||'—'))} · ${esc(i.startup_mode||'')}</div>`+
+      `<div>Autostart: ${on(lc.autostart&&lc.autostart.valid,'ON','off')} · Shortcuts: ${on(lc.shortcuts&&lc.shortcuts.installed,'yes','no')}</div>`;
+  }catch(e){}
+})();
+
 // products board
 async function loadProducts(){
   const items=await fetch('/api/products').then(r=>r.json());

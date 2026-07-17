@@ -1,0 +1,220 @@
+{
+  "session": "5C",
+  "title": "Local Windows installation and lifecycle management (ACT-018, ACT-019)",
+  "scope_lock": "Installable package, CLI, single-instance manager, current-user autostart, shortcuts, safe uninstall. No Phase 6, no keyword phase 2, no Amazon API, no Seller Central automation.",
+  "status": "SESSION5C_READY_FOR_REVIEW",
+  "starting_commit": "67638df",
+  "checkpoint_tag": "session5c-checkpoint-67638df",
+  "final_commit": "SEE_FOLLOW_UP_DOCS_COMMIT",
+  "baseline": {
+    "command": "python -m unittest discover -s tests",
+    "tests": 654,
+    "result": "PASS",
+    "note": "confirmed green before any edit (43.5s)"
+  },
+  "full_suite": {
+    "command": "python -m unittest discover -s tests",
+    "tests": 747,
+    "new_tests": 93,
+    "duration_seconds": 80.5,
+    "result": "PASS"
+  },
+  "targeted_tests": {
+    "files": [
+      "tests/test_packaging_cli.py",
+      "tests/test_app_paths.py",
+      "tests/test_local_install.py",
+      "tests/test_instance_manager.py",
+      "tests/test_health_open_doctor.py",
+      "tests/test_task_scheduler.py",
+      "tests/test_shortcuts.py",
+      "tests/test_session5c_regression.py"
+    ],
+    "tests": 93,
+    "duration_seconds": 37.3,
+    "result": "PASS"
+  },
+  "session5b_regression": {
+    "files": ["tests/test_session5b_regression.py", "tests/test_healthz.py",
+              "tests/test_dashboard_offline.py"],
+    "tests": 19,
+    "result": "PASS"
+  },
+  "compile_result": {
+    "command": "python -m compileall -q listing compliance dashboard research core tests amz_fbm",
+    "result": "PASS"
+  },
+  "package_metadata": {
+    "name": "amz-fbm-toolkit",
+    "version": "2.4.0-rc2",
+    "version_authority": "config.yaml tool_version (single source; pyproject uses dynamic attr amz_fbm.__version__)",
+    "entry_point": "amz-fbm = amz_fbm.cli:main",
+    "editable_install": "python -m pip install --no-deps -e .  (verified, no network fetch)",
+    "third_party_dependencies_added": 0,
+    "cli_framework": "argparse (stdlib)"
+  },
+  "cli_commands": [
+    "amz-fbm start [--open]", "amz-fbm stop", "amz-fbm restart [--open]",
+    "amz-fbm status", "amz-fbm health", "amz-fbm open", "amz-fbm doctor",
+    "amz-fbm install-local [--shortcuts] [--autostart]",
+    "amz-fbm autostart {enable|disable|status}",
+    "amz-fbm shortcuts {create|remove|status}",
+    "amz-fbm uninstall", "amz-fbm version", "global: --json"
+  ],
+  "install_manifest_result": {
+    "path": "%LOCALAPPDATA%/AMZ-FBM-Toolkit/install-manifest.json",
+    "schema_version": "1.0",
+    "records": ["schema_version", "toolkit_version", "commit", "installed_at",
+                "package_source", "executable_path", "python_path", "runtime_root",
+                "project_root", "workspace_id", "data_preservation_policy",
+                "shortcut_paths", "scheduled_task_name", "autostart_enabled",
+                "last_health_check"],
+    "deterministic_except_timestamps": true,
+    "contains_secrets": false
+  },
+  "runtime_directory_result": {
+    "root": "%LOCALAPPDATA%/AMZ-FBM-Toolkit",
+    "subdirs": ["runtime", "logs", "config", "backups", "data", "runtime/bin"],
+    "override_for_tests": "AMZ_FBM_HOME",
+    "mutable_state_inside_package": false
+  },
+  "single_instance_result": {
+    "api": ["start_instance", "stop_instance", "restart_instance",
+            "get_instance_status", "evaluate", "wait_for_health",
+            "recover_stale_state", "verify_identity"],
+    "metadata_atomic_write": true,
+    "metadata_fields": ["schema_version", "pid", "parent_pid", "process_start_time",
+                        "instance_id", "bind_host", "bind_port", "command", "executable",
+                        "workspace", "started_at", "health_url", "runtime_policy_sha256",
+                        "version", "commit", "metadata_sha256"],
+    "identity_verification": [
+      "pid alive (ctypes OpenProcess, never os.kill on Windows)",
+      "process start time match (GetProcessTimes) rejects reused PID",
+      "port ownership via loopback socket connect",
+      "GET /healthz service == amz-fbm-toolkit",
+      "healthz pid and instance_id match runtime metadata",
+      "PID alone is never sufficient"
+    ],
+    "second_start": "ALREADY_RUNNING (no duplicate)",
+    "verified_live": true
+  },
+  "stale_state_recovery_result": {
+    "handles": ["dead pid", "reused pid", "corrupt/partial metadata JSON",
+                "missing metadata", "unclean shutdown residue"],
+    "action": "archive stale metadata to runtime/instance.stale.json; preserve logs/diagnostics; allow new start",
+    "reused_pid_never_killed": true
+  },
+  "unknown_port_owner_result": {
+    "status": "PORT_IN_USE_BY_UNKNOWN_PROCESS",
+    "never_killed_by_port_number": true,
+    "start_refuses_to_launch_second": true,
+    "stop_refuses_to_terminate": true
+  },
+  "health_verification_result": {
+    "endpoint": "GET /healthz (loopback only, bounded timeout)",
+    "identity_fields_added": ["pid", "instance_id"],
+    "non_loopback_url_rejected": true,
+    "start_success_only_after_health_and_identity": true
+  },
+  "start_stop_restart_result": {
+    "start": "detached (DETACHED_PROCESS + new process group), pythonw preferred, offline env forced, bounded startup wait, cleanup on failure",
+    "stop": "verified process tree only (taskkill /T /F /PID via shared runner), bounded, idempotent, metadata removed only after confirmed stop",
+    "restart": "verified stop then start; aborts if an unverified process holds the port",
+    "shell_true_used": false,
+    "verified_live": true
+  },
+  "autostart_task_result": {
+    "mechanism": "schtasks.exe via shared subprocess runner",
+    "task_name": "AMZ-FBM-Toolkit",
+    "trigger": "ONLOGON",
+    "run_level": "LIMITED (LeastPrivilege)",
+    "principal": "current interactive user (no /RU, never SYSTEM, never HighestAvailable)",
+    "machine_wide": false,
+    "verified_by_query_not_exit_code": true,
+    "launches": "amz-fbm start (dashboard only; never a generation job)",
+    "live_create_status": "BLOCKED_BY_SANDBOX_ACL (schtasks /Create returns Access denied in this automation environment); command shape and XML verification unit-tested with mocks + fixtures; /Query path live-verified",
+    "no_admin_required": true
+  },
+  "shortcut_result": {
+    "mechanism": "WScript.Shell via bounded PowerShell (-NoProfile -NonInteractive)",
+    "locations": "current-user Desktop + Start Menu folder 'AMZ FBM Toolkit'",
+    "shortcuts": ["Open AMZ FBM Toolkit", "Start AMZ FBM Toolkit", "Stop AMZ FBM Toolkit"],
+    "targets": "preferred interpreter (pythonw) -m amz_fbm <verb>, stable absolute path",
+    "idempotent": true,
+    "reversible": true,
+    "space_safe": true,
+    "icon_download": false,
+    "verified_live_in_temp_dirs": true
+  },
+  "doctor_result": {
+    "checks": ["python", "package", "runtime_policy", "runtime_directories",
+               "instance", "port_conflict", "healthz(loopback)", "autostart",
+               "shortcuts", "required_modules", "manifest"],
+    "network_access": false,
+    "modifies_system": false,
+    "reveals_secrets": false
+  },
+  "uninstall_preservation_result": {
+    "default": "preserve all business data",
+    "removes": ["verified running instance (stopped)", "scheduled task", "shortcuts",
+                "generated wrappers", "runtime metadata + stale archive", "package temp files"],
+    "preserves": ["repository", "runs/", "product facts", "keyword exports",
+                  "listing packages", "reports/business outputs", "owner config",
+                  "backups", "logs", "data"],
+    "data_purge_option": false,
+    "unknown_process_never_killed": true,
+    "idempotent": true,
+    "report_distinguishes_removed_preserved_failed_manual": true
+  },
+  "offline_and_loopback_regression": {
+    "bind_host_default": "127.0.0.1",
+    "zero_zero_zero_zero_rejected": true,
+    "external_ai_disabled_by_default": true,
+    "outbound_network_blocked_by_default": true,
+    "dashboard_startup_offline_and_loopback": true
+  },
+  "no_admin_result": {
+    "administrator_required": false,
+    "runs_as_system": false,
+    "installs_windows_service": false,
+    "machine_wide_task": false
+  },
+  "no_amazon_write_result": {
+    "seller_central_write_path": false,
+    "amazon_api_path": false,
+    "scanned_sources": ["core/*.py", "amz_fbm/*.py", "dashboard/app.py"],
+    "forbidden_tokens_absent": true
+  },
+  "safety_scans": {
+    "no_firewall_command": true,
+    "no_public_tunnel": true,
+    "no_kill_all_python": true,
+    "termination_targets_single_verified_pid_tree": true
+  },
+  "integration_surfaces": {
+    "reused_authorities_not_duplicated": ["core/runtime_policy.py", "core/network_policy.py",
+      "core/subprocess_runner.py", "core/diagnostics.py", "dashboard /healthz"],
+    "new_shared_path_authority": "core/app_paths.py (paths + atomic JSON + bounded log only)",
+    "dashboard_changes": ["/healthz adds pid + instance_id", "/api/local install+instance panel",
+                          "runtime panel extended"]
+  },
+  "files_created": [
+    "pyproject.toml", "amz_fbm/__init__.py", "amz_fbm/__main__.py", "amz_fbm/cli.py",
+    "core/app_paths.py", "core/instance_manager.py", "core/windows_integration.py",
+    "core/local_install.py", "tests/test_app_paths.py", "tests/test_instance_manager.py",
+    "tests/test_local_install.py", "tests/test_task_scheduler.py", "tests/test_shortcuts.py",
+    "tests/test_health_open_doctor.py", "tests/test_packaging_cli.py",
+    "tests/test_session5c_regression.py", "SESSION5C-PROOF-GATE.json",
+    "WINDOWS-LOCAL-OPERATION-GUIDE.md"
+  ],
+  "files_modified": ["dashboard/app.py", "dashboard/templates/index.html"],
+  "known_limitations": [
+    "Live schtasks /Create is blocked by this automation environment's ACL (Access denied for any parameters, including a subfolder task); the autostart command construction and XML verification are unit-tested via mocks and fixtures, and the /Query path is live-verified. On a normal interactive standard-user session the ONLOGON/LIMITED current-user task creates without admin.",
+    "Process identity probes (alive, start time, executable) use Windows ctypes; on non-Windows only liveness is available. The toolkit targets Windows.",
+    "The dashboard uses the Flask development server (single local user, loopback only) as in prior sessions; no production WSGI server is introduced.",
+    "Autostart/shortcuts require the package to be installed first (python -m pip install --no-deps -e .) so '-m amz_fbm' resolves; install-local documents this order.",
+    "No local shutdown HTTP endpoint was added; stop uses verified process-tree termination (an accepted design per the scope)."
+  ],
+  "do_not_include": "no secrets, no full private business paths, no paid exports, no business payloads",
+  "next_session": "5D — final clean-machine Release 1 certification (not started)"
+}

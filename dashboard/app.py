@@ -41,6 +41,10 @@ import runtime_policy as RP
 import network_policy as NP
 import subprocess_runner as SR
 import diagnostics as DIAG
+# Session 5C: local launcher/install authorities for the compact runtime panel.
+import instance_manager as IM
+import local_install as LI
+import windows_integration as WI
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # 64 MB uploads
@@ -51,6 +55,11 @@ app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # 64 MB uploads
 POLICY = RP.load_runtime_policy()
 START_TIME = time.time()
 SERVICE_NAME = "amz-fbm-toolkit"
+# Per-process identity so a launcher can verify THIS instance owns the port
+# (Session 5C). Set by the launcher via env; otherwise generated for a manual run.
+# It is an opaque local nonce — never a secret and safe to echo in /healthz.
+INSTANCE_ID = os.environ.get("AMZ_FBM_INSTANCE_ID") or os.urandom(8).hex()
+STARTUP_MODE = "launcher" if os.environ.get("AMZ_FBM_INSTANCE_ID") else "manual"
 
 # API key + model live ONLY in memory for this local session — never written to disk, never in code.
 # The user types their own key into their own local dashboard; Claude never sees or stores it.
@@ -958,6 +967,9 @@ def _health_payload():
         "workspace": os.path.basename(ROOT),
         "uptime_seconds": int(max(0, time.time() - START_TIME)),
         "runtime_policy_sha256": POLICY.policy_sha256,
+        # identity corroborators for a launcher (Session 5C) — never secrets
+        "pid": os.getpid(),
+        "instance_id": INSTANCE_ID,
         "debug": False,
         "last_diagnostic": (last.code if last else None),
         "checks": checks,
@@ -980,6 +992,41 @@ def api_runtime():
         "health": {"ok": health["ok"], "status": health["status"], "checks": health["checks"]},
         "last_diagnostic": (last.to_dict() if last else None),
         "version": tool_version(),
+    })
+
+
+@app.route("/api/local")
+def api_local():
+    """Installation + instance status for the runtime panel (Session 5C / Part M).
+
+    Secret-free and loopback-only. Because THIS process is the instance serving the
+    request, instance state is derived from our own health snapshot — we never issue
+    a re-entrant HTTP call to ourselves. Autostart/shortcut probes are bounded.
+    """
+    healthy, _health = _health_payload()
+    manifest = LI.read_manifest()
+    try:
+        autostart = WI.autostart_status()
+    except Exception:
+        autostart = {"installed": False, "valid": False}
+    try:
+        shortcuts = WI.shortcuts_status()
+    except Exception:
+        shortcuts = {"installed": False}
+    last = DIAG.last_event()
+    return jsonify({
+        "installed": manifest is not None,
+        "install_version": (manifest or {}).get("toolkit_version"),
+        "instance": {
+            "status": IM.RUNNING_HEALTHY if healthy else IM.RUNNING_UNHEALTHY,
+            "pid": os.getpid(),
+            "instance_id": INSTANCE_ID,
+            "startup_mode": STARTUP_MODE,
+        },
+        "autostart": {"installed": autostart.get("installed", False),
+                      "valid": autostart.get("valid", False)},
+        "shortcuts": {"installed": shortcuts.get("installed", False)},
+        "last_diagnostic": (last.code if last else None),
     })
 
 

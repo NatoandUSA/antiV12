@@ -1,0 +1,92 @@
+{
+  "session": "5B",
+  "scope": [
+    "ACT-016 offline+external-AI isolation",
+    "ACT-017 /healthz+loopback",
+    "ACT-020 subprocess timeouts/cleanup"
+  ],
+  "starting_commit": "c686adc",
+  "checkpoint_tag": "session5b-checkpoint-c686adc",
+  "final_commit": "PENDING_COMMIT",
+  "runtime_policy_defaults": {
+    "offline_only": true,
+    "external_ai_enabled": false,
+    "outbound_network_enabled": false,
+    "bind_host": "127.0.0.1",
+    "bind_port": 5000,
+    "loopback_only": true,
+    "policy_sha256": "6ba00ad363ff7ef6f848f48f21541e7436fcd9e694c10e3a1c93c5761c8774f7",
+    "is_valid": true
+  },
+  "bind_host_result": {
+    "bind_host": "127.0.0.1",
+    "loopback_only_effective": true,
+    "zero_host_fails": true,
+    "lan_host_fails": true
+  },
+  "healthz_result": {
+    "status_code": 200,
+    "ok": true,
+    "offline_only": true,
+    "external_ai_enabled": false,
+    "loopback_only": true,
+    "checks": {
+      "local_engines": "PASS",
+      "loopback_binding": "PASS",
+      "runtime_policy": "PASS",
+      "workspace_access": "PASS"
+    },
+    "runtime_policy_sha256": "6ba00ad363ff7ef6f848f48f21541e7436fcd9e694c10e3a1c93c5761c8774f7"
+  },
+  "external_ai_state": {
+    "route": "/api/models",
+    "status_code": 403,
+    "error_code": "EXTERNAL_AI_DISABLED"
+  },
+  "outbound_network_state": {
+    "default": "BLOCKED",
+    "anthropic_blocked": true,
+    "loopback_allowed": true
+  },
+  "network_denial_result": "local listing generation + auditor + copy-package pass with sockets denied (tests 16,23,24)",
+  "subprocess_timeout_proof": {
+    "timed_out": true,
+    "terminated": true,
+    "error_code": "SUBPROCESS_TIMEOUT",
+    "wall_seconds": 3.66,
+    "diagnostic": "proof-hang: TIMEOUT after 3.66s (limit 2s)"
+  },
+  "subprocess_cleanup_proof": "process-tree kill verified: orphaned grandchild never writes its delayed marker (test 38); unrelated sentinel survives (test 48)",
+  "secret_redaction_result": {
+    "command_display_redacted": true,
+    "sample": "C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -c print(1) --api-key ***REDACTED***"
+  },
+  "compile_result": "python -m compileall listing compliance dashboard research core tests -> exit 0",
+  "targeted_tests": {
+    "files": [
+      "test_runtime_policy",
+      "test_network_policy",
+      "test_subprocess_runner",
+      "test_healthz",
+      "test_dashboard_offline",
+      "test_session5b_regression"
+    ],
+    "new_test_methods": 59
+  },
+  "full_test_count": {
+    "total": 654,
+    "baseline_before": 595,
+    "net_new": 59,
+    "result": "OK",
+    "duration_seconds": 45.7
+  },
+  "amazon_seller_central_write_path": "NONE (test 59 asserts no sp-api/mws/sellingpartner/boto3 path in runtime source)",
+  "t2_determinism": "listing_generator output identical across two runs (test 58); full 595 baseline unchanged",
+  "known_limitations": [
+    "External AI remains available only behind an explicit OFFLINE_ONLY=false + EXTERNAL_AI_ENABLED=true opt-in (kept as a manual dev feature; disabled by default).",
+    "kw_expand.py Google-suggest helper is guarded by assert_outbound_allowed but remains outside the normal offline listing path.",
+    "Windows process-tree termination uses taskkill /T /F as the bounded force step; grandchild cleanup verified on this Windows host.",
+    "Session 5C scope (launcher/Task Scheduler/pyproject/CLI/installer) intentionally NOT implemented."
+  ],
+  "status": "SESSION5B_READY_FOR_REVIEW"
+}

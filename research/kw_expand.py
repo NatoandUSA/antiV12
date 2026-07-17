@@ -24,6 +24,15 @@ except Exception:
 def suggest(q):
     import requests
     url = "https://suggestqueries.google.com/complete/search"
+    # Session 5B (ACT-016): this optional research helper is the only repo-owned
+    # outbound call outside the dashboard. Route it through the shared guard so it
+    # respects OFFLINE_ONLY — offline it raises before opening any connection.
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
+        import network_policy as NP
+        NP.assert_outbound_allowed("google-suggest", url)
+    except ImportError:
+        pass
     r = requests.get(url, params={"client": "firefox", "gl": "us", "q": q},
                      headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
     r.raise_for_status()

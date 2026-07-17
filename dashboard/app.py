@@ -18,7 +18,7 @@ Run:
     python app.py
     # open http://127.0.0.1:5000
 """
-import os, sys, re, glob, json, subprocess, traceback, shutil
+import os, sys, re, glob, json, subprocess, traceback, shutil, time, functools
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template
 try:
@@ -36,15 +36,68 @@ import keyword_source_adapter as KSA
 import category_policy_registry as CPR
 import product_fact_loader as PFL
 import page_auditor as PA
+# Session 5B: shared runtime-safety authorities (offline-first, secret-safe).
+import runtime_policy as RP
+import network_policy as NP
+import subprocess_runner as SR
+import diagnostics as DIAG
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # 64 MB uploads
+
+# One shared runtime policy for every route + startup (Session 5B / ACT-016).
+# Offline-only by default: no external client is created, no route can reach the
+# Internet, and the app binds only to loopback. Loaded once at import.
+POLICY = RP.load_runtime_policy()
+START_TIME = time.time()
+SERVICE_NAME = "amz-fbm-toolkit"
 
 # API key + model live ONLY in memory for this local session — never written to disk, never in code.
 # The user types their own key into their own local dashboard; Claude never sees or stores it.
 SETTINGS = {"api_key": "", "model": ""}
 PRODUCTS_FILE = os.path.join(RUNS, "_products.json")
 ANTHROPIC_URL = "https://api.anthropic.com/v1"
+
+
+def tool_version():
+    try:
+        txt = open(os.path.join(ROOT, "config.yaml"), encoding="utf-8").read()
+        m = re.search(r'tool_version:\s*"([^"]+)"', txt)
+        return m.group(1) if m else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def git_commit():
+    """Best-effort local commit id from .git (no subprocess, no network)."""
+    try:
+        head = open(os.path.join(ROOT, ".git", "HEAD"), encoding="utf-8").read().strip()
+        if head.startswith("ref:"):
+            ref = head.split(" ", 1)[1].strip()
+            return open(os.path.join(ROOT, ".git", ref), encoding="utf-8").read().strip()[:12]
+        return head[:12]
+    except Exception:
+        return "unknown"
+
+
+def requires_external_ai(fn):
+    """Gate a route that would use external AI / the Internet. In offline mode
+    (the default) it never runs the handler — no client is created, no request is
+    made — and returns a clear, secret-free EXTERNAL_AI_DISABLED response."""
+    @functools.wraps(fn)
+    def _wrap(*a, **kw):
+        if not POLICY.external_ai_enabled:
+            DIAG.record_event(DIAG.EXTERNAL_AI_DISABLED,
+                              f"blocked external-AI route {fn.__name__!r} (offline mode)")
+            return jsonify({
+                "ok": False,
+                "status": "OFFLINE_ONLY",
+                "error_code": "EXTERNAL_AI_DISABLED",
+                "message": "External AI is disabled. The toolkit uses local "
+                           "deterministic engines.",
+            }), 403
+        return fn(*a, **kw)
+    return _wrap
 
 # ---------------------------------------------------------------- helpers
 def proj_dir(name):
@@ -54,18 +107,19 @@ def proj_dir(name):
     return d, safe
 
 def run_cli(args, cwd=ROOT, timeout=240):
+    # Route every CLI shell-out through the shared bounded runner (Session 5B /
+    # ACT-020): explicit timeout, tree-kill on hang, secret-safe, UTF-8 safe.
     if args and args[0] in ("python", "python3"):
         args = [PY] + args[1:]
-    try:
-        # Windows: children default to cp1252 on a pipe and crash printing emoji/arrows.
-        p = subprocess.run(args, capture_output=True, text=True, cwd=cwd, timeout=timeout,
-                           encoding="utf-8", errors="replace",
-                           env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-        return {"rc": p.returncode, "out": (p.stdout or "") + (p.stderr or "")}
-    except subprocess.TimeoutExpired:
-        return {"rc": -1, "out": "timed out"}
-    except Exception as e:
-        return {"rc": -1, "out": f"{e}\n{traceback.format_exc()}"}
+    stage = os.path.basename(str(args[1])) if (len(args) > 1 and str(args[1]).endswith(".py")) \
+        else (os.path.basename(str(args[0])) if args else "cli")
+    r = SR.run_subprocess(list(args), cwd=cwd, timeout_seconds=timeout, stage_name=stage,
+                          allowed_exit_codes=tuple(range(0, 256)))
+    if r.error_code == DIAG.SUBPROCESS_START_FAILED:
+        return {"rc": -1, "out": r.stderr or r.diagnostic_summary}
+    if r.timed_out:
+        return {"rc": -1, "out": r.diagnostic_summary}
+    return {"rc": r.exit_code, "out": (r.stdout or "") + (r.stderr or "")}
 
 def parse_batches_meta(folder):
     """Phase 2 batch metadata from ASIN-BATCHES.json (authoritative). -> [] if absent."""
@@ -673,7 +727,11 @@ def api_products_delete():
     return jsonify({"ok": True, "products": items})
 
 # ---------------------------------------------------------------- settings + AI auto-build
+# These routes are the ONLY external-AI surface. They are gated by @requires_external_ai,
+# so in offline mode (the default) they never create a client or make a request — they
+# return EXTERNAL_AI_DISABLED. The normal deterministic workflow uses none of them.
 @app.route("/api/settings", methods=["POST"])
+@requires_external_ai
 def api_settings():
     data = request.get_json(force=True)
     if "api_key" in data:
@@ -683,12 +741,14 @@ def api_settings():
     return jsonify({"ok": True, "has_key": bool(SETTINGS["api_key"]), "model": SETTINGS["model"]})
 
 @app.route("/api/models")
+@requires_external_ai
 def api_models():
     if not requests:
         return jsonify({"ok": False, "error": "the 'requests' package is not installed"}), 500
     if not SETTINGS["api_key"]:
         return jsonify({"ok": False, "error": "enter your Anthropic API key first"}), 400
     try:
+        NP.assert_outbound_allowed("anthropic-models", ANTHROPIC_URL, policy=POLICY)
         r = requests.get(ANTHROPIC_URL + "/models",
                          headers={"x-api-key": SETTINGS["api_key"], "anthropic-version": "2023-06-01"},
                          timeout=30)
@@ -740,6 +800,7 @@ def _extract_json(text):
         return None
 
 @app.route("/api/build", methods=["POST"])
+@requires_external_ai
 def api_build():
     """Auto-build the listing via the user's Anthropic key, write listing.json, return preview."""
     if not requests:
@@ -754,6 +815,7 @@ def api_build():
     folder, _ = proj_dir(name)
     prompt = listing_json_prompt(folder, seed)
     try:
+        NP.assert_outbound_allowed("anthropic-messages", ANTHROPIC_URL, policy=POLICY)
         r = requests.post(ANTHROPIC_URL + "/messages",
             headers={"x-api-key": SETTINGS["api_key"], "anthropic-version": "2023-06-01",
                      "content-type": "application/json"},
@@ -834,10 +896,12 @@ def api_cc_status():
     return jsonify({"available": bool(path), "path": path or ""})
 
 @app.route("/api/build_cc", methods=["POST"])
+@requires_external_ai
 def api_build_cc():
     """Build the listing using the local Claude Code CLI (included in the user's Pro/Max plan).
     No API key, no per-token charge — it uses the subscription the user is already logged into.
-    We only shell out to a tool the user installed themselves; we never automate claude.ai in a browser."""
+    We only shell out to a tool the user installed themselves; we never automate claude.ai in a browser.
+    Gated by @requires_external_ai: unavailable while OFFLINE_ONLY (the default)."""
     claude = shutil.which("claude")
     if not claude:
         return jsonify({"ok": False, "error": "Claude Code CLI not found. Install it and sign in with your Max plan "
@@ -847,15 +911,14 @@ def api_build_cc():
     seed = (data.get("seed") or "").strip()
     folder, _ = proj_dir(name)
     prompt = listing_json_prompt(folder, seed) + "\n\nOutput the JSON object only. Do not use any tools."
-    try:
-        # -p / --print = non-interactive: prints the answer and exits. Uses the signed-in subscription.
-        p = subprocess.run([claude, "-p", prompt], capture_output=True, text=True, cwd=folder, timeout=300,
-                           encoding="utf-8", errors="replace")
-        text = (p.stdout or "").strip() or (p.stderr or "")
-    except subprocess.TimeoutExpired:
+    # -p / --print = non-interactive: prints the answer and exits. Bounded shared runner.
+    r = SR.run_subprocess([claude, "-p", prompt], cwd=folder, timeout_seconds=300,
+                          stage_name="claude-code-build", allowed_exit_codes=tuple(range(0, 256)))
+    if r.timed_out:
         return jsonify({"ok": False, "error": "Claude Code timed out (300s)."}), 400
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    if r.error_code == DIAG.SUBPROCESS_START_FAILED:
+        return jsonify({"ok": False, "error": r.stderr or r.diagnostic_summary}), 500
+    text = (r.stdout or "").strip() or (r.stderr or "")
     listing = _extract_json(text)
     if not listing:
         return jsonify({"ok": False, "error": "Claude Code did not return valid JSON", "raw": text[:600]}), 400
@@ -867,7 +930,71 @@ def api_build_cc():
                         "field_errors": errs, "listing": listing}), 400
     return jsonify({"ok": True, "listing": listing, "engine": "claude-code"})
 
+# ---------------------------------------------------------------- health + runtime safety
+def _health_payload():
+    """Deterministic, secret-free, network-free local health snapshot (ACT-017)."""
+    checks = {
+        "runtime_policy": "PASS" if POLICY.is_valid else "FAIL",
+        "loopback_binding": "PASS" if POLICY.loopback_only_effective else "FAIL",
+        "local_engines": "PASS" if all(m in sys.modules for m in
+                          ("keyword_source_adapter", "category_policy_registry",
+                           "product_fact_loader", "page_auditor")) else "FAIL",
+        "workspace_access": "PASS" if os.access(ROOT, os.R_OK) else "FAIL",
+    }
+    healthy = all(v == "PASS" for v in checks.values())
+    last = DIAG.last_event()
+    return healthy, {
+        "ok": healthy,
+        "service": SERVICE_NAME,
+        "status": "healthy" if healthy else "unhealthy",
+        "offline_only": POLICY.offline_only,
+        "external_ai_enabled": POLICY.external_ai_enabled,
+        "outbound_network_enabled": POLICY.outbound_network_enabled,
+        "loopback_only": POLICY.loopback_only_effective,
+        "bind_host": POLICY.bind_host,
+        "bind_port": POLICY.bind_port,
+        "version": tool_version(),
+        "commit": git_commit(),
+        "workspace": os.path.basename(ROOT),
+        "uptime_seconds": int(max(0, time.time() - START_TIME)),
+        "runtime_policy_sha256": POLICY.policy_sha256,
+        "debug": False,
+        "last_diagnostic": (last.code if last else None),
+        "checks": checks,
+    }
+
+
+@app.route("/healthz")
+def healthz():
+    healthy, payload = _health_payload()
+    return jsonify(payload), (200 if healthy else 503)
+
+
+@app.route("/api/runtime")
+def api_runtime():
+    """Compact runtime-safety panel data for the dashboard. Secret-free."""
+    _, health = _health_payload()
+    last = DIAG.last_event()
+    return jsonify({
+        "policy": POLICY.to_dict(),
+        "health": {"ok": health["ok"], "status": health["status"], "checks": health["checks"]},
+        "last_diagnostic": (last.to_dict() if last else None),
+        "version": tool_version(),
+    })
+
+
 if __name__ == "__main__":
     os.makedirs(RUNS, exist_ok=True)
-    print("AMZ FBM cockpit -> http://127.0.0.1:5000   (local only; never touches Seller Central)")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    # Fail fast on an unsafe/invalid runtime policy — never silently rewrite the
+    # bind address to loopback (Session 5B / ACT-016, Part D).
+    if not POLICY.is_valid:
+        print("REFUSING TO START — invalid runtime policy:", file=sys.stderr)
+        for err in POLICY.validation_errors:
+            print("  - " + err, file=sys.stderr)
+        sys.exit(2)
+    for w in POLICY.warnings:
+        print("[runtime-policy] " + w, file=sys.stderr)
+    print(f"AMZ FBM cockpit -> http://{POLICY.bind_host}:{POLICY.bind_port}   "
+          f"(offline-only={POLICY.offline_only}; external-AI={POLICY.external_ai_enabled}; "
+          f"never touches Seller Central)")
+    app.run(host=POLICY.bind_host, port=POLICY.bind_port, debug=False)

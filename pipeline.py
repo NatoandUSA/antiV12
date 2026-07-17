@@ -22,6 +22,10 @@ import status as S
 import gate_engine as GE
 import manifest as M
 import hashing
+try:                              # Session 5B: bounded, tree-killing subprocess runner
+    import subprocess_runner as SR
+except Exception:                 # pragma: no cover - keep pipeline usable if core is absent
+    SR = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 def tool(name, sub): return os.path.join(HERE, sub, name)
@@ -108,11 +112,22 @@ def read_file_gate(folder, gate_id, fname, pass_values):
 
 PY = sys.executable or "python3"   # v2.3.4-RC1 (P0.7): use the running interpreter (Windows-safe)
 
-def run(cmd):
+def run(cmd, timeout=600):
     # accept commands that start with a literal "python3"/"python" and normalize to sys.executable
     if cmd and cmd[0] in ("python3", "python"):
         cmd = [PY] + cmd[1:]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    if SR is not None:
+        # Session 5B (ACT-020): explicit timeout, tree-kill on hang, secret-safe.
+        stage = os.path.basename(str(cmd[1])) if (len(cmd) > 1 and str(cmd[1]).endswith(".py")) \
+            else os.path.basename(str(cmd[0]))
+        r = SR.run_subprocess(list(cmd), timeout_seconds=timeout, stage_name=stage,
+                              allowed_exit_codes=tuple(range(0, 256)))
+        if r.timed_out:
+            return -1, r.diagnostic_summary
+        if r.error_code == "SUBPROCESS_START_FAILED":
+            return -1, r.stderr or r.diagnostic_summary
+        return r.exit_code, (r.stdout or "") + (r.stderr or "")
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 _IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif")

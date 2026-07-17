@@ -6,18 +6,28 @@ identity (P0.3), creative bundle completeness (P0.4), final evidence completenes
 IP on listing.json (P0.6), sys.executable (P0.7), docs (P0.8), one next-action engine (P0.9),
 plus a full end-to-end shadow run with no manifest editing.
 """
-import os, sys, json, tempfile, subprocess, unittest
+import os, sys, json, tempfile, unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for d in ("core", "creative", "compliance"):
     sys.path.insert(0, os.path.join(ROOT, d))
 import status as S, gate_engine as GE, manifest as M, hashing
+import subprocess_runner as SR
 import creative_edge as CE
 from PIL import Image
 
+# Session 5B (ACT-020): every shell-out below goes through the shared bounded runner
+# so a hung stage fails fast with the slow command + elapsed time instead of stalling
+# the whole suite. Per-command timeout is generous enough for a real pipeline stage.
+_SH_TIMEOUT = 180
+
 def sh(*args):
-    p = subprocess.run([sys.executable, "pipeline.py", *args], capture_output=True, text=True, cwd=ROOT,
-                       encoding="utf-8", errors="replace", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-    return p.returncode, p.stdout + p.stderr
+    stage = "pipeline " + " ".join(str(a) for a in args[1:])[:60]
+    r = SR.run_subprocess([sys.executable, "pipeline.py", *args], cwd=ROOT,
+                          timeout_seconds=_SH_TIMEOUT, stage_name=stage,
+                          allowed_exit_codes=tuple(range(0, 256)))
+    if r.timed_out:
+        raise AssertionError(f"{r.diagnostic_summary} :: {r.command_display}")
+    return r.exit_code, (r.stdout or "") + (r.stderr or "")
 
 def img(path, size=(2000, 2000), color=(20, 60, 90)):
     Image.new("RGB", size, color).save(path); return path
@@ -221,7 +231,9 @@ class EndToEndShadow(unittest.TestCase):
                    "main_image_clarity": 2, "thumbnail_clarity": 2, "product_fill": 2,
                    "personalization_readable": 2, "mobile_readable": 2, "accuracy_verified": 2},
                   open(os.path.join(d, "THUMBNAIL-REVIEW.json"), "w"))
-        subprocess.run([sys.executable, "creative/creative_edge.py", d], capture_output=True, cwd=ROOT)
+        SR.run_subprocess([sys.executable, "creative/creative_edge.py", d], cwd=ROOT,
+                          timeout_seconds=_SH_TIMEOUT, stage_name="creative_edge",
+                          allowed_exit_codes=tuple(range(0, 256)))
         sh(d, "Nurse")
         sh(d, "--approve-main-image", "--asset", "main.png", "--by", "owner")
         sh(d, "--approve-creative", "--by", "owner")

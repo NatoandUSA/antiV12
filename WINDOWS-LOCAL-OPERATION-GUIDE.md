@@ -1,11 +1,36 @@
 # AMZ FBM Toolkit — Windows Local Operation Guide
 
-A private, **offline, localhost-only** listing toolkit for one owner on one Windows
-PC. It never connects to Amazon or Seller Central, never opens a firewall port,
-never needs administrator rights, and never downloads anything during normal use.
-You bridge results to Seller Central **manually**.
+A private, **localhost-only** listing toolkit for one owner on one Windows PC. The one
+hard line is that **it never operates inside your Amazon account** — no Seller Central
+login, no Amazon credentials, no Amazon API, no browser automation, no account reports,
+no writes. It may use approved **open-web and third-party research** services
+(`CONNECTED_RESEARCH`), or run **fully local** (`LOCAL_SAFE`) when you prefer. Either way
+the dashboard binds only to `127.0.0.1`, never opens a firewall port, and never needs
+administrator rights. You bridge results to Seller Central **manually**.
 
 Everything below runs as your normal Windows user.
+
+## Connectivity (Session 6A.1)
+
+```
+amz-fbm connectivity status                  # current mode + capabilities + Amazon boundary
+amz-fbm connectivity mode connected-research # approved open web + research services
+amz-fbm connectivity mode local-safe         # loopback only (fully local)
+amz-fbm connectivity capabilities            # enabled + permanently-blocked capabilities
+amz-fbm connectivity amazon-boundary         # the permanent "NOT AVAILABLE" Amazon boundary
+amz-fbm doctor                               # read-only health incl. connectivity + boundary
+```
+
+- The toolkit may use the open web and approved research services; it **never** operates
+  inside your Amazon account. Seller Central access does not exist and Amazon credentials
+  cannot be configured.
+- Reading **public** Amazon documentation is a separate, occasional, human-triggered,
+  read-only feature (off by default). **Amazon product/search scraping is not supported.**
+- **External AI is optional** and must be explicitly enabled with an approved provider — an
+  API key alone activates nothing.
+- Connected information stays **advisory** until you verify it. Product facts, claim
+  evidence, and the PageAuditor remain authoritative. You remain the only bridge to Seller
+  Central.
 
 ---
 

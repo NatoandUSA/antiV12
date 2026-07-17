@@ -1,9 +1,14 @@
 # AMZ FBM Toolkit — Owner Operating Checklist (Release 1)
 
-Private, offline, localhost-only. It never connects to Amazon or Seller Central,
-never automates your account, and binds only to `127.0.0.1`.
+Private and localhost-only. The one hard line: **it never operates inside your Amazon
+account** — no Seller Central login, no Amazon credentials, no Amazon API, no browser
+automation, no account reports, no writes. It may use approved open-web / research services
+(`CONNECTED_RESEARCH`) or run fully local (`LOCAL_SAFE`); either way it binds only to
+`127.0.0.1`. Check or change the mode with `amz-fbm connectivity status` /
+`amz-fbm connectivity mode connected-research|local-safe`, and prove the boundary with
+`amz-fbm connectivity amazon-boundary`.
 
-## One-time setup (two supported offline modes)
+## One-time setup (two supported local-install modes)
 ```
 # Mode 1 — standard editable install (needs setuptools already present):
 python -m pip install --no-deps --no-index --no-build-isolation -e .
@@ -13,8 +18,10 @@ python -m amz_fbm bootstrap-offline --source . --verify
 
 amz-fbm install-local --shortcuts
 ```
-> Both modes are fully offline. Mode 2 registers the source via a toolkit-owned
-> `.pth` + `amz-fbm.cmd` and needs no setuptools, no build backend, and no admin.
+> Both install modes need no network, no setuptools requirement for Mode 2, and no admin.
+> Mode 2 registers the source via a toolkit-owned `.pth` + `amz-fbm.cmd`. Neither install
+> mode grants any Amazon-account access — that boundary is permanent in every connectivity
+> mode.
 
 ## Daily use
 | Action | Command |

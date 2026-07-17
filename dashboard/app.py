@@ -962,6 +962,25 @@ def _health_payload():
         "loopback_only": POLICY.loopback_only_effective,
         "bind_host": POLICY.bind_host,
         "bind_port": POLICY.bind_port,
+        # -- connectivity model (Session 6A.1) — the permanent Amazon boundary is
+        #    reported here so a health check always proves account isolation. No
+        #    external call is made to build this payload.
+        "connectivity_mode": POLICY.connectivity_mode,
+        "connected_research": POLICY.connected_research,
+        "local_safe": POLICY.local_safe,
+        "public_web_research_enabled": POLICY.public_web_research_enabled,
+        "external_ai_allowed": POLICY.external_ai_allowed,
+        "deterministic_local_fallback_enabled": POLICY.deterministic_local_fallback_enabled,
+        "dashboard_loopback_only": POLICY.dashboard_loopback_only,
+        "amazon_account_isolation": "PASS" if POLICY.amazon_account_isolation else "FAIL",
+        "amazon_credential_store_available": POLICY.amazon_credential_store_available,
+        "amazon_seller_central_enabled": POLICY.amazon_seller_central_enabled,
+        "amazon_authenticated_access_enabled": POLICY.amazon_authenticated_access_enabled,
+        "amazon_api_enabled": POLICY.amazon_api_enabled,
+        "amazon_browser_automation_enabled": POLICY.amazon_browser_automation_enabled,
+        "amazon_account_report_pull_enabled": POLICY.amazon_account_report_pull_enabled,
+        "amazon_network_writes_enabled": POLICY.amazon_network_writes_enabled,
+        "connectivity_policy_sha256": POLICY.connectivity_policy_sha256,
         "version": tool_version(),
         "commit": git_commit(),
         "workspace": os.path.basename(ROOT),
@@ -989,6 +1008,17 @@ def api_runtime():
     last = DIAG.last_event()
     return jsonify({
         "policy": POLICY.to_dict(),
+        "connectivity": POLICY.connectivity_to_dict(),
+        "amazon_boundary": {
+            "amazon_account_isolation": POLICY.amazon_account_isolation,
+            "amazon_credential_store_available": POLICY.amazon_credential_store_available,
+            "amazon_seller_central_enabled": POLICY.amazon_seller_central_enabled,
+            "amazon_authenticated_access_enabled": POLICY.amazon_authenticated_access_enabled,
+            "amazon_api_enabled": POLICY.amazon_api_enabled,
+            "amazon_browser_automation_enabled": POLICY.amazon_browser_automation_enabled,
+            "amazon_account_report_pull_enabled": POLICY.amazon_account_report_pull_enabled,
+            "amazon_network_writes_enabled": POLICY.amazon_network_writes_enabled,
+        },
         "health": {"ok": health["ok"], "status": health["status"], "checks": health["checks"]},
         "last_diagnostic": (last.to_dict() if last else None),
         "version": tool_version(),

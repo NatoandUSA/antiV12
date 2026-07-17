@@ -529,17 +529,33 @@ def _spawn_dashboard(policy, instance_id, env=None):
     root = project_root()
     script = os.path.join(root, "dashboard", "app.py")
     exe = preferred_python()
+    # Honor the persisted connectivity choice (Session 6A.1). The dashboard is ALWAYS
+    # loopback-only and the Amazon-account boundary is immutable regardless of mode;
+    # a connected-research install simply lets the panel/health reflect that state.
+    try:
+        import connectivity_config as _CC
+        conn = _CC.read_connectivity_config(env)
+    except Exception:
+        conn = None
+    mode = (conn or {}).get("connectivity_mode") if conn else RP.LOCAL_SAFE
+    if mode not in RP.CONNECTIVITY_MODES:
+        mode = RP.LOCAL_SAFE
+    connected = mode == RP.CONNECTED_RESEARCH
+    ai_on = bool((conn or {}).get("external_ai_enabled")) and connected
     child_env = dict(os.environ)
     child_env.update({
         "BIND_HOST": policy.bind_host,
         "BIND_PORT": str(policy.bind_port),
-        "OFFLINE_ONLY": "true",
-        "EXTERNAL_AI_ENABLED": "false",
+        "CONNECTIVITY_MODE": mode,
+        "OFFLINE_ONLY": "false" if connected else "true",
+        "EXTERNAL_AI_ENABLED": "true" if ai_on else "false",
         "OUTBOUND_NETWORK_ENABLED": "false",
         "LOOPBACK_ONLY": "true",
         "AMZ_FBM_INSTANCE_ID": instance_id,
         "PYTHONIOENCODING": "utf-8",
     })
+    if connected and (conn or {}).get("external_ai_provider"):
+        child_env["EXTERNAL_AI_PROVIDER"] = str(conn["external_ai_provider"])
     log_path = os.path.join(AP.logs_dir(env), "dashboard.log")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     if os.path.exists(log_path) and os.path.getsize(log_path) >= 2_000_000:

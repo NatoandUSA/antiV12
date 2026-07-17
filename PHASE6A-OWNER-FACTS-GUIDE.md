@@ -1,8 +1,13 @@
 # Phase 6A — Owner Facts Guide
 
 Phase 6A builds **one trustworthy product workspace** before any keyword allocation or listing copy
-is written. It runs **locally and offline**. It never connects to Amazon or Seller Central, never uses
-external AI, and never publishes anything. You remain the only manual bridge to Seller Central.
+is written. It is a **deterministic local computation** that needs no network and requests no
+enrichment — its outputs are byte-identical whether the toolkit is in `CONNECTED_RESEARCH`,
+`LOCAL_SAFE`, or `TEST_DENY_EXTERNAL` (verified in `tests/test_phase6a_three_modes.py`). It never
+operates inside your Amazon account, never uses external AI, and never publishes anything. Any
+connected research is advisory only and never becomes a verified product fact automatically —
+product facts, claim evidence, and the PageAuditor remain authoritative. You remain the only manual
+bridge to Seller Central.
 
 ## What Phase 6A does
 

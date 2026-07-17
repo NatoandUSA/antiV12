@@ -17,6 +17,7 @@ import shutil
 import sys
 
 import app_paths as AP
+import connectivity_config as CC
 import diagnostics as D
 import instance_manager as IM
 import offline_bootstrap as OB
@@ -170,6 +171,10 @@ def install_local(env=None, shortcuts=False, autostart=False, policy=None):
     policy = policy if policy is not None else RP.load_runtime_policy()
     created_dirs = AP.ensure_dirs(env)
     cfg = write_local_config(env)
+    # Session 6A.1 — a new installation defaults to CONNECTED_RESEARCH (open web +
+    # approved research), while the permanent Amazon-account boundary stays immutable.
+    # A previous connectivity config is backed up before any replacement.
+    connectivity = CC.ensure_new_install_defaults(env)
     wrappers = WI.write_wrappers(env)
 
     shortcut_result = None
@@ -203,6 +208,7 @@ def install_local(env=None, shortcuts=False, autostart=False, policy=None):
         "created_dirs": created_dirs,
         "local_config": cfg["path"],
         "config_backed_up": cfg["backed_up"],
+        "connectivity_config": connectivity.get("path"),
         "wrappers": wrappers,
         "shortcuts": shortcut_result,
         "autostart": autostart_result,
@@ -337,6 +343,49 @@ def doctor(env=None, policy=None):
         "loopback_only_effective": policy.loopback_only_effective,
         "bind_port": policy.bind_port,
         "errors": list(policy.validation_errors),
+    }
+
+    # -- connectivity model + permanent Amazon-account boundary (Session 6A.1) --
+    # Read-only, no network, no provider contact — reflects the persisted choice.
+    try:
+        cpol = CC.load_policy(env=env)
+    except Exception:
+        cpol = policy
+    checks["connectivity"] = {
+        "connectivity_mode": cpol.connectivity_mode,
+        "policy_valid": cpol.is_valid,
+        "public_web_research_enabled": cpol.public_web_research_enabled,
+        "public_policy_research_enabled": cpol.public_policy_research_enabled,
+        "amazon_public_documentation_enabled": cpol.amazon_public_documentation_enabled,
+        "third_party_data_enabled": cpol.third_party_data_enabled,
+        "market_data_enabled": cpol.market_data_enabled,
+        "supplier_connections_enabled": cpol.supplier_connections_enabled,
+        "external_ai_allowed": cpol.external_ai_allowed,
+        "external_ai_enabled": cpol.external_ai_enabled,
+        "external_ai_provider": cpol.external_ai_provider,
+        "toolkit_update_discovery_enabled": cpol.toolkit_update_discovery_enabled,
+        "deterministic_local_fallback_enabled": cpol.deterministic_local_fallback_enabled,
+        "dashboard_loopback_only": cpol.dashboard_loopback_only,
+        "migration_warnings": list(cpol.migration_warnings),
+        "connectivity_policy_sha256": cpol.connectivity_policy_sha256,
+    }
+    checks["amazon_boundary"] = {
+        "amazon_account_isolation": cpol.amazon_account_isolation,
+        "amazon_credential_store_available": cpol.amazon_credential_store_available,
+        "amazon_seller_central_enabled": cpol.amazon_seller_central_enabled,
+        "amazon_authenticated_access_enabled": cpol.amazon_authenticated_access_enabled,
+        "amazon_api_enabled": cpol.amazon_api_enabled,
+        "amazon_browser_automation_enabled": cpol.amazon_browser_automation_enabled,
+        "amazon_account_report_pull_enabled": cpol.amazon_account_report_pull_enabled,
+        "amazon_network_writes_enabled": cpol.amazon_network_writes_enabled,
+        "all_blocked": (cpol.amazon_account_isolation
+                        and not cpol.amazon_credential_store_available
+                        and not cpol.amazon_seller_central_enabled
+                        and not cpol.amazon_authenticated_access_enabled
+                        and not cpol.amazon_api_enabled
+                        and not cpol.amazon_browser_automation_enabled
+                        and not cpol.amazon_account_report_pull_enabled
+                        and not cpol.amazon_network_writes_enabled),
     }
 
     dirs = {}

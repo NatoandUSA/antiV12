@@ -1,0 +1,32 @@
+{
+  "document": "docs/CONNECTIVITY-POLICY.md",
+  "document_version": "connectivity-policy-v1",
+  "policy_sha256": "df6d61b26abc9b5818f33af85dcf4aba17d5d5bff40472a8b77f18edc2be53bb",
+  "approval_state": "OWNER_APPROVED",
+  "adopted_session": "6A.1",
+  "superseded_offline_wording": "The prior \"offline-only / never connects to the internet\" identity is superseded. The toolkit is connected to the open world and isolated from the owner's Amazon account.",
+  "correct_phrasing": "The toolkit never operates inside your Amazon account. It may use approved open-web and third-party research services.",
+  "permanent_amazon_boundary": {
+    "amazon_account_isolation": true,
+    "amazon_credential_store_available": false,
+    "amazon_seller_central_enabled": false,
+    "amazon_authenticated_access_enabled": false,
+    "amazon_api_enabled": false,
+    "amazon_browser_automation_enabled": false,
+    "amazon_account_report_pull_enabled": false,
+    "amazon_network_writes_enabled": false,
+    "note": "Immutable in every connectivity mode; no env var, config field, flag, plugin, API key, or dashboard action can enable any of these."
+  },
+  "connectivity_modes": ["CONNECTED_RESEARCH", "LOCAL_SAFE", "TEST_DENY_EXTERNAL"],
+  "new_install_default_mode": "CONNECTED_RESEARCH",
+  "current_implementation_stage": "Session 6A.1 — policy boundary + capability model + approved HTTP client + CLI/healthz/doctor/dashboard reporting. No live research adapter, external-AI generation workflow, update installer, or public-documentation reader is built yet; those remain future, owner-approved work.",
+  "authoritative_modules": {
+    "runtime_policy": "core/runtime_policy.py",
+    "network_policy": "core/network_policy.py",
+    "approved_http_client": "core/approved_http_client.py",
+    "connectivity_config": "core/connectivity_config.py",
+    "amazon_public_documentation_contract": "core/amazon_docs_contract.py",
+    "update_discovery_boundary": "core/update_discovery.py",
+    "research_provenance": "core/provenance.py"
+  }
+}

@@ -139,7 +139,7 @@
 </style></head><body>
 <div class="app">
  <aside class="side">
-   <div class="brand">AMZ&nbsp;<span>FBM</span> Cockpit<small id="verline">local · offline</small></div>
+   <div class="brand">AMZ&nbsp;<span>FBM</span> Cockpit<small id="verline">local · Amazon-isolated</small></div>
    <div id="modstatus" style="font-size:11px;color:#8a97a4;margin-top:6px"></div>
    <div id="safetypanel" style="font-size:11px;color:#8a97a4;margin-top:8px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px"></div>
    <div class="steps" id="steps">
@@ -608,7 +608,7 @@ ccStatus();
 // version + module availability (P0-01)
 (async()=>{
   try{const v=await fetch('/api/version').then(r=>r.json());
-    $('#verline').textContent='v'+v.version+' · local · offline';
+    $('#verline').textContent='v'+v.version+' · local · Amazon-isolated';
     const rows=Object.entries(v.modules).map(([k,st])=>{
       const c=st==='VERIFIED'?'#8fe0b4':st==='FAILED'?'#ff8f8f':'#c9a35b';
       return `<div><span style="color:${c}">●</span> ${k}: ${st}</div>`;}).join('');
@@ -619,17 +619,28 @@ ccStatus();
 // runtime-safety panel (Session 5B / ACT-016,017) — never shows secrets/keys
 (async()=>{
   try{const rt=await fetch('/api/runtime').then(r=>r.json());
-    const p=rt.policy||{}, h=rt.health||{};
+    const p=rt.policy||{}, h=rt.health||{}, c=rt.connectivity||{};
     const on=(b,y,n)=>`<span style="color:${b?'#8fe0b4':'#ff8f8f'}">${b?y:n}</span>`;
+    const cap=(b)=>`<span style="color:${b?'#8fe0b4':'#9aa4ad'}">${b?'on':'off'}</span>`;
+    const na=`<span style="color:#8fe0b4">NOT AVAILABLE</span>`;
     const hz=(h.ok?'<span style="color:#8fe0b4">healthy</span>':'<span style="color:#ff8f8f">unhealthy</span>');
+    const connected=c.connectivity_mode==='CONNECTED_RESEARCH';
     $('#safetypanel').innerHTML=
-      `<div style="font-weight:600;color:#c9d3dc;margin-bottom:3px">🔒 Runtime safety</div>`+
-      `<div>Offline mode: ${on(p.offline_only,'ON','OFF')}</div>`+
-      `<div>External AI: ${on(!p.external_ai_enabled,'DISABLED','ENABLED')}</div>`+
-      `<div>Outbound network: ${on(!p.outbound_network_enabled,'BLOCKED','ALLOWED')}</div>`+
+      `<div style="font-weight:600;color:#c9d3dc;margin-bottom:3px">🌐 Connectivity</div>`+
+      `<div>Mode: <b style="color:${connected?'#8fe0b4':'#c9a35b'}">${connected?'Connected Research':'Local Safe'}</b></div>`+
+      `<div>Public web research: ${cap(c.public_web_research_enabled)} · Official Amazon docs: ${cap(c.amazon_public_documentation_enabled)}</div>`+
+      `<div>Third-party: ${cap(c.third_party_data_enabled)} · Market: ${cap(c.market_data_enabled)} · Supplier: ${cap(c.supplier_connections_enabled)}</div>`+
+      `<div>External AI: ${cap(c.external_ai_enabled)} · Update discovery: ${cap(c.toolkit_update_discovery_enabled)} · Local fallback: ${cap(c.deterministic_local_fallback_enabled)}</div>`+
+      `<div>Dashboard exposure: ${on(c.dashboard_loopback_only,'localhost only','EXPOSED')}</div>`+
+      `<div style="font-weight:600;color:#c9d3dc;margin:6px 0 3px">🛑 Amazon account boundary</div>`+
+      `<div>Amazon account access: ${na}</div>`+
+      `<div>Seller Central access: ${na}</div>`+
+      `<div>Amazon credentials: ${na}</div>`+
+      `<div>Amazon API: ${na} · Browser automation: ${na}</div>`+
+      `<div>Amazon account reports: ${na} · Amazon writes: ${na}</div>`+
+      `<div style="font-weight:600;color:#c9d3dc;margin:6px 0 3px">🔒 Runtime safety</div>`+
       `<div>Bind: ${p.bind_host}:${p.bind_port} ${on(p.loopback_only_effective,'(loopback)','(UNSAFE)')}</div>`+
-      `<div>Health: ${hz}</div>`+
-      `<div>Last event: ${rt.last_diagnostic?rt.last_diagnostic.code:'—'}</div>`;
+      `<div>Health: ${hz} · Last event: ${rt.last_diagnostic?rt.last_diagnostic.code:'—'}</div>`;
   }catch(e){}
 })();
 

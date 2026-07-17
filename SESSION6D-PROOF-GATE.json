@@ -1,0 +1,163 @@
+{
+  "session": "6D",
+  "session_name": "EVIDENCE-GATED A+ CONTENT ASSEMBLY",
+  "starting_commit": "2924950",
+  "final_commit": null,
+  "checkpoint_tag": "phase6d-checkpoint-2924950",
+  "baseline_test_total": 1264,
+
+  "preflight_result": "PASS",
+  "phase5_release1_status": "RELEASE1_CERTIFIED",
+  "corrected_phase6a_dependency_result": "VERIFIED",
+  "atomic_claim_result": "VERIFIED (schema 1.1.0, atomicity_ok=true, only recipient VERIFIED)",
+  "connectivity_policy_status": "OWNER_APPROVED (amazon boundary immutable/closed in all modes)",
+  "duplicate_aplus_authority_result": "NONE (build_aplus + APlusResult exist only in listing/aplus_builder.py)",
+
+  "existing_aplus_builder": "listing/aplus_builder.py :: build_aplus / APlusResult",
+  "existing_module_registry": "listing/aplus_module_registry.py",
+  "legacy_quarantined": "listing/a_plus_templates.py (replaced by aplus_builder; not used)",
+  "phase6d_assembler": "production/aplus_assembly.py",
+  "phase6d_assembler_api": [
+    "load_phase6d_dependencies", "resolve_aplus_capability", "assemble_basic_aplus",
+    "assemble_premium_aplus_draft", "build_aplus_asset_manifest", "run_aplus_page_audit",
+    "run_aplus_compliance", "assemble_phase6d", "write_phase6d_artifacts", "verify_phase6d_artifacts"
+  ],
+
+  "proof_workspace": "runs/T2 (paid, gitignored; read-only inputs, artifacts written under phase6/6D)",
+  "product_id": "T2",
+  "product_type": "sweatshirt",
+  "audience": "nurses",
+  "category": "apparel",
+  "keyword_source_filename": "MASTER-KEYWORDS-LEAN.json",
+  "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "tier_a": 74,
+  "tier_b": 378,
+  "product_facts_sha256": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274",
+  "claim_evidence_sha256": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
+  "phase6a_manifest_sha256": "e7580d845c92f4b11b16b00861e64ceb76a78a521dd478a18ae2960db51afec2",
+  "optional_phase6b_manifest_sha256": "437efa13758760fa557e3bbf22d6194c31a8b3ed241bbae5e4c66e99e63e6d7c",
+  "verified_concepts": ["recipient"],
+
+  "aplus_capability": "UNKNOWN_A_PLUS_CAPABILITY",
+  "aplus_capability_source": "aplus_module_registry.DEFAULT_CAPABILITY (owner A+ eligibility unstated; confirmed UNKNOWN by the Phase 6B A+ advisory)",
+  "aplus_capability_verified": false,
+  "capability_guessed": false,
+  "phase6b_aplus_allocation_result": "EMPTY / OWNER_FACT_REQUIRED (advisory only; no backfill performed)",
+
+  "basic_module_count": 5,
+  "basic_module_keys": [
+    "HERO_EMBROIDERY_PROOF", "PERSONALIZATION_GALLERY", "HOW_TO_CUSTOMIZE",
+    "FIT_SIZE_COLOR_DETAILS", "CARE_PRODUCTION_FAQ"
+  ],
+  "basic_module_states": {
+    "HERO_EMBROIDERY_PROOF": "OWNER_FACT_REQUIRED",
+    "PERSONALIZATION_GALLERY": "OWNER_FACT_REQUIRED",
+    "HOW_TO_CUSTOMIZE": "OWNER_FACT_REQUIRED",
+    "FIT_SIZE_COLOR_DETAILS": "OWNER_FACT_REQUIRED",
+    "CARE_PRODUCTION_FAQ": "OWNER_FACT_REQUIRED"
+  },
+  "basic_nonempty_copy_count": 0,
+  "basic_state": "ELIGIBILITY_UNVERIFIED",
+  "basic_publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+
+  "premium_fixed_module_count": 5,
+  "premium_fixed_module_states": "all ELIGIBILITY_UNVERIFIED (Basic fallback reindexed 1..5)",
+  "dynamic_candidate_count": 8,
+  "eligible_dynamic_count": 0,
+  "selected_dynamic_count": 0,
+  "filler_dynamic_selected": false,
+  "rejected_dynamic_reasons": {
+    "LIFESTYLE_RECIPIENT_OCCASION": ["missing_real_asset:LIFESTYLE"],
+    "PRODUCT_COMPARISON": ["missing_verified_fact:comparison_attributes", "missing_verified_fact:comparison_products"],
+    "GARMENT_OPTIONS": ["missing_real_asset:GARMENT_OPTIONS", "missing_verified_fact:garment_options"],
+    "DESIGN_VARIATIONS": ["missing_any_verified_fact:thread_colors,design_dimensions,placement,color_options", "missing_real_asset:DESIGN_VARIATIONS"],
+    "PRODUCTION_PROCESS": ["missing_any_verified_concept:production_location,production_time", "missing_real_asset:PRODUCTION_PROCESS"],
+    "GIFT_PRESENTATION": ["missing_real_asset:GIFT_PACKAGING", "missing_verified_concept:packaging"],
+    "BRAND_STORY": ["missing_verified_fact:brand"],
+    "COMFORT_AND_DAILY_USE": ["missing_verified_concept:softness_comfort"]
+  },
+  "basic_fallback_verified": true,
+  "basic_fallback_positions": [1, 2, 3, 4, 5],
+  "basic_fallback_is_full_payload": true,
+  "premium_publishability": "DO_NOT_PUBLISH",
+  "premium_never_publishable": true,
+
+  "asset_requirement_count": 4,
+  "asset_state_counts": {"REAL_PHOTO_REQUIRED": 3, "OWNER_FACT_REQUIRED": 1},
+  "asset_ready_count": 0,
+  "asset_prompt_ready_count": 0,
+  "asset_real_photo_required_count": 3,
+  "asset_owner_fact_required_count": 1,
+  "asset_not_applicable_count": 0,
+  "ai_generated_accepted_as_real_proof_count": 0,
+
+  "page_auditor_result": "PASS (0 hard failures)",
+  "aplus_compliance_result": "PASS",
+  "unsupported_claim_count": 0,
+  "blocked_claim_promotion_count": 0,
+  "fabricated_owner_facts_count": 0,
+  "leakage_all_zero": true,
+  "owner_fact_dependencies": [
+    "care_instructions", "color_options", "decoration_method", "handling_time", "packaging",
+    "personalization_fields", "production_location", "production_time_range", "shipping_method",
+    "size_range", "tracking"
+  ],
+  "real_asset_dependencies": [
+    "DESIGN_VARIATIONS", "GARMENT_OPTIONS", "GARMENT_OR_COLOR", "GIFT_PACKAGING", "LIFESTYLE",
+    "MACRO_DECORATION_STITCH", "PERSONALIZATION_EXAMPLE", "PRODUCTION_PROCESS"
+  ],
+
+  "listing_publishability_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "phase6d_state": "APLUS_ELIGIBILITY_UNVERIFIED",
+  "ready_for_6e": true,
+  "ready_for_6e_meaning": "creative planning may proceed WITH explicit blockers; NOT publishable",
+
+  "required_artifacts": [
+    "BASIC-APLUS-CONTENT.json", "PREMIUM-APLUS-DRAFT.json", "APLUS-COMPLIANCE-REPORT.json",
+    "APLUS-ASSET-MANIFEST.json", "STAGE-6D-MANIFEST.json"
+  ],
+  "support_artifacts": [
+    "BASIC-APLUS-CONTENT-BRIEF.md", "APLUS-FIELD-BLOCKERS.json", "APLUS-COPY-LINEAGE.json"
+  ],
+  "artifact_location": "runs/T2/phase6/6D (gitignored)",
+  "atomic_write_result": "os.replace temp-sibling; validate-in-memory before commit",
+  "last_valid_protection": "validation failure raises and preserves the last valid 6D package",
+
+  "first_t2_run": "OK",
+  "second_t2_run": "OK",
+  "two_run_determinism": true,
+  "three_mode_determinism": true,
+  "result_stable_sha256": "b14199a5764b6a1053542a83518c573a32c2e7d80ea31b96b5fae1d93490db11",
+  "stage_manifest_stable_sha256": "c4c2c9f700685b6342c4b58c4f5f3b410c8c6ee7877f9524d1c063caaf795cd8",
+  "stable_file_hashes": {
+    "BASIC-APLUS-CONTENT.json": "72ab3ca0be787adb6b7b4cc4f70b62f828ad1ace873edb6be040fc223c3043c8",
+    "PREMIUM-APLUS-DRAFT.json": "be71402895608d160da1d880b4bfba976709c78914efd650e07ccd93f0e19a17",
+    "APLUS-COMPLIANCE-REPORT.json": "9b675fc7314923f03190871f3d226ff083810e7c7411e92278e0e9ab98ae9588",
+    "APLUS-ASSET-MANIFEST.json": "49c4d0bbb1da4d9beed081b98be75bb5716347d2c7d02b350bf7336be6bb128f",
+    "BASIC-APLUS-CONTENT-BRIEF.md": "72769d15db99be63644a2edd81f242f4d44fd36858bed502df3177453ee86821",
+    "APLUS-FIELD-BLOCKERS.json": "626ab009cabdf53a27f160204cb7efbe0314ecf875f4dff0524659ca84e6e3c1",
+    "APLUS-COPY-LINEAGE.json": "57887f1192e4a7e31c4afb33f79c8caf27981561d95d36e59cfcfb9f97f7b7ca"
+  },
+
+  "external_network_attempts": 0,
+  "amazon_account_actions": 0,
+  "phase6e_artifact_count": 0,
+  "phase6f_artifact_count": 0,
+
+  "compilation_result": "python -m compileall listing compliance dashboard research core tests amz_fbm scripts production -> exit 0",
+  "targeted_tests": ["tests/test_phase6d_aplus_assembly.py (51)", "tests/test_phase6d_t2_proof.py (17)"],
+  "targeted_test_count": 68,
+  "full_test_count": 1332,
+  "full_test_result": "OK",
+
+  "sanitization": "no usernames, no private absolute paths, no paid keyword rows, no private product copy; only SHA-256 hashes, module keys, states and counts",
+
+  "known_limitations": [
+    "A+ eligibility is UNKNOWN (owner has not stated Basic/Premium access); Basic is a safe draft and Premium a draft only.",
+    "All physical product facts remain UNKNOWN and all real assets are missing, so all five Basic modules and all eight dynamic modules are held.",
+    "No real product photography exists; every real-proof asset is REAL_PHOTO_REQUIRED and no generated asset can substitute.",
+    "Final creative prompts, the ten-job listing-image plan and image files are deferred to Phase 6E (not produced here)."
+  ],
+
+  "final_status": "SESSION6D_READY_FOR_REVIEW"
+}

@@ -5,7 +5,7 @@
   "status": "SESSION5C_READY_FOR_REVIEW",
   "starting_commit": "67638df",
   "checkpoint_tag": "session5c-checkpoint-67638df",
-  "final_commit": "SEE_FOLLOW_UP_DOCS_COMMIT",
+  "final_commit": "3e080c3",
   "baseline": {
     "command": "python -m unittest discover -s tests",
     "tests": 654,

@@ -1,0 +1,37 @@
+{
+  "schema_version": "phase6-authority-map-v1",
+  "stage": "6A",
+  "principle": "one responsibility, one production authority — Phase 6A reuses, never duplicates",
+  "reused_phase5_authorities": {
+    "keyword_source": {"module": "listing/keyword_source_adapter.py", "entry": "load_keyword_source"},
+    "category_policy": {"module": "listing/category_policy_registry.py", "entry": "resolve_category_policy"},
+    "normalized_product_facts": {"module": "listing/product_fact_loader.py", "entry": "load_product_facts"},
+    "claim_evidence": {"module": "listing/claim_evidence.py", "entry": "build_claim_evidence"},
+    "audience_and_garment_reads": {"module": "listing/listing_generator.py",
+                                   "entry": "_audience_from_keywords / garment_from_keyword"},
+    "listing_publishability": {"module": "listing/page_auditor.py",
+                               "entry": "audit_listing / _classify_publishability (verdict READ, not recomputed in 6A)"},
+    "runtime_policy": {"module": "core/runtime_policy.py", "entry": "load_runtime_policy"},
+    "network_guard": {"module": "core/network_policy.py", "entry": "assert_outbound_allowed"},
+    "diagnostics": {"module": "core/diagnostics.py", "entry": "record_event"}
+  },
+  "new_phase6a_authority": {
+    "module": "production/product_workspace.py",
+    "role": "the ONE product-readiness orchestration authority; calls the mature Phase 5 engines",
+    "public_api": ["build_product_workspace (alias create_product_workspace)", "load_product_workspace",
+                   "evaluate_product_readiness", "select_product_workspace", "write_phase6a_artifacts",
+                   "verify_phase6a_artifacts", "validate_product_workspace", "validate_owner_input",
+                   "validate_normalized_facts", "validate_claim_evidence", "validate_manifest",
+                   "runtime_safety_snapshot"],
+    "result_type": "ProductWorkspaceResult"
+  },
+  "runner": "scripts/phase6a_build.py",
+  "duplicate_authority_count": 0,
+  "amazon_or_seller_central_write_paths": 0,
+  "notes": [
+    "product_workspace defines NO product-fact loader, claim engine, keyword adapter, category registry, "
+    "PageAuditor, or copy engine — it imports the single existing authority for each.",
+    "The legacy inline helpers listing_generator.build_item_highlights / build_backend are superseded and "
+    "are NOT used by Phase 6A."
+  ]
+}

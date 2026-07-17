@@ -1,0 +1,59 @@
+{
+  "schema_version": "phase6a-preflight-v1",
+  "stage": "6A",
+  "result": "PHASE6A_PREFLIGHT_PASSED",
+  "repository": {
+    "branch": "main",
+    "head_commit": "366e035",
+    "origin_main_synced": true,
+    "checkpoint_tag": "phase6a-checkpoint-366e035",
+    "untracked_reference_files_left_untouched": [
+      "AMZ_FBM_Actual_Code_Self_Audit_Bugfix_Master_v6_for_Claude.json",
+      "AMZ_FBM_Local_Tool_Complete_Cheatsheet_v1.md"
+    ]
+  },
+  "phase5_certification": {
+    "status": "RELEASE1_CERTIFIED",
+    "mandatory_pass": "17/17",
+    "baseline_tests": 826
+  },
+  "baseline_run": {"command": "python -m unittest discover -s tests", "tests_run": 826, "status": "OK"},
+  "authorities_inspected": [
+    "keyword_source", "category_policy", "normalized_product_facts", "claim_evidence", "title",
+    "bullets", "description", "backend_optimizer", "item_highlights", "aplus", "page_auditor",
+    "copy_package", "safe_draft_and_publishable_state", "runtime_policy", "network_policy",
+    "atomic_writes", "local_diagnostics"
+  ],
+  "duplicate_prototype_scan": {
+    "listing_generator_v2.py": "absent",
+    "duplicate_keyword_adapters": 0,
+    "duplicate_product_fact_loaders": 0,
+    "duplicate_claim_evidence_engines": 0,
+    "duplicate_page_auditors": 0,
+    "duplicate_listing_package_writers": 0,
+    "hidden_amazon_or_seller_central_write_paths": 0,
+    "note": "listing_generator.py IS the v2 orchestrator (docstring); the only superseded artifacts are the "
+            "inline build_item_highlights/build_backend helpers and the quarantined legacy a_plus_templates."
+  },
+  "reuse_verification": {
+    "t2_keyword_source_file": "MASTER-KEYWORDS-LEAN.json",
+    "t2_keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+    "t2_tier_a": 74,
+    "t2_tier_b": 378,
+    "t2_claim_evidence_content_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+    "t2_claim_evidence_matches_phase5_certified_hash": true
+  },
+  "hard_stop_conditions": {
+    "baseline_tests_failed": false,
+    "head_differs_unexpectedly": false,
+    "phase5_certification_invalid": false,
+    "duplicate_production_authorities_unresolvable": false,
+    "amazon_or_seller_central_write_path_exists": false,
+    "product_fact_or_claim_authority_unreusable": false,
+    "repository_structure_conflicts_with_handoff": false
+  },
+  "known_limitations": [
+    "AMZ_FBM_Phase6_Final_Deployment_Gates_v6_4 and AMZ_FBM_Phase6_Final_Critical_Audit_and_Deployment_Prompt_v6_4 "
+    "are not present in the repository; the Phase 6A specification was taken from the inline handoff prompt."
+  ]
+}

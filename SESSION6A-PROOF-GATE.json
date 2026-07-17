@@ -1,0 +1,49 @@
+{
+  "amazon_or_seller_central_write": "NONE",
+  "artifact_location": "<run>/phase6/6A",
+  "claim_evidence_hash": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+  "current_listing_publishability_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "external_ai_result": "EXTERNAL_AI_DISABLED",
+  "final_commit": "9eba533",
+  "full_test_total": 920,
+  "targeted_test_total": 94,
+  "baseline_test_total": 826,
+  "keyword_source_filename": "MASTER-KEYWORDS-LEAN.json",
+  "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "known_limitations": [
+    "Two Phase 6 spec documents named in the handoff (AMZ_FBM_Phase6_Final_Deployment_Gates_v6_4, AMZ_FBM_Phase6_Final_Critical_Audit_and_Deployment_Prompt_v6_4) are not present in the repository; the Phase 6A specification was taken from the inline handoff.",
+    "The four required artifacts and PRODUCT-WORKSPACE/STAGE-6A-MANIFEST are written under the gitignored runs/<id>/phase6/6A/ (paid H10 data root), so they are local proof, not committed."
+  ],
+  "offline_network_attempts": 0,
+  "owner_requirement_counts": {
+    "blocking": 5,
+    "important": 5,
+    "optional": 10,
+    "resolved": 0
+  },
+  "phase": "Phase 6A — Product Readiness and Owner Facts",
+  "phase5_certification_status": "RELEASE1_CERTIFIED",
+  "phase6a_workspace_state": "OWNER_FACTS_AND_REAL_ASSETS_REQUIRED",
+  "product_fact_hash": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274",
+  "product_identity": {
+    "audience": "nurses",
+    "category_identifier": "US:apparel",
+    "primary_keyword": "personalized nurse sweatshirt",
+    "product_id": "T2",
+    "product_type": "sweatshirt"
+  },
+  "proof_workspace": "T2",
+  "ready_for_6b": true,
+  "real_asset_requirement_count": 7,
+  "required_artifact_verification_ok": true,
+  "runtime": {
+    "loopback_only_effective": true,
+    "offline_only": true,
+    "outbound_network_enabled": false
+  },
+  "session": "6A",
+  "starting_commit": "366e035",
+  "tier_a_count": 74,
+  "tier_b_count": 378,
+  "two_run_determinism": true
+}

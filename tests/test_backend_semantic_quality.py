@@ -119,8 +119,12 @@ class PhraseIntegrity(unittest.TestCase):
             self.assertEqual(by_term[term]["unit_type"], "specialty_phrase")
             self.assertIn("labor and delivery", by_term[term]["unit"])
             self.assertEqual(by_term[term]["inclusion_reason"], BO.INCL_SPECIALTY_PHRASE)
-        # the interior stopword never publishes as a standalone token.
-        self.assertNotIn("and", o.backend_search_terms_string.split())
+        # Session 5A.2: the interior connector "and" is PRESERVED inside the approved atomic phrase — the
+        # phrase publishes wholly and contiguously ("labor and delivery nurse"), never reduced to a broken
+        # "labor delivery" and never with an orphaned "and".
+        self.assertIn("labor and delivery nurse", o.backend_search_terms_string)
+        self.assertEqual(by_term["and"]["unit_type"], "specialty_phrase")
+        self.assertIn("labor and delivery", by_term["and"]["unit"])
 
     def test_7_broken_phrase_fragments_rejected(self):
         o = opt([_prod("the nurse face sweatshirt"), _prod("this nurse prays sweatshirt"),

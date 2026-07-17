@@ -424,16 +424,34 @@ def _audit_description(a, listing, results):
     results["description_results"] = dr
 
 
+def _allowed_stopword_positions(tokens):
+    """Indices of stopword tokens that sit INTERIOR to an approved connector phrase (the 'and' of
+    'labor and delivery'). Every other stopword is an orphan. Deterministic string scan."""
+    allowed = set()
+    for phrase in BO._CONNECTOR_PHRASES:
+        pt = phrase.split()
+        m = len(pt)
+        for i in range(len(tokens) - m + 1):
+            if tokens[i:i + m] == pt:
+                for j, t in enumerate(pt):
+                    if t in BO._STOPWORDS:
+                        allowed.add(i + j)
+    return allowed
+
+
 def _backend_semantic_findings(backend):
-    """Session 5A.1 — detect semantic token soup in a backend STRING, independent of any audit metadata:
-    orphan stopwords, standalone unexplained numbers, single-character low-information tokens, suspicious
-    concatenations, and unrecognized (no-vowel, non-credential) abbreviations. Each finding is a
-    (category, token) pair. These are the unambiguous, context-free junk classes — a phrase-context
-    problem (a broken design fragment, a conflicting garment) is caught from the audit metadata instead."""
+    """Session 5A.1/5A.2 — detect semantic token soup in a backend STRING, independent of any audit
+    metadata: ORPHAN stopwords (a phrase-interior connector like 'and' in 'labor and delivery' is allowed),
+    standalone unexplained numbers, single-character low-information tokens, suspicious concatenations, and
+    unrecognized (no-vowel, non-credential) abbreviations. Each finding is a (category, token) pair. A
+    broken specialty phrase ('labor delivery' with no connector) is caught separately in _audit_backend."""
+    tokens = backend.split()
+    allowed = _allowed_stopword_positions(tokens)
     findings = []
-    for tok in backend.split():
+    for i, tok in enumerate(tokens):
         if tok in BO._STOPWORDS:
-            findings.append(("backend_orphan_stopword", tok))
+            if i not in allowed:
+                findings.append(("backend_orphan_stopword", tok))
         elif tok.isdigit():
             findings.append(("backend_unexplained_number", tok))
         elif len(tok) < BO.MIN_TOKEN_LEN:
@@ -445,15 +463,33 @@ def _backend_semantic_findings(backend):
     return findings
 
 
+# broken specialty phrases: an approved atomic unit that lost its connector/anchor and reduced to a broken
+# form. The canonical case is "labor delivery" (approved unit is "labor and delivery"). String-level, so a
+# broken backend is blocked even with no audit metadata.
+_BROKEN_PHRASE_PAIRS = (("labor", "delivery", "labor and delivery"),)
+
+
+def _broken_phrase_findings(backend):
+    toks = backend.split()
+    out = []
+    for a_tok, b_tok, approved in _BROKEN_PHRASE_PAIRS:
+        for i in range(len(toks) - 1):
+            if toks[i] == a_tok and toks[i + 1] == b_tok:
+                out.append((f"{a_tok} {b_tok}", approved))
+    return out
+
+
 def _audit_backend(a, listing, policy, results):
     br = {"bytes_used": 0, "byte_ceiling": policy.backend_byte_ceiling, "type_ok": True,
           "audit_present": False, "included_count": 0, "excluded_count": 0, "no_cut_tokens": True,
           "all_included_have_provenance": True, "all_included_have_reason": True,
           "deterministic_order": True, "no_risky_terms": True, "source_hash": "not_checked",
-          # Session 5A.1 — separate, explicit sub-results (PATCH 6).
+          # Session 5A.1/5A.2 — separate, explicit sub-results.
           "byte_safety": "PASS", "risk_safety": "not_checked", "semantic_quality": "PASS",
-          "phrase_integrity": "not_checked", "product_compatibility": "not_checked",
-          "audience_occasion_compatibility": "not_checked", "semantic_findings": []}
+          "phrase_integrity": "PASS", "product_compatibility": "not_checked",
+          "audience_occasion_compatibility": "not_checked", "attribute_evidence": "not_checked",
+          "unit_reconstruction": "not_checked", "concept_dedup": "not_checked",
+          "quality_thresholds": "not_checked", "semantic_findings": []}
     backend = listing.get("backend")
     if backend is None:
         results["backend_results"] = br
@@ -485,6 +521,13 @@ def _audit_backend(a, listing, policy, results):
             seen.add(key)
             a.fail(cat, f"backend term '{tok}' is a {cat.replace('backend_', '').replace('_', ' ')} "
                         f"with no independent search value")
+
+    # broken specialty phrase (a phrase that lost its connector, e.g. "labor delivery") — never publishable.
+    for broken, approved in _broken_phrase_findings(backend):
+        br["phrase_integrity"] = "FAIL"
+        a.fail("backend_broken_phrase",
+               f"backend contains the broken specialty phrase '{broken}' — the approved atomic unit is "
+               f"'{approved}' (its connector must be preserved)")
 
     audit = listing.get("backend_audit")
     if isinstance(audit, dict):
@@ -519,8 +562,15 @@ def _audit_backend_provenance(a, listing, backend, policy, audit, br):
         a.fail("backend_provenance_order",
                "backend string tokens do not match backend_audit included_terms in order — a backend token "
                "is cut, unaudited, or reordered")
-    if len(tokens) != len(set(tokens)):
-        a.fail("backend_duplicate_token", "backend string contains duplicate tokens")
+    # A repeated STRING token is allowed only when it is a phrase-interior shared token (the "nurse" of
+    # distinct specialty phrases). A repeated STANDALONE single-token unit is a real duplicate. Concept-
+    # level dedup below is the authoritative check; here we only flag a duplicate that is NOT phrase-shared.
+    phrase_shared = {t.get("term") for t in included
+                     if t.get("unit_type") in ("specialty_phrase", "product_type", "gift")}
+    standalone = [t.get("term") for t in included if t.get("term") not in phrase_shared]
+    if len(standalone) != len(set(standalone)):
+        dups = sorted({x for x in standalone if standalone.count(x) > 1})
+        a.fail("backend_duplicate_token", f"backend repeats standalone token(s): {dups}")
     for t in included:
         if not t.get("inclusion_reason"):
             br["all_included_have_reason"] = False
@@ -535,8 +585,6 @@ def _audit_backend_provenance(a, listing, backend, policy, audit, br):
             a.fail("backend_risky_term",
                    f"backend included term '{t.get('term')}' carries blocking risks {t.get('blocking_risks')}")
 
-    # Session 5A.1 — separate audit-driven sub-results (PATCH 6): risk safety, product compatibility,
-    # audience/occasion compatibility, and phrase integrity, all read from the included-term metadata.
     br["risk_safety"] = "PASS" if br["no_risky_terms"] else "FAIL"
 
     conflict_states = (BO.PT_CONFLICT, BO.PT_UNVERIFIED)
@@ -558,14 +606,69 @@ def _audit_backend_provenance(a, listing, backend, policy, audit, br):
     else:
         br["audience_occasion_compatibility"] = "PASS"
 
-    # phrase integrity: every stopword-free specialty-phrase token keeps its unit provenance, and no
-    # orphan stopword survived (the string scan already flags any that did).
+    # Session 5A.2 — atomic-unit audit. The included_units are the production authority; validate that the
+    # emitted string is exactly their ordered concatenation (contiguity, no partial emission, no hidden
+    # token), that no normalized concept repeats, that every factual attribute carries verified evidence,
+    # and that every unit clears the production quality floors.
+    units = audit.get("included_units")
+    if isinstance(units, list) and units:
+        recon = " ".join(str(u.get("text", "")) for u in units)
+        if recon != backend:
+            br["unit_reconstruction"] = "FAIL"
+            a.fail("backend_unit_reconstruction",
+                   "backend string is not the exact ordered concatenation of included_units — a unit is "
+                   "partially emitted, reordered, or a hidden token was added")
+        else:
+            br["unit_reconstruction"] = "PASS"
+
+        concepts = [u.get("normalized_concept") for u in units if u.get("normalized_concept")]
+        dup_concepts = sorted({c for c in concepts if concepts.count(c) > 1})
+        if dup_concepts:
+            br["concept_dedup"] = "FAIL"
+            a.fail("backend_duplicate_concept",
+                   f"backend repeats normalized semantic concept(s): {dup_concepts}")
+        else:
+            br["concept_dedup"] = "PASS"
+
+        _APPROVED_ATTR = ("VERIFIED_FACT", "APPROVED_IDENTITY")
+        unverified_attrs = []
+        for u in units:
+            ut = u.get("unit_type")
+            vs = u.get("verification_state")
+            if ut == "attribute" and (vs not in _APPROVED_ATTR
+                                      or not (u.get("product_fact_fields") or u.get("claim_ids"))):
+                unverified_attrs.append(u.get("text"))
+            elif ut == "gender" and vs not in _APPROVED_ATTR:
+                unverified_attrs.append(u.get("text"))
+        if unverified_attrs:
+            br["attribute_evidence"] = "FAIL"
+            a.fail("backend_unverified_attribute",
+                   f"backend published product attribute(s) without verified product-fact / identity "
+                   f"evidence: {sorted(set(unverified_attrs))}")
+        else:
+            br["attribute_evidence"] = "PASS"
+
+        low_quality = [u.get("text") for u in units
+                       if (u.get("semantic_score", 0) < BO.PRODUCTION_MIN_SEMANTIC_SCORE
+                           or u.get("incremental_coverage_score", 0)
+                           < BO.PRODUCTION_MIN_INCREMENTAL_COVERAGE)]
+        if low_quality:
+            br["quality_thresholds"] = "FAIL"
+            a.fail("backend_low_quality",
+                   f"backend published unit(s) below the production semantic/incremental floor "
+                   f"(byte padding): {sorted(set(low_quality))}")
+        else:
+            br["quality_thresholds"] = "PASS"
+
+    # phrase integrity: every specialty-phrase token keeps its unit provenance, the string reconstructs
+    # from its units, and no orphan stopword / broken phrase survived (string scans set FAIL already).
     phrase_ok = all(t.get("unit") for t in included if t.get("unit_type") == "specialty_phrase")
-    br["phrase_integrity"] = "PASS" if (phrase_ok and br["semantic_quality"] == "PASS"
-                                        and br["deterministic_order"]) else "FAIL"
     if not phrase_ok:
         a.fail("backend_phrase_integrity",
                "a backend specialty-phrase token lost its phrase-unit provenance")
+    if (not phrase_ok or br["unit_reconstruction"] == "FAIL" or br["semantic_quality"] == "FAIL"
+            or not br["deterministic_order"]):
+        br["phrase_integrity"] = "FAIL"
 
     sh = (audit.get("source_hashes") or {}).get("keyword_source_sha256")
     lh = listing.get("keyword_source_sha256")

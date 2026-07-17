@@ -6,8 +6,9 @@ Reuses the REAL, immutable T2 inputs (runs/T2 + its completed phase6/6A + phase6
 writes Phase 6C artifacts to a temp location. Proves: TIER_A=74 / TIER_B=378 and the certified source
 SHA are unchanged; the 6A + 6B dependency verifies; the unique-count accounting reconciles to the
 exact 56 / 24 / 27 / 1 / 32; only the recipient/nurse claim is verified (gift/personalization
-deferred); the safe draft is exactly "Nurse Sweatshirt" + "A nurse sweatshirt." with all five bullets
-deferred; the backend is byte-safe; every leakage count is zero; the listing stays SAFE_DRAFT; the run
+deferred); the safe draft is exactly "Nurse Sweatshirt" + "A nurse sweatshirt. For nurses." (the atomic
+verified recipient claim) with all five bullets deferred; the backend is byte-safe; every leakage count
+is zero; the listing stays SAFE_DRAFT; the run
 is twice- and three-mode-deterministic; nothing is written to the T2 workspace or any Amazon surface;
 and no A+ / image / later-stage artifact is produced.
 
@@ -61,7 +62,7 @@ class T2Proof(unittest.TestCase):
     def test_dependency_verifies_and_ready(self):
         self.assertTrue(self.deps.ready_for_6c)
         self.assertEqual(self.deps.claim_evidence_sha256,
-                         "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a")
+                         "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf")
 
     # -- keyword accounting (exact T2 numbers, computed from IDs) ----------------
     def test_accounting_exact(self):
@@ -97,8 +98,10 @@ class T2Proof(unittest.TestCase):
         self.assertEqual([b["bullet_job"] for b in self.r1.bullets["bullets"]],
                          list(PDP.BE.JOBS))
 
-    def test_description_is_product_identity_only(self):
-        self.assertEqual(self.r1.description_text, "A nurse sweatshirt.")
+    def test_description_is_product_identity_plus_atomic_recipient(self):
+        # Session 6C.1: the recipient claim is now the ATOMIC "For nurses." (verified market identity),
+        # so it safely publishes; the unverified personalization + gift/occasion never appear.
+        self.assertEqual(self.r1.description_text, "A nurse sweatshirt. For nurses.")
         for bad in ("personalized", "gift", "cotton", "embroider"):
             self.assertNotIn(bad, self.r1.description_text.lower())
 

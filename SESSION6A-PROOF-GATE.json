@@ -1,13 +1,12 @@
 {
   "amazon_or_seller_central_write": "NONE",
   "artifact_location": "<run>/phase6/6A",
-  "claim_evidence_hash": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+  "baseline_test_total": 826,
+  "claim_evidence_hash": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
   "current_listing_publishability_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
   "external_ai_result": "EXTERNAL_AI_DISABLED",
   "final_commit": "9eba533",
   "full_test_total": 920,
-  "targeted_test_total": 94,
-  "baseline_test_total": 826,
   "keyword_source_filename": "MASTER-KEYWORDS-LEAN.json",
   "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
   "known_limitations": [
@@ -35,6 +34,7 @@
   "proof_workspace": "T2",
   "ready_for_6b": true,
   "real_asset_requirement_count": 7,
+  "recertified_by_session_6c1": "Re-certified in Session 6C.1 (atomic claim-evidence repair): the recipient claim is now atomic 'For nurses.' and all hashes below reflect the corrected authority; the paid keyword source is unchanged.",
   "required_artifact_verification_ok": true,
   "runtime": {
     "loopback_only_effective": true,
@@ -43,6 +43,7 @@
   },
   "session": "6A",
   "starting_commit": "366e035",
+  "targeted_test_total": 94,
   "tier_a_count": 74,
   "tier_b_count": 378,
   "two_run_determinism": true

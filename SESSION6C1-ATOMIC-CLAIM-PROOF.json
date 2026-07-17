@@ -1,0 +1,102 @@
+{
+  "amazon_account_actions": 0,
+  "backend_bytes_after": 246,
+  "backend_bytes_before": 246,
+  "backend_density_result": "PASS_WITH_WARNINGS",
+  "backend_optimizer_modified": false,
+  "backend_repeated_concept_count": 0,
+  "backend_repeated_root_count": 1,
+  "backend_selected_units_after": 20,
+  "backend_selected_units_before": 20,
+  "baseline_test_count": 1219,
+  "checkpoint_tag": "session6c1-checkpoint-65c0846",
+  "compilation_result": "PASS (compileall listing compliance dashboard research core tests amz_fbm scripts production)",
+  "compound_claim_policy": "A claim may not hold a stronger effective state than its least-supported material component; a mixed compound is MIXED_EVIDENCE_BLOCKED and never publishable. Preferred design: atomic claims.",
+  "consumer_migration_result": "PASS (item_highlights + product_workspace validator consume effective state; title/bullet/description/backend/page_auditor gate on publishable=effective; A+ authority compatible, not executed)",
+  "corrected_atomic_claim_ids": [
+    "CLM-RECIPIENT",
+    "CLM-PERSONALIZATION_FIELDS",
+    "CLM-GIFT",
+    "CLM-OCCASION"
+  ],
+  "corrected_atomic_claim_texts": {
+    "CLM-GIFT": "Suitable as a gift. (blocked)",
+    "CLM-OCCASION": "Great for <occasion>. (blocked)",
+    "CLM-PERSONALIZATION_FIELDS": "Add <fields> during checkout. (blocked)",
+    "CLM-RECIPIENT": "For nurses."
+  },
+  "corrected_atomic_evidence_states": {
+    "CLM-DECORATION_METHOD": "UNVERIFIED_BLOCKED",
+    "CLM-GIFT": "UNVERIFIED_BLOCKED",
+    "CLM-OCCASION": "UNVERIFIED_BLOCKED",
+    "CLM-PERSONALIZATION_FIELDS": "UNVERIFIED_BLOCKED",
+    "CLM-RECIPIENT": "VERIFIED"
+  },
+  "duplicate_claim_authority_count": 0,
+  "external_network_attempts": 0,
+  "final_commit": "d46cc16",
+  "final_status": "SESSION6C1_READY_FOR_REVIEW",
+  "full_chain_two_run_determinism": true,
+  "full_test_count": 1264,
+  "full_test_runtime_seconds": "129",
+  "known_limitations": [
+    "The safe draft stays intentionally minimal: with zero verified physical facts, only product + audience identity publishes; the atomic recipient claim adds 'For nurses.' to the description.",
+    "Phase 6A/6B/6C artifacts live under gitignored runs/<id>/phase6 (paid H10 source), so they are local proof, not committed; only sanitized hashes/summaries are committed.",
+    "Backend density is PASS_WITH_WARNINGS: distinct specialty phrases share the interior 'nurse' root by design (phrase integrity); no optimizer defect, so the optimizer is unchanged."
+  ],
+  "leakage_counts": {
+    "blocked_claim_promotion": 0,
+    "brand_ip_leakage": 0,
+    "fabricated_owner_facts": 0,
+    "rejected_leakage": 0,
+    "unsupported_physical_claims": 0,
+    "wrong_audience_leakage": 0,
+    "wrong_occasion_leakage": 0,
+    "wrong_product_leakage": 0
+  },
+  "listing_publishability_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "mixed_evidence_count": 0,
+  "new_claim_evidence_hash": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
+  "new_evidence_state_added": "MIXED_EVIDENCE_BLOCKED",
+  "old_claim_evidence_hash": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+  "original_evidence_state": "VERIFIED",
+  "original_unsafe_canonical_text": "A personalized gift for nurses.",
+  "original_unsafe_claim_id": "CLM-RECIPIENT",
+  "original_unsupported_semantic_components": [
+    "PERSONALIZATION",
+    "GIFT_OR_OCCASION"
+  ],
+  "phase": "Session 6C.1 — Atomic Claim-Evidence Repair and Phase 6A->6B->6C Re-certification",
+  "phase6a_regeneration_result": "PASS (verify ok; workspace OWNER_FACTS_AND_REAL_ASSETS_REQUIRED; ready_for_6b=true)",
+  "phase6a_state": "READY_FOR_6B / listing SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "phase6b_allocation_changes": "none in counts (56/24/27/1/32 unchanged); only dependency + claim hashes updated",
+  "phase6b_regeneration_result": "PASS (verify ok; SAFE_ALLOCATION_OWNER_FACTS_REQUIRED; ready_for_6c=true; 13-field schema intact)",
+  "phase6c_copy_changes": {
+    "bullets": "0 safe (unchanged)",
+    "description_after": "A nurse sweatshirt. For nurses.",
+    "description_before": "A nurse sweatshirt.",
+    "item_highlights": "empty (unchanged)",
+    "title": "Nurse Sweatshirt (unchanged)"
+  },
+  "phase6c_regeneration_result": "PASS (verify ok; SAFE_PDP_OWNER_FACTS_REQUIRED)",
+  "phase6d_artifact_count": 0,
+  "preflight_result": "PASS (root/branch/HEAD/origin verified; 1219 baseline green; 6A/6B/6C + connectivity proofs valid; single claim authority; no Amazon account integration; checkpoint tag session6c1-checkpoint-65c0846)",
+  "sanitization": [
+    "no paid keyword rows or private metrics (only generated market-identity draft + generic specialty phrases)",
+    "no private/absolute filesystem paths; no usernames, credentials, or environment dumps"
+  ],
+  "schema_version_after": "1.1.0",
+  "schema_version_before": "1.0.0",
+  "session": "6C.1",
+  "shared_claim_authority": "listing/claim_evidence.py",
+  "source_keyword_filename": "MASTER-KEYWORDS-LEAN.json",
+  "source_keyword_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "source_keyword_sha_unchanged": true,
+  "starting_commit": "65c0846",
+  "targeted_test_count": 491,
+  "targeted_test_runtime_seconds": "24",
+  "three_mode_determinism": true,
+  "tier_a_count": 74,
+  "tier_b_count": 378,
+  "unsupported_claim_promotion_count": 0
+}

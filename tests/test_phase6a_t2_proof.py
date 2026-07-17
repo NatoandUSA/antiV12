@@ -26,7 +26,7 @@ from production import product_workspace as PW   # noqa: E402
 
 T2 = os.path.join(ROOT, "runs", "T2")
 T2_PRESENT = os.path.exists(os.path.join(T2, "MASTER-KEYWORDS-LEAN.json"))
-CERTIFIED_CLAIM_SHA = "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a"
+CERTIFIED_CLAIM_SHA = "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf"
 CERTIFIED_KEYWORD_SHA = "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7"
 
 

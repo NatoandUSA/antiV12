@@ -1,0 +1,644 @@
+{
+  "byte_limit": 249,
+  "byte_utilization_is_a_target": false,
+  "bytes_remaining": 3,
+  "candidate_count": 20,
+  "concept_ids": [
+    "cardiac",
+    "cna",
+    "crewneck",
+    "cvicu",
+    "emergency",
+    "er",
+    "future",
+    "hospice",
+    "icu",
+    "labor delivery",
+    "lpn",
+    "med surg",
+    "nicu",
+    "oncology",
+    "ped",
+    "postpartum",
+    "practitioner",
+    "pullover",
+    "register",
+    "rn"
+  ],
+  "engine": "listing.backend_optimizer.optimize_backend",
+  "exclusions_summary": {
+    "ALREADY_FULLY_COVERED": 290,
+    "AUDIENCE_CONTEXT_REQUIRED": 96,
+    "BROKEN_PHRASE_FRAGMENT": 85,
+    "BYTE_LIMIT": 134,
+    "COLOR_UNVERIFIED": 9,
+    "DECORATION_METHOD_UNVERIFIED": 16,
+    "DUPLICATE_SEMANTIC_CONCEPT": 44,
+    "DUPLICATE_TOKEN": 84,
+    "INELIGIBLE_TIER": 1986,
+    "LOW_INFORMATION_TOKEN": 32,
+    "MATERIAL_UNVERIFIED": 3,
+    "ORPHAN_STOPWORD": 150,
+    "OWNER_APPROVAL_REQUIRED": 2671,
+    "PERSONALIZATION_UNVERIFIED": 82,
+    "PRODUCT_TYPE_CONFLICT": 79,
+    "PRODUCT_TYPE_UNVERIFIED": 24,
+    "QUANTITY_OFFER_UNVERIFIED": 11,
+    "RECIPIENT_CONTEXT_REQUIRED": 160,
+    "UNEXPLAINED_NUMBER": 11,
+    "UNRECOGNIZED_ABBREVIATION": 3,
+    "UNSUPPORTED_OCCASION": 106,
+    "WRONG_AUDIENCE": 461,
+    "WRONG_OCCASION": 410,
+    "WRONG_PRODUCT": 749
+  },
+  "final_byte_count": 246,
+  "final_search_terms": "pullover rn labor and delivery nurse crewneck cna med surg nurse registered nurse future nurse postpartum nurse nurse practitioner emergency nurse lpn er nurse icu nurse hospice nurse nicu nurse oncology nurse peds nurse cvicu nurse cardiac nurse",
+  "no_paid_metrics": true,
+  "non_incremental_units": [],
+  "normalized_phrases": [
+    "pullover",
+    "rn",
+    "labor and delivery nurse",
+    "crewneck",
+    "cna",
+    "med surg nurse",
+    "registered nurse",
+    "future nurse",
+    "postpartum nurse",
+    "nurse practitioner",
+    "emergency nurse",
+    "lpn",
+    "er nurse",
+    "icu nurse",
+    "hospice nurse",
+    "nicu nurse",
+    "oncology nurse",
+    "peds nurse",
+    "cvicu nurse",
+    "cardiac nurse"
+  ],
+  "normalized_roots": [
+    "cardiac",
+    "cna",
+    "crewneck",
+    "cvicu",
+    "delivery",
+    "emergency",
+    "er",
+    "future",
+    "hospice",
+    "icu",
+    "labor",
+    "lpn",
+    "med",
+    "nicu",
+    "nurse",
+    "oncology",
+    "ped",
+    "postpartum",
+    "practitioner",
+    "pullover",
+    "register",
+    "rn",
+    "surg"
+  ],
+  "per_candidate": [
+    {
+      "byte_cost": 8,
+      "distinct_or_justified": true,
+      "inclusion_reason": "COMPATIBLE_PRODUCT_TYPE",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_NEW_CONCEPT",
+      "new_roots": [
+        "pullover"
+      ],
+      "normalized_concept": "pullover",
+      "normalized_roots": [
+        "pullover"
+      ],
+      "novel_tokens": [
+        "pullover"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "0bf4ec861df9#3",
+      "shared_interior_roots": [],
+      "text": "pullover",
+      "unit_type": "product_type"
+    },
+    {
+      "byte_cost": 3,
+      "distinct_or_justified": true,
+      "inclusion_reason": "APPROVED_ABBREVIATION",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_NEW_CONCEPT",
+      "new_roots": [
+        "rn"
+      ],
+      "normalized_concept": "rn",
+      "normalized_roots": [
+        "rn"
+      ],
+      "novel_tokens": [
+        "rn"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "f3bf6330309b#0",
+      "shared_interior_roots": [],
+      "text": "rn",
+      "unit_type": "abbreviation"
+    },
+    {
+      "byte_cost": 25,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 2,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "delivery",
+        "labor"
+      ],
+      "normalized_concept": "labor delivery",
+      "normalized_roots": [
+        "labor",
+        "delivery",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "labor",
+        "delivery"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "50870959319e#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "labor and delivery nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 9,
+      "distinct_or_justified": true,
+      "inclusion_reason": "COMPATIBLE_PRODUCT_TYPE",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_NEW_CONCEPT",
+      "new_roots": [
+        "crewneck"
+      ],
+      "normalized_concept": "crewneck",
+      "normalized_roots": [
+        "crewneck"
+      ],
+      "novel_tokens": [
+        "crewneck"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "1672f2ae82dd#1",
+      "shared_interior_roots": [],
+      "text": "crewneck",
+      "unit_type": "product_type"
+    },
+    {
+      "byte_cost": 4,
+      "distinct_or_justified": true,
+      "inclusion_reason": "APPROVED_ABBREVIATION",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_NEW_CONCEPT",
+      "new_roots": [
+        "cna"
+      ],
+      "normalized_concept": "cna",
+      "normalized_roots": [
+        "cna"
+      ],
+      "novel_tokens": [
+        "cna"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "6e9925ab4cf5#0",
+      "shared_interior_roots": [],
+      "text": "cna",
+      "unit_type": "abbreviation"
+    },
+    {
+      "byte_cost": 15,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 2,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "med",
+        "surg"
+      ],
+      "normalized_concept": "med surg",
+      "normalized_roots": [
+        "med",
+        "surg",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "med",
+        "surg"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "713d17899a94#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "med surg nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 17,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "register"
+      ],
+      "normalized_concept": "register",
+      "normalized_roots": [
+        "register",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "registered"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "467a3aef2827#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "registered nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 13,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "future"
+      ],
+      "normalized_concept": "future",
+      "normalized_roots": [
+        "future",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "future"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "5e1339e4623b#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "future nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 17,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "postpartum"
+      ],
+      "normalized_concept": "postpartum",
+      "normalized_roots": [
+        "postpartum",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "postpartum"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "34fa176c25a0#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "postpartum nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 19,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "practitioner"
+      ],
+      "normalized_concept": "practitioner",
+      "normalized_roots": [
+        "nurse",
+        "practitioner"
+      ],
+      "novel_tokens": [
+        "practitioner"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "8ea14d3c3316#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "nurse practitioner",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 16,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "emergency"
+      ],
+      "normalized_concept": "emergency",
+      "normalized_roots": [
+        "emergency",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "emergency"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "5a67cd719301#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "emergency nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 4,
+      "distinct_or_justified": true,
+      "inclusion_reason": "APPROVED_ABBREVIATION",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_NEW_CONCEPT",
+      "new_roots": [
+        "lpn"
+      ],
+      "normalized_concept": "lpn",
+      "normalized_roots": [
+        "lpn"
+      ],
+      "novel_tokens": [
+        "lpn"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "4e6c7402ca22#0",
+      "shared_interior_roots": [],
+      "text": "lpn",
+      "unit_type": "abbreviation"
+    },
+    {
+      "byte_cost": 9,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "er"
+      ],
+      "normalized_concept": "er",
+      "normalized_roots": [
+        "er",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "er"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "bcd5fe413fe4#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "er nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 10,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "icu"
+      ],
+      "normalized_concept": "icu",
+      "normalized_roots": [
+        "icu",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "icu"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "dffa96115354#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "icu nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 14,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "hospice"
+      ],
+      "normalized_concept": "hospice",
+      "normalized_roots": [
+        "hospice",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "hospice"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "e996bb0be962#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "hospice nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 11,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "nicu"
+      ],
+      "normalized_concept": "nicu",
+      "normalized_roots": [
+        "nicu",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "nicu"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "896c09c9de65#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "nicu nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 15,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "oncology"
+      ],
+      "normalized_concept": "oncology",
+      "normalized_roots": [
+        "oncology",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "oncology"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "a4ac5b7b20fe#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "oncology nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 11,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "ped"
+      ],
+      "normalized_concept": "ped",
+      "normalized_roots": [
+        "ped",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "peds"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "8b64d004e8d3#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "peds nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 12,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "cvicu"
+      ],
+      "normalized_concept": "cvicu",
+      "normalized_roots": [
+        "cvicu",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "cvicu"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "96db111a16e0#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "cvicu nurse",
+      "unit_type": "specialty_phrase"
+    },
+    {
+      "byte_cost": 14,
+      "distinct_or_justified": true,
+      "inclusion_reason": "SPECIALTY_PHRASE_TOKEN",
+      "incremental_coverage_score": 1,
+      "incremental_value_decision": "DISTINCT_MODIFIER_SHARED_ROOT",
+      "new_roots": [
+        "cardiac"
+      ],
+      "normalized_concept": "cardiac",
+      "normalized_roots": [
+        "cardiac",
+        "nurse"
+      ],
+      "novel_tokens": [
+        "cardiac"
+      ],
+      "semantic_score": 2,
+      "semantic_unit_id": "db2ce698a7da#0",
+      "shared_interior_roots": [
+        "nurse"
+      ],
+      "text": "cardiac nurse",
+      "unit_type": "specialty_phrase"
+    }
+  ],
+  "phrase_units_intact": true,
+  "proof_workspace": "T2",
+  "repeated_concept_count": 0,
+  "repeated_concepts": {},
+  "repeated_root_count": 1,
+  "repeated_roots": {
+    "nurse": 15
+  },
+  "result": "PASS_WITH_WARNINGS",
+  "schema_version": "phase6c1-backend-density-v1",
+  "selected_candidate_count": 20,
+  "selected_keyword_ids": [
+    "0bf4ec861df9",
+    "1672f2ae82dd",
+    "34fa176c25a0",
+    "467a3aef2827",
+    "4e6c7402ca22",
+    "50870959319e",
+    "5a67cd719301",
+    "5e1339e4623b",
+    "6e9925ab4cf5",
+    "713d17899a94",
+    "896c09c9de65",
+    "8b64d004e8d3",
+    "8ea14d3c3316",
+    "96db111a16e0",
+    "a4ac5b7b20fe",
+    "bcd5fe413fe4",
+    "db2ce698a7da",
+    "dffa96115354",
+    "e996bb0be962",
+    "f3bf6330309b"
+  ],
+  "shared_root_unit_count": 15,
+  "source_keyword_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "token_slicing_detected": false,
+  "unique_concept_count": 20,
+  "unused_bytes_allowed": true,
+  "visible_copy_overlap_roots": [
+    "nurse"
+  ],
+  "warnings": [
+    "shared interior roots re-appear across whole specialty phrases (phrase integrity wins over token dedup by design); each such unit still adds a NEW modifier root, so the reuse is a byte cost, not padding: {'nurse': 15}",
+    "3 of 249 bytes left unused — byte utilization is NOT a target; the optimizer stopped on value, not on the ceiling."
+  ]
+}

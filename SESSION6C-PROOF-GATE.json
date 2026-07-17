@@ -55,17 +55,17 @@
     "listing_image_text": "DEFERRED_TO_LATER_STAGE"
   },
   "dependency_hashes": {
-    "allocation_map_sha256": "d09d3d8a1052dbc81aca9ff37d9a567f2b98546d48d6135ccf9c701cdb023c5a",
-    "claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+    "allocation_map_sha256": "956bc85de8ba0db515171c3f2e7e0b8a767a91dfe7d3e91c840418d6a9307fc6",
+    "claim_evidence_sha256": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
     "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
-    "phase6a_manifest_sha256": "99f54e5b8104201ee7875e88fb0d1b5c66bbff09e7e37946171a22f7f198ca5b",
-    "phase6b_manifest_sha256": "e8d0bac89bde058d6e983aea5d8ada4fb2eb900b2e4a61f3490dcf6359ea158a",
+    "phase6a_manifest_sha256": "e7580d845c92f4b11b16b00861e64ceb76a78a521dd478a18ae2960db51afec2",
+    "phase6b_manifest_sha256": "437efa13758760fa557e3bbf22d6194c31a8b3ed241bbae5e4c66e99e63e6d7c",
     "product_facts_sha256": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274"
   },
-  "description_char_count": 19,
+  "description_char_count": 31,
   "description_state": "SAFE_DRAFT",
-  "description_text": "A nurse sweatshirt.",
-  "deterministic_pdp_content_sha256": "b48214a36ec094a2a2d8c11f282399df789970836bf0bf22f097567bddce8de5",
+  "description_text": "A nurse sweatshirt. For nurses.",
+  "deterministic_pdp_content_sha256": "9c07ed07b76f8fff8785b6519e5c60c4978c66ecde0b869c99563563c8812b54",
   "duplicate_pdp_authority_count": 0,
   "external_network_attempts": 0,
   "fabricated_owner_fact_count": 0,
@@ -78,7 +78,7 @@
     "gift_language_status": "CLAIM_EVIDENCE_MISSING",
     "occasion_claim_state": "UNVERIFIED_BLOCKED",
     "recipient_claim_state": "VERIFIED",
-    "result": "Only the recipient/nurse audience claim is VERIFIED; gift + personalization + occasion remain UNVERIFIED_BLOCKED and are deferred from all published copy."
+    "result": "Only the ATOMIC recipient claim ('For nurses.') is VERIFIED; gift + personalization + occasion are independent claims that remain blocked and are deferred from all published copy. A verified concept never verifies a different concept (Session 6C.1)."
   },
   "item_highlight_state": "CLAIM_EVIDENCE_MISSING",
   "keyword_source_filename": "MASTER-KEYWORDS-LEAN.json",
@@ -135,6 +135,7 @@
   "proof_workspace": "T2",
   "ready_for_next_stage": true,
   "real_asset_dependency_count": 7,
+  "recertified_by_session_6c1": "Re-certified in Session 6C.1 (atomic claim-evidence repair): the recipient claim is now atomic 'For nurses.' and all hashes below reflect the corrected authority; the paid keyword source is unchanged.",
   "recommended_next_stage_scope": "Phase 6D — creative-layer planning (A+ + image plan) over the verified safe draft, under the same evidence gates. Not authorized in this session.",
   "recommended_title": "Nurse Sweatshirt",
   "recommended_title_char_count": 16,

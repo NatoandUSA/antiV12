@@ -1,0 +1,64 @@
+{
+  "aplus_authority_compatible_not_executed": true,
+  "atomicity_ok": true,
+  "claim_schema_version_after": "1.1.0",
+  "claim_schema_version_before": "1.0.0",
+  "compound_claim_policy": "A claim record may not receive a stronger EFFECTIVE evidence state than its least-supported material component. A compound canonical text that asserts an unsupported component is blocked (MIXED_EVIDENCE_BLOCKED) and is never publishable. The preferred design is atomic claims.",
+  "consumer_migrations": [
+    "listing/item_highlights_builder.py: consumes effective_evidence_state (never raw verification_state)",
+    "production/product_workspace.py validate_claim_evidence: publishability gated on effective state + per-claim atomicity",
+    "title/bullet/description/backend/page_auditor/aplus: already gate on record['publishable'] (now effective-based)"
+  ],
+  "corrected_atomic_claims": [
+    {
+      "canonical_claim": "For nurses.",
+      "claim_id": "CLM-RECIPIENT",
+      "component": "RECIPIENT",
+      "effective_evidence_state": "VERIFIED"
+    },
+    {
+      "canonical_claim": "Add <fields> during checkout.",
+      "claim_id": "CLM-PERSONALIZATION_FIELDS",
+      "component": "PERSONALIZATION",
+      "effective_evidence_state": "UNVERIFIED_BLOCKED"
+    },
+    {
+      "canonical_claim": "Suitable as a gift.",
+      "claim_id": "CLM-GIFT",
+      "component": "GIFT_OR_OCCASION",
+      "effective_evidence_state": "UNVERIFIED_BLOCKED"
+    },
+    {
+      "canonical_claim": "Great for <occasion>.",
+      "claim_id": "CLM-OCCASION",
+      "component": "GIFT_OR_OCCASION",
+      "effective_evidence_state": "UNVERIFIED_BLOCKED"
+    }
+  ],
+  "duplicate_authority_count": 0,
+  "mixed_evidence_count": 0,
+  "new_claim_evidence_sha256": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
+  "new_state_added": "MIXED_EVIDENCE_BLOCKED",
+  "old_claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+  "only_supported_component": "RECIPIENT",
+  "original_evidence_state": "VERIFIED",
+  "original_unsafe_canonical_text": "A personalized gift for nurses.",
+  "original_unsafe_claim_id": "CLM-RECIPIENT",
+  "original_unsupported_components": [
+    "PERSONALIZATION",
+    "GIFT_OR_OCCASION"
+  ],
+  "schema_version": "phase6c1-atomic-claim-migration-v1",
+  "secondary_qualifier_guard": "verified fact/keyword VALUE tokens and owner-attested free-text differentiators are exempt; only template framing words are scanned for smuggled qualifiers.",
+  "shared_claim_authority": "listing/claim_evidence.py",
+  "typed_reason_codes": [
+    "CLAIM_NOT_ATOMIC",
+    "UNSUPPORTED_CLAIM_COMPONENT",
+    "MIXED_EVIDENCE_COMPONENTS",
+    "PERSONALIZATION_EVIDENCE_MISSING",
+    "GIFT_EVIDENCE_MISSING",
+    "DECORATION_EVIDENCE_MISSING",
+    "MATERIAL_EVIDENCE_MISSING"
+  ],
+  "validator": "listing.claim_evidence.resolve_atomic_components / validate_claim_record / audit_claim_evidence"
+}

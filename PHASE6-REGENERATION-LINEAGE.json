@@ -1,0 +1,69 @@
+{
+  "deterministic_verification": true,
+  "new_claim_evidence_sha256": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
+  "new_listing_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "new_safe_visible_copy": {
+    "description": "A nurse sweatshirt. For nurses.",
+    "title": "Nurse Sweatshirt"
+  },
+  "no_paid_rows_or_private_copy": true,
+  "old_claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+  "old_listing_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "old_safe_visible_copy": {
+    "description": "A nurse sweatshirt.",
+    "title": "Nurse Sweatshirt"
+  },
+  "phase6a_artifact_hashes": {
+    "new": {
+      "claim_evidence": "840e62168f46e133444ca42a5cd8130c2041eaaae63a9249ec5cf557c3c16edf",
+      "product_facts": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274",
+      "stage_manifest": "e7580d845c92f4b11b16b00861e64ceb76a78a521dd478a18ae2960db51afec2"
+    },
+    "old": {
+      "claim_evidence": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+      "product_facts": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274",
+      "stage_manifest": "99f54e5b8104201ee7875e88fb0d1b5c66bbff09e7e37946171a22f7f198ca5b"
+    }
+  },
+  "phase6b_allocation_unchanged": {
+    "allocated_unique": 24,
+    "assignment_records": 27,
+    "reused": 1,
+    "selected_unique": 56,
+    "unallocated_unique": 32
+  },
+  "phase6b_artifact_hashes": {
+    "new": {
+      "allocation_map": "956bc85de8ba0db515171c3f2e7e0b8a767a91dfe7d3e91c840418d6a9307fc6",
+      "stage_manifest": "437efa13758760fa557e3bbf22d6194c31a8b3ed241bbae5e4c66e99e63e6d7c"
+    },
+    "old": {
+      "allocation_map": "d09d3d8a1052dbc81aca9ff37d9a567f2b98546d48d6135ccf9c701cdb023c5a",
+      "stage_manifest": "e8d0bac89bde058d6e983aea5d8ada4fb2eb900b2e4a61f3490dcf6359ea158a"
+    }
+  },
+  "phase6c_artifact_hashes": {
+    "new": {
+      "backend": "145ea39573deb2fc86462fb62d795036302664b48b9814fcb5d06905ce8b136a",
+      "product_detail_page": "9c07ed07b76f8fff8785b6519e5c60c4978c66ecde0b869c99563563c8812b54",
+      "stage_manifest": "2e17a1b9a9cc3cdc6e0c4f6b07433129de4bffd2e371b1ae1660d68c5cf2123a"
+    },
+    "old": {
+      "backend": "b38b2c7ecd2fffcaaff1007657fe239e9bbd7f032e88fc76ad2c1dfa4dc4df3a",
+      "product_detail_page": "b48214a36ec094a2a2d8c11f282399df789970836bf0bf22f097567bddce8de5",
+      "stage_manifest": "d81fc36bc094ae5e3bf10408562deee0de0e4a6b11fd60b788bed194dbb41612"
+    }
+  },
+  "product_facts_unchanged": true,
+  "proof_workspace": "T2",
+  "reason_for_regeneration": "Shared claim-evidence authority made ATOMIC: the recipient claim's canonical text changed from the compound 'A personalized gift for nurses.' (which wrongly held a VERIFIED state for unverified personalization + gift concepts) to the atomic 'For nurses.'. This changes CLAIM-EVIDENCE.json and every downstream Phase 6A/6B/6C hash; the paid keyword source is untouched.",
+  "schema_version": "phase6c1-regeneration-lineage-v1",
+  "session": "6C.1",
+  "source_keyword_filename": "MASTER-KEYWORDS-LEAN.json",
+  "source_keyword_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+  "source_keyword_unchanged": true,
+  "three_mode_determinism": true,
+  "tier_a": 74,
+  "tier_b": 378,
+  "two_run_determinism": true
+}

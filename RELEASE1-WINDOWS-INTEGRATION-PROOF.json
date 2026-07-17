@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-07-17T15:30:29",
+  "no_admin_gate": {
+    "duration_seconds": 0.002,
+    "evidence": {
+      "elevated": false
+    },
+    "id": "O",
+    "mandatory": true,
+    "name": "No-admin: process is not elevated; no elevation is required",
+    "status": "PASS",
+    "summary": "running non-elevated; no command required admin/UAC/SYSTEM"
+  },
+  "shortcuts_gate": {
+    "duration_seconds": 6.507,
+    "evidence": {
+      "created_count": 4,
+      "desktop_shortcut": true,
+      "installed_after_remove": false,
+      "removed_count": 4,
+      "second_remove_ok": true,
+      "start_menu_count": 3,
+      "status_installed": true,
+      "targets_ok": true
+    },
+    "id": "I",
+    "mandatory": true,
+    "name": "Live current-user shortcuts create/query/remove",
+    "status": "PASS",
+    "summary": "shortcuts created, detected, removed (idempotent)"
+  },
+  "task_scheduler_gate": {
+    "duration_seconds": 0.038,
+    "evidence": {
+      "method": "STARTUP_FOLDER_CURRENT_USER",
+      "requires_admin": false,
+      "startup_created": true,
+      "startup_invokes_dashboard": true,
+      "startup_no_browser": true,
+      "startup_no_external_url": true,
+      "startup_no_secret": true,
+      "startup_owned": true,
+      "startup_removed": true,
+      "startup_verified": true,
+      "task_create_exit": 1,
+      "task_create_stderr": "ERROR: Access is denied.",
+      "task_scheduler_failure": "TASK_SCHEDULER_ACCESS_DENIED",
+      "temp_task_name": "AMZ-FBM-Toolkit-Release1-Certification-70ac31",
+      "unrelated_startup_entry_preserved": true
+    },
+    "id": "H",
+    "mandatory": true,
+    "name": "Live autostart: Task Scheduler or current-user Startup-folder fallback",
+    "status": "PASS",
+    "summary": "Task Scheduler unavailable (TASK_SCHEDULER_ACCESS_DENIED) without elevation; the current-user Startup-folder fallback was live-created, verified, and removed — no elevation, no SYSTEM, no machine-wide task."
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-07-17T15:30:29",
+  "reinstall_gate": {
+    "duration_seconds": 5.048,
+    "evidence": {
+      "doctor_ok": true,
+      "health_ok": true,
+      "manifest_recreated": true,
+      "reinstall_status": "INSTALLED",
+      "start_status": "STARTED"
+    },
+    "id": "N",
+    "mandatory": true,
+    "name": "Reinstall after uninstall; start healthy; data intact; offline",
+    "status": "PASS",
+    "summary": "reinstall recreated manifest and started healthy"
+  },
+  "uninstall_gate": {
+    "duration_seconds": 4.014,
+    "evidence": {
+      "all_sentinels_preserved": true,
+      "first_status": "UNINSTALLED",
+      "idempotent": true,
+      "no_unknown_process_killed": true,
+      "repository_runs_preserved": true,
+      "second_status": "UNINSTALLED",
+      "sentinels_survived": {
+        "backups": true,
+        "config": true,
+        "data": true,
+        "logs": true
+      }
+    },
+    "id": "M",
+    "mandatory": true,
+    "name": "Uninstall preserves all business data; idempotent; no unknown kill",
+    "status": "PASS",
+    "summary": "uninstall preserved config/data/logs/backups + repo/runs"
+  }
+}

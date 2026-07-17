@@ -11,18 +11,33 @@ Everything below runs as your normal Windows user.
 
 ## 1. Install locally (one time)
 
-From the project folder, in a normal (non-admin) terminal:
+From the project folder, in a normal (non-admin) terminal. There are **two supported
+fully-offline install modes** — pick whichever your Python supports:
+
+**Mode 1 — standard editable install** (when `setuptools` is already present):
 
 ```
-python -m pip install --no-deps -e .
+python -m pip install --no-deps --no-index --no-build-isolation -e .
 amz-fbm install-local --shortcuts
 ```
 
-- `pip install --no-deps -e .` registers the `amz-fbm` command using packages you
-  already have. `--no-deps` means **no downloads**.
-- `install-local` creates your per-user folders, writes an install manifest and an
-  offline config, generates launcher wrappers, and (with `--shortcuts`) adds
-  Desktop and Start Menu shortcuts. It runs `doctor` at the end.
+**Mode 2 — no-setuptools offline source bootstrap** (stdlib only, no build backend,
+no network — use this when a fresh Python 3.12+ has no `setuptools`):
+
+```
+python -m amz_fbm bootstrap-offline --source . --verify
+amz-fbm install-local --shortcuts
+```
+
+- Mode 1 registers the `amz-fbm` command using packages you already have.
+  `--no-deps --no-index` means **no downloads**.
+- Mode 2 registers the source with a toolkit-owned `.pth` and an `amz-fbm.cmd`
+  wrapper (`python -m amz_fbm`). It needs **no setuptools, no build backend, and no
+  admin**, and verifies both command forms before reporting success.
+- `install-local` creates your per-user folders, writes an install manifest (recording
+  the active installation mode), an offline config, generates launcher wrappers, and
+  (with `--shortcuts`) adds Desktop and Start Menu shortcuts. It runs `doctor` at the
+  end.
 
 Autostart is **off** unless you ask for it (see §7). To do everything at once:
 
@@ -91,20 +106,32 @@ healthy. It never opens an external URL.
 ## 7. Autostart at login (optional)
 
 ```
-amz-fbm autostart enable
+amz-fbm autostart enable                     # auto: task scheduler, else startup folder
+amz-fbm autostart enable --method task-scheduler
+amz-fbm autostart enable --method startup-folder
 amz-fbm autostart disable
 amz-fbm autostart status
 ```
 
-`enable` creates a **current-user** Windows Task Scheduler task named
-`AMZ-FBM-Toolkit` that runs at logon with **limited** privileges and starts only the
-dashboard (no browser, offline). It never runs as SYSTEM, never requests highest
-privileges, and is never machine-wide. Success is confirmed by re-reading the task,
-not just the exit code.
+`enable` (default `--method auto`) tries a **current-user** Windows Task Scheduler task
+named `AMZ-FBM-Toolkit` that runs at logon with **limited** privileges and starts only
+the dashboard (no browser, offline). Success is confirmed by re-reading the task, not
+just the exit code.
 
-> Note: creating the task requires an ordinary interactive logon session. Some
-> locked-down or automation environments block task creation entirely; that is an
-> environment restriction, not an admin requirement.
+If Task Scheduler is unavailable **without elevation** (for example a single-admin PC
+whose UAC-filtered token is denied task creation), `enable` automatically falls back to
+a **current-user Startup-folder launcher**
+(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\AMZ-FBM-Toolkit-Startup.cmd`).
+The fallback is reported honestly as `STARTUP_FOLDER_CURRENT_USER` — never as a hidden
+task success.
+
+Neither method **ever** requires elevation, runs as SYSTEM, requests highest
+privileges, is machine-wide, or opens a browser. `status` reports the actual active
+method; `disable` removes every toolkit-owned autostart method (task **and** Startup
+launcher) and never touches unrelated tasks or Startup-folder entries.
+
+> Do **not** run an elevated terminal to enable autostart — the Startup-folder fallback
+> is the supported no-admin path when Task Scheduler is blocked.
 
 ## 8. Doctor (self-check)
 
@@ -113,9 +140,10 @@ amz-fbm doctor
 ```
 
 A read-only local check of Python, the package, runtime policy, directories,
-instance state, port conflicts, `/healthz`, autostart, shortcuts, and required
-modules. It performs **no** network request, changes nothing, and never prints
-secrets.
+instance state, port conflicts, `/healthz`, **installation mode** (editable vs offline
+source bootstrap), **autostart method** (task scheduler / Startup-folder fallback, and
+that no elevation is required), shortcuts, and required modules. It performs **no**
+network request, changes nothing, and never prints secrets.
 
 ## 9. Uninstall (keeps your data)
 
@@ -123,8 +151,10 @@ secrets.
 amz-fbm uninstall
 ```
 
-Stops a verified instance, removes the scheduled task, shortcuts, generated
-wrappers, and stale runtime metadata — and **preserves all business data**:
+Stops a verified instance, removes the scheduled task, the current-user Startup-folder
+autostart launcher, shortcuts, generated wrappers, any toolkit-owned offline-bootstrap
+`.pth` / `amz-fbm.cmd`, and stale runtime metadata — and **preserves all business
+data** (and never removes a `.pth`/`.cmd`/Startup file it does not own):
 
 - the Git repository and `runs/`
 - product facts, keyword exports, listing packages, reports
@@ -177,10 +207,11 @@ unrelated process is stale.
 (one JSON record per line) and `dashboard.log`. Logs contain no secrets or business
 copy.
 
-**Reinstall** — safe to re-run any time:
+**Reinstall** — safe to re-run any time (either install mode from §1):
 
 ```
-python -m pip install --no-deps -e .
+python -m pip install --no-deps --no-index --no-build-isolation -e .   # or:
+python -m amz_fbm bootstrap-offline --source . --verify
 amz-fbm install-local --shortcuts
 ```
 

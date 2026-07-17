@@ -39,7 +39,7 @@
       "PRODUCT-PAGE.json",
       "CONTENT-COMPLIANCE-REPORT.json"
     ],
-    "generated_at": "2026-07-17T14:29:04",
+    "generated_at": "2026-07-17T15:28:41",
     "safe_draft": true
   },
   "current_authoritative_outputs": [
@@ -51,6 +51,6 @@
     "PRODUCT-PAGE.json",
     "CONTENT-COMPLIANCE-REPORT.json"
   ],
-  "generated_at": "2026-07-17T14:30:44",
+  "generated_at": "2026-07-17T15:30:29",
   "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED"
 }

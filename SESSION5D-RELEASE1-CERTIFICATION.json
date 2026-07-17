@@ -8,17 +8,17 @@
       "PRODUCT-PAGE.json",
       "CONTENT-COMPLIANCE-REPORT.json"
     ],
-    "generated_at": "2026-07-17T14:29:04",
+    "generated_at": "2026-07-17T15:28:41",
     "safe_draft": true
   },
   "gates": [
     {
-      "duration_seconds": 2.04,
+      "duration_seconds": 2.031,
       "evidence": {
-        "app_home": "<TEMP>\\AMZ-FBM-Release1-Certification-20260717-142825\\app-home",
+        "app_home": "<TEMP>\\AMZ-FBM-Release1-Certification-20260717-152801\\app-home",
         "inside_repository": false,
         "port": 5057,
-        "workspace": "<TEMP>\\AMZ-FBM-Release1-Certification-20260717-142825"
+        "workspace": "<TEMP>\\AMZ-FBM-Release1-Certification-20260717-152801"
       },
       "id": "A",
       "mandatory": true,
@@ -27,29 +27,63 @@
       "summary": "workspace under %TEMP%, port 5057, AMZ_FBM_HOME redirected, not inside repo=True"
     },
     {
-      "duration_seconds": 6.374,
+      "duration_seconds": 7.188,
       "evidence": {
+        "bootstrap_content_sha256": "f16f30f3f3239e3bc50b7d34719369f64583f133ec10dd8a82ab11160126a0fe",
+        "bootstrap_exit": 0,
+        "bootstrap_mode": "OFFLINE_SOURCE_BOOTSTRAP",
+        "bootstrap_ok": true,
+        "bootstrap_verifications": [
+          {
+            "detail": "",
+            "name": "import_amz_fbm",
+            "ok": true
+          },
+          {
+            "detail": "",
+            "name": "python_m_version",
+            "ok": true
+          },
+          {
+            "detail": "",
+            "name": "cli_help",
+            "ok": true
+          },
+          {
+            "detail": "",
+            "name": "json_output",
+            "ok": true
+          },
+          {
+            "detail": "",
+            "name": "wrapper_version",
+            "ok": true
+          }
+        ],
+        "cli_help_ok": true,
         "cli_version": "2.4.0-rc2",
         "console_script_resolves": true,
+        "editable_install_ok": false,
         "import_no_error": true,
+        "installation_mode": "OFFLINE_SOURCE_BOOTSTRAP",
         "json_parses": true,
         "offline_install_exit": 2,
-        "offline_install_ok": false,
         "python_m_amz_fbm_resolves": true,
         "python_version": "3.12.10",
         "setuptools_present_for_offline_build": false,
         "unknown_command_nonzero": true,
         "venv_created": true,
-        "version_matches_authority": true
+        "version_matches_authority": true,
+        "wrapper_runs": true
       },
       "id": "B",
       "mandatory": true,
-      "name": "Fresh venv + offline editable install + CLI resolution",
-      "status": "BLOCKED",
-      "summary": "CLI/version/offline-import all PASS on the installed package, but a fresh fully-offline editable build is BLOCKED: setuptools (PEP 517 backend) is absent and cannot be fetched offline. Remediation: install setuptools once (online), then offline reinstall works with --no-build-isolation."
+      "name": "Fresh venv + offline install (editable or source-bootstrap) + CLI",
+      "status": "PASS",
+      "summary": "fresh fully-offline install via OFFLINE_SOURCE_BOOTSTRAP; both CLI forms resolve"
     },
     {
-      "duration_seconds": 3.934,
+      "duration_seconds": 4.074,
       "evidence": {
         "autostart_not_enabled_by_default": true,
         "external_ai_enabled": false,
@@ -69,7 +103,7 @@
       "summary": "install-local idempotent, offline, data preserved"
     },
     {
-      "duration_seconds": 5.771,
+      "duration_seconds": 5.703,
       "evidence": {
         "doctor_loopback": true,
         "doctor_ok": true,
@@ -98,7 +132,7 @@
       "summary": "detached start->health->status->restart->stop verified"
     },
     {
-      "duration_seconds": 2.617,
+      "duration_seconds": 2.625,
       "evidence": {
         "health_checked_before_open": true,
         "open_url": "http://127.0.0.1:5057/",
@@ -113,7 +147,7 @@
       "summary": "open refuses unhealthy; loopback+port enforced when healthy"
     },
     {
-      "duration_seconds": 5.409,
+      "duration_seconds": 5.425,
       "evidence": {
         "bounded_health_returns_without_hanging": true,
         "corrupt_recovered": true,
@@ -134,7 +168,7 @@
       "summary": "dead/reused/corrupt/partial handled; no unknown process killed"
     },
     {
-      "duration_seconds": 4.02,
+      "duration_seconds": 4.014,
       "evidence": {
         "listener_alive_after_refusal": true,
         "no_metadata_written": true,
@@ -149,21 +183,32 @@
       "summary": "PORT_IN_USE_BY_UNKNOWN_PROCESS; listener untouched"
     },
     {
-      "duration_seconds": 0.048,
+      "duration_seconds": 0.038,
       "evidence": {
-        "create_exit": 1,
-        "create_stderr": "ERROR: Access is denied.",
-        "existing_task_backed_up": false,
-        "temp_task_name": "AMZ-FBM-Toolkit-Release1-Certification-226144"
+        "method": "STARTUP_FOLDER_CURRENT_USER",
+        "requires_admin": false,
+        "startup_created": true,
+        "startup_invokes_dashboard": true,
+        "startup_no_browser": true,
+        "startup_no_external_url": true,
+        "startup_no_secret": true,
+        "startup_owned": true,
+        "startup_removed": true,
+        "startup_verified": true,
+        "task_create_exit": 1,
+        "task_create_stderr": "ERROR: Access is denied.",
+        "task_scheduler_failure": "TASK_SCHEDULER_ACCESS_DENIED",
+        "temp_task_name": "AMZ-FBM-Toolkit-Release1-Certification-70ac31",
+        "unrelated_startup_entry_preserved": true
       },
       "id": "H",
       "mandatory": true,
-      "name": "Live Task Scheduler create/query/delete (current-user, no-admin)",
-      "status": "BLOCKED",
-      "summary": "live schtasks /Create denied by this environment — cannot certify live. Root cause: the machine's sole account runs a UAC-filtered token in which Administrators is deny-only, so creating a scheduled task needs elevation, which the no-admin safety rule forbids. Remediation: run `amz-fbm autostart enable` once from an elevated terminal, or use a standard-user Windows profile where a current-user ONLOGON/LIMITED task needs no elevation."
+      "name": "Live autostart: Task Scheduler or current-user Startup-folder fallback",
+      "status": "PASS",
+      "summary": "Task Scheduler unavailable (TASK_SCHEDULER_ACCESS_DENIED) without elevation; the current-user Startup-folder fallback was live-created, verified, and removed — no elevation, no SYSTEM, no machine-wide task."
     },
     {
-      "duration_seconds": 6.602,
+      "duration_seconds": 6.507,
       "evidence": {
         "created_count": 4,
         "desktop_shortcut": true,
@@ -181,7 +226,7 @@
       "summary": "shortcuts created, detected, removed (idempotent)"
     },
     {
-      "duration_seconds": 0.947,
+      "duration_seconds": 0.949,
       "evidence": {
         "backend_generated": true,
         "bullets_generated": true,
@@ -202,7 +247,7 @@
       "summary": "local workflow succeeded offline; external attempts=0"
     },
     {
-      "duration_seconds": 1.432,
+      "duration_seconds": 1.485,
       "evidence": {
         "copy_ready_deterministic": true,
         "keyword_source_is_lean": true,
@@ -275,7 +320,7 @@
       "summary": "one current copy/paste authority; deprecated outputs absent"
     },
     {
-      "duration_seconds": 3.911,
+      "duration_seconds": 4.014,
       "evidence": {
         "all_sentinels_preserved": true,
         "first_status": "UNINSTALLED",
@@ -297,7 +342,7 @@
       "summary": "uninstall preserved config/data/logs/backups + repo/runs"
     },
     {
-      "duration_seconds": 4.946,
+      "duration_seconds": 5.048,
       "evidence": {
         "doctor_ok": true,
         "health_ok": true,
@@ -323,46 +368,43 @@
       "summary": "running non-elevated; no command required admin/UAC/SYSTEM"
     },
     {
-      "duration_seconds": 0.086,
+      "duration_seconds": 0.093,
       "evidence": {
-        "files_scanned": 40,
+        "files_scanned": 41,
         "reachable_findings": []
       },
       "id": "P",
       "mandatory": true,
       "name": "Security source scan: no prohibited runtime behavior",
       "status": "PASS",
-      "summary": "scanned 40 runtime files; 0 prohibited reachable pattern(s)"
+      "summary": "scanned 41 runtime files; 0 prohibited reachable pattern(s)"
     },
     {
-      "duration_seconds": 90.143,
+      "duration_seconds": 98.295,
       "evidence": {
-        "duration_seconds": 90.1,
+        "duration_seconds": 98.3,
         "ok": true,
         "summary_tail": [
-          "Ran 785 tests in 89.291s",
+          "Ran 826 tests in 97.403s",
           "",
           "OK"
         ],
-        "tests_run": 785
+        "tests_run": 826
       },
       "id": "U",
       "mandatory": true,
       "name": "Full unittest suite",
       "status": "PASS",
-      "summary": "unittest: 785 tests, OK"
+      "summary": "unittest: 826 tests, OK"
     }
   ],
-  "generated_at_end": "2026-07-17T14:30:44",
-  "generated_at_start": "2026-07-17T14:28:25",
-  "mandatory_blocked": [
-    "B",
-    "H"
-  ],
+  "generated_at_end": "2026-07-17T15:30:29",
+  "generated_at_start": "2026-07-17T15:28:01",
+  "mandatory_blocked": [],
   "mandatory_failed": [],
-  "mandatory_pass": 15,
+  "mandatory_pass": 17,
   "mandatory_total": 17,
-  "overall_status": "RELEASE1_BLOCKED",
+  "overall_status": "RELEASE1_CERTIFIED",
   "project_basename": "AMZ-FBM-Toolkit-v2_3_4-RC1",
   "session": "5D",
   "test_port": 5057

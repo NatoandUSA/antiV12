@@ -384,5 +384,135 @@ class TestVersionAndArtifacts(unittest.TestCase):
             self.assertNotIn(home, blob)          # sanitized
 
 
+# ============================================================================
+# Session 5D.1 — no-admin autostart + offline bootstrap certification surface
+# ============================================================================
+import windows_integration as WI      # noqa: E402
+import offline_bootstrap as OB        # noqa: E402
+import local_install as LI            # noqa: E402
+
+
+class _FakeResult:
+    def __init__(self, stderr="", stdout=""):
+        self.stderr = stderr
+        self.stdout = stdout
+
+
+class TestAutostartMethodModel(unittest.TestCase):
+    def test_classify_access_denied_vs_unavailable(self):
+        self.assertEqual(WI._classify_task_failure(_FakeResult("ERROR: Access is denied.")),
+                         WI.TASK_SCHEDULER_ACCESS_DENIED)
+        self.assertEqual(WI._classify_task_failure(_FakeResult("cannot find the file")),
+                         WI.TASK_SCHEDULER_UNAVAILABLE)
+
+    def test_autostart_state_never_requires_admin(self):
+        d = tempfile.mkdtemp(prefix="amz5d1-state-")
+        try:
+            with mock.patch.object(WI, "autostart_status",
+                                   return_value={"installed": False, "valid": False}):
+                state = WI.autostart_state(startup_dir=d)
+            self.assertFalse(state["requires_admin"])
+            self.assertEqual(state["method"], WI.AUTOSTART_DISABLED)
+        finally:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_generated_launchers_have_no_prohibited_patterns(self):
+        bodies = [WI._startup_launcher_body(),
+                  OB._wrapper_content(r"C:\Program Files\Py\python.exe"),
+                  OB._pth_content(R.PROJECT_ROOT)]
+        prohibited = ("0.0.0.0", "netsh advfirewall", "new-netfirewallrule", "ngrok",
+                      "cloudflared", "trycloudflare", "localtunnel", "taskkill /im python",
+                      "highestavailable", "s-1-5-18", "/rl highest", "/ru system",
+                      "--open", "http://", "https://", "runas")
+        for body in bodies:
+            low = body.lower()
+            for bad in prohibited:
+                self.assertNotIn(bad, low, "%r in generated launcher" % bad)
+
+    def test_no_new_elevation_command_in_core(self):
+        import re
+        rx = re.compile(r"verb['\"]?\s*[:=]\s*['\"]?runas|shellexecute[^\n]*runas|"
+                        r"/RL[\"',\s]+HIGHEST|/RU[\"',\s]+(SYSTEM|S-1-5-18)|"
+                        r"start-process[^\n]*-verb\s+runas", re.I)
+        offenders = []
+        for root, _dirs, files in os.walk(os.path.join(R.PROJECT_ROOT, "core")):
+            if "__pycache__" in root:
+                continue
+            for fn in files:
+                if not fn.endswith(".py"):
+                    continue
+                with open(os.path.join(root, fn), encoding="utf-8", errors="replace") as f:
+                    for i, line in enumerate(f, 1):
+                        s = line.strip()
+                        if s.startswith("#") or not s:
+                            continue
+                        if rx.search(line):
+                            offenders.append("%s:%d %s" % (fn, i, s[:80]))
+        self.assertEqual(offenders, [])
+
+
+class TestInstallationModeAndArtifacts(unittest.TestCase):
+    def test_detect_installation_mode_is_known(self):
+        self.assertIn(LI.detect_installation_mode(),
+                      (OB.MODE_PEP517_EDITABLE, OB.MODE_OFFLINE_SOURCE_BOOTSTRAP,
+                       "SOURCE_ON_PATH"))
+
+    def test_installation_mode_and_startup_method_appear_sanitized(self):
+        home = os.path.expanduser("~")
+        report = {
+            "session": "5D", "generated_at_start": "t0", "generated_at_end": "t1",
+            "project_basename": "repo", "overall_status": R.CERTIFIED,
+            "mandatory_total": 2, "mandatory_pass": 2,
+            "mandatory_failed": [], "mandatory_blocked": [], "test_port": 5057,
+            "authority_map": {"current_authority": {}},
+            "gates": [
+                {"id": "B", "name": "install", "mandatory": True, "status": R.PASS,
+                 "summary": "ok", "evidence": {
+                     "installation_mode": "OFFLINE_SOURCE_BOOTSTRAP",
+                     "site_packages_display": os.path.join(home, "venv", "site")}},
+                {"id": "H", "name": "autostart", "mandatory": True, "status": R.PASS,
+                 "summary": "ok", "evidence": {
+                     "method": "STARTUP_FOLDER_CURRENT_USER",
+                     "startup_removed": True}},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as out:
+            R.emit_artifacts(report, out)
+            with open(os.path.join(out, "SESSION5D-RELEASE1-CERTIFICATION.json"),
+                      encoding="utf-8") as f:
+                cert_blob = f.read()
+            with open(os.path.join(out, "RELEASE1-WINDOWS-INTEGRATION-PROOF.json"),
+                      encoding="utf-8") as f:
+                win_blob = f.read()
+        self.assertIn("OFFLINE_SOURCE_BOOTSTRAP", cert_blob)
+        self.assertIn("STARTUP_FOLDER_CURRENT_USER", win_blob)
+        self.assertNotIn(home, cert_blob)          # still sanitized
+
+
+class TestSecurityRegression5D1(unittest.TestCase):
+    def test_security_scan_still_clean_with_new_modules(self):
+        cert = R.Certifier(log=_noop)
+        g = cert.gate_security_scan()
+        self.assertEqual(g.status, R.PASS, g.evidence.get("reachable_findings"))
+
+    def test_no_machine_wide_or_system_autostart_introduced(self):
+        # the only /Create the toolkit issues is current-user ONLOGON/LIMITED
+        tr = WI._task_run_string("start")
+        self.assertIn("-m amz_fbm start", tr)
+        self.assertNotIn("ONSTART", tr.upper())
+        with open(WI.__file__, encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('"/RL", "LIMITED"', src)         # create uses limited privilege
+        self.assertNotIn('"HIGHEST"', src)             # never a highest-privilege create arg
+        self.assertNotIn('"/RU"', src)                 # never a run-as principal (no SYSTEM)
+
+    def test_bootstrap_removal_only_touches_owned_files(self):
+        # a bootstrap removal in this pip-editable env removes nothing (no owned files)
+        res = OB.remove_offline_source()
+        self.assertTrue(res.ok)
+        self.assertEqual(res.files_removed, [])
+
+
 if __name__ == "__main__":
     unittest.main()

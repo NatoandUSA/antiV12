@@ -27,6 +27,21 @@ import subprocess_runner as SR
 TASK_NAME = "AMZ-FBM-Toolkit"
 START_MENU_FOLDER = "AMZ FBM Toolkit"
 
+# Current-user Startup-folder autostart fallback (Session 5D.1 / Part A, B).
+STARTUP_LAUNCHER_NAME = "AMZ-FBM-Toolkit-Startup.cmd"
+_STARTUP_OWNER_MARKER = "AMZ-FBM-TOOLKIT-AUTOSTART"
+
+# Explicit autostart methods reported to the owner / certification.
+AUTOSTART_DISABLED = "DISABLED"
+AUTOSTART_TASK_SCHEDULER = "TASK_SCHEDULER_CURRENT_USER"
+AUTOSTART_STARTUP_FOLDER = "STARTUP_FOLDER_CURRENT_USER"
+AUTOSTART_ENABLE_FAILED = "AUTOSTART_ENABLE_FAILED"
+# Internal / diagnostic states.
+TASK_SCHEDULER_UNAVAILABLE = "TASK_SCHEDULER_UNAVAILABLE"
+TASK_SCHEDULER_ACCESS_DENIED = "TASK_SCHEDULER_ACCESS_DENIED"
+AUTOSTART_CONFIGURATION_INVALID = "AUTOSTART_CONFIGURATION_INVALID"
+AUTOSTART_METHODS = ("auto", "task-scheduler", "startup-folder")
+
 # Shortcut label -> CLI verb. Desktop gets "Open" only; Start Menu gets all three.
 _SHORTCUTS = [("Open AMZ FBM Toolkit", "open"),
               ("Start AMZ FBM Toolkit", "start"),
@@ -76,28 +91,125 @@ def _task_run_string(verb="start"):
     return f'"{exe}" -m amz_fbm {verb}'
 
 
-def enable_autostart(env=None):
-    """Create/replace the current-user ONLOGON task, then verify it by query."""
+def _classify_task_failure(result):
+    """Map a failed schtasks /Create to a stable diagnostic code (never elevate)."""
+    text = ((getattr(result, "stderr", "") or "") + " "
+            + (getattr(result, "stdout", "") or "")).lower()
+    if "access is denied" in text or "access denied" in text:
+        return TASK_SCHEDULER_ACCESS_DENIED
+    return TASK_SCHEDULER_UNAVAILABLE
+
+
+def _enable_task_scheduler(env=None):
+    """Attempt the current-user ONLOGON/LIMITED task and verify it by query.
+
+    Never elevates, never retries as administrator. Returns a structured result;
+    ``failure`` is a stable code when creation is denied/unavailable.
+    """
     tr = _task_run_string("start")
     r = _schtasks(["/Create", "/TN", TASK_NAME, "/TR", tr, "/SC", "ONLOGON",
-                   "/RL", "LIMITED", "/F"], stage="autostart-enable", allowed=(0,))
-    status = autostart_status(env)
-    ok = bool(r.success) and status["valid"]
-    _oplog(env, "autostart", "enable", {"created": r.success, "valid": status["valid"]})
-    return {"ok": ok, "created": r.success, "verified": status["valid"],
-            "task_name": TASK_NAME, "status": status,
-            "detail": r.diagnostic_summary if not r.success else "task created and verified"}
-
-
-def disable_autostart(env=None):
-    """Delete the task. Idempotent — a missing task is treated as success."""
-    r = _schtasks(["/Delete", "/TN", TASK_NAME, "/F"], stage="autostart-disable",
+                   "/RL", "LIMITED", "/F"], stage="autostart-enable",
                   allowed=tuple(range(0, 256)))
+    if not r.success or r.exit_code != 0:
+        failure = _classify_task_failure(r)
+        return {"ok": False, "created": False, "verified": False, "failure": failure,
+                "last_error_code": failure, "detail": r.diagnostic_summary,
+                "stderr": (r.stderr or r.stdout or "").strip()[:300]}
     status = autostart_status(env)
-    ok = not status["installed"]
-    _oplog(env, "autostart", "disable", {"removed": ok})
-    return {"ok": ok, "task_name": TASK_NAME, "installed": status["installed"],
-            "detail": "task removed" if ok else "task still present"}
+    ok = status["valid"]
+    return {"ok": ok, "created": True, "verified": status["valid"],
+            "failure": None if ok else AUTOSTART_CONFIGURATION_INVALID,
+            "last_error_code": None if ok else AUTOSTART_CONFIGURATION_INVALID,
+            "status": status,
+            "detail": "task created and verified" if ok else
+            "task created but failed current-user/limited verification"}
+
+
+def enable_autostart(env=None, method="auto", startup_dir=None):
+    """Enable current-user login autostart. Never requires elevation.
+
+    method="auto" (default) attempts Task Scheduler and, on a verified access-denied /
+    unavailable result, falls back to the current-user Startup folder — reported
+    honestly as STARTUP_FOLDER_CURRENT_USER, never as a hidden Task Scheduler success.
+    Explicit "task-scheduler" fails honestly when unavailable; explicit
+    "startup-folder" creates the fallback directly.
+    """
+    method = (method or "auto").lower()
+    if method not in AUTOSTART_METHODS:
+        return {"ok": False, "method": AUTOSTART_CONFIGURATION_INVALID,
+                "requested_method": method, "verified": False, "requires_admin": False,
+                "detail": "unknown autostart method: %s" % method}
+
+    if method == "startup-folder":
+        sf = enable_startup_folder(env, startup_dir=startup_dir)
+        _oplog(env, "autostart", "enable", {"method": "startup-folder", "ok": sf["ok"]})
+        return {"ok": sf["ok"],
+                "method": AUTOSTART_STARTUP_FOLDER if sf["ok"] else AUTOSTART_ENABLE_FAILED,
+                "requested_method": method, "created": sf["ok"], "verified": sf["ok"],
+                "task_scheduler": None, "startup_folder": sf, "requires_admin": False,
+                "detail": sf["detail"]}
+
+    if method == "task-scheduler":
+        ts = _enable_task_scheduler(env)
+        _oplog(env, "autostart", "enable", {"method": "task-scheduler", "ok": ts["ok"]})
+        return {"ok": ts["ok"],
+                "method": AUTOSTART_TASK_SCHEDULER if ts["ok"] else AUTOSTART_ENABLE_FAILED,
+                "requested_method": method, "created": ts["created"],
+                "verified": ts["verified"], "task_scheduler": ts, "startup_folder": None,
+                "task_name": TASK_NAME, "requires_admin": False, "detail": ts["detail"]}
+
+    # method == "auto"
+    ts = _enable_task_scheduler(env)
+    if ts["ok"]:
+        _oplog(env, "autostart", "enable",
+               {"method": "task-scheduler", "ok": True, "fallback": False})
+        return {"ok": True, "method": AUTOSTART_TASK_SCHEDULER, "requested_method": "auto",
+                "created": True, "verified": True, "task_scheduler": ts,
+                "startup_folder": None, "task_name": TASK_NAME, "requires_admin": False,
+                "detail": "task created and verified"}
+    if ts["created"]:
+        # created but did not verify current-user/limited — surface, do NOT fall back.
+        _oplog(env, "autostart", "enable",
+               {"method": "task-scheduler", "ok": False, "verified": False})
+        return {"ok": False, "method": AUTOSTART_CONFIGURATION_INVALID,
+                "requested_method": "auto", "created": True, "verified": False,
+                "task_scheduler": ts, "startup_folder": None, "requires_admin": False,
+                "detail": ts["detail"]}
+    # creation failed (access denied / unavailable) — fall back to the Startup folder.
+    sf = enable_startup_folder(env, startup_dir=startup_dir)
+    if sf["ok"]:
+        warning = ("Task Scheduler unavailable (%s); using the current-user Startup "
+                   "folder fallback — no elevation." % ts.get("failure"))
+        _oplog(env, "autostart", "enable",
+               {"method": "startup-folder", "ok": True, "fallback": True,
+                "task_failure": ts.get("failure")})
+        return {"ok": True, "method": AUTOSTART_STARTUP_FOLDER, "requested_method": "auto",
+                "created": True, "verified": True, "task_scheduler": ts,
+                "startup_folder": sf, "requires_admin": False, "warning": warning,
+                "detail": "startup-folder fallback active"}
+    _oplog(env, "autostart", "enable",
+           {"method": "none", "ok": False, "task_failure": ts.get("failure")})
+    return {"ok": False, "method": AUTOSTART_ENABLE_FAILED, "requested_method": "auto",
+            "created": False, "verified": False, "task_scheduler": ts,
+            "startup_folder": sf, "requires_admin": False,
+            "detail": "both Task Scheduler and Startup-folder autostart failed"}
+
+
+def disable_autostart(env=None, startup_dir=None):
+    """Remove EVERY toolkit-owned autostart method (task + Startup folder). Idempotent.
+
+    Never removes unrelated scheduled tasks or unrelated Startup-folder entries.
+    """
+    _schtasks(["/Delete", "/TN", TASK_NAME, "/F"], stage="autostart-disable",
+              allowed=tuple(range(0, 256)))
+    sf = disable_startup_folder(env, startup_dir=startup_dir)
+    state = autostart_state(env, startup_dir=startup_dir)
+    ok = not state["enabled"]
+    _oplog(env, "autostart", "disable",
+           {"removed": ok, "removed_startup_folder": sf["removed"]})
+    return {"ok": ok, "task_name": TASK_NAME, "installed": state["enabled"],
+            "method": state["method"], "removed_startup_folder": sf["removed"],
+            "detail": "autostart removed" if ok else "an autostart method is still present"}
 
 
 def _strip_ns(tag):
@@ -169,6 +281,132 @@ def _current_identity():
             ident["sid"] = parts[-1]
     _IDENTITY_CACHE.update(ident)
     return _IDENTITY_CACHE
+
+
+# ==============================================================================
+# Autostart fallback — current-user Startup folder (no admin, no elevation)
+# ==============================================================================
+def startup_folder():
+    """The current-user Startup folder (a real OS path, resolved from os.environ).
+
+        %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup
+    """
+    appdata = os.environ.get("APPDATA")
+    if not appdata or not appdata.strip():
+        appdata = os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
+    return os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs",
+                        "Startup")
+
+
+def _startup_launcher_body():
+    """A current-user .cmd that starts ONLY the dashboard. No browser, no secrets.
+
+    Uses the same interpreter (pythonw when present) and ``-m amz_fbm start`` as every
+    other launcher, so single-instance handling prevents a duplicate at login.
+    """
+    exe = IM.preferred_python()
+    return (
+        "@echo off\r\n"
+        "REM %s do-not-edit\r\n" % _STARTUP_OWNER_MARKER +
+        "REM AMZ FBM Toolkit login autostart (current-user, offline, loopback-only).\r\n"
+        "REM Starts only the local dashboard. No browser is opened. Contains no secrets.\r\n"
+        '"%s" -m amz_fbm start\r\n' % exe
+    )
+
+
+def _startup_launcher_path(startup_dir=None):
+    return os.path.join(startup_dir or startup_folder(), STARTUP_LAUNCHER_NAME)
+
+
+def enable_startup_folder(env=None, startup_dir=None):
+    """Create + verify the current-user Startup-folder launcher (idempotent)."""
+    path = _startup_launcher_path(startup_dir)
+    body = _startup_launcher_body()
+    d = os.path.dirname(path)
+    try:
+        os.makedirs(d, exist_ok=True)
+        # never overwrite a same-named file the toolkit does not own
+        if os.path.exists(path) and _STARTUP_OWNER_MARKER not in (_read_text(path) or ""):
+            return {"ok": False, "created": False, "path": path,
+                    "detail": "refusing to overwrite a non-toolkit-owned Startup file"}
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(body)
+        os.replace(tmp, path)
+    except OSError as e:
+        return {"ok": False, "created": False, "path": path,
+                "detail": "could not write Startup launcher: %s" % type(e).__name__}
+    status = startup_folder_status(env, startup_dir=startup_dir)
+    ok = status["present"] and status["verified"]
+    _oplog(env, "autostart", "startup_folder_enable", {"ok": ok})
+    return {"ok": ok, "created": True, "verified": status["verified"], "path": path,
+            "status": status, "detail": "startup launcher created and verified" if ok
+            else "startup launcher created but failed verification"}
+
+
+def _read_text(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace", newline="") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def startup_folder_status(env=None, startup_dir=None):
+    """Verify the Startup launcher: owned, invokes the dashboard, no browser/URL."""
+    path = _startup_launcher_path(startup_dir)
+    if not os.path.exists(path):
+        return {"present": False, "verified": False, "owned": False, "path": path}
+    content = _read_text(path) or ""
+    low = content.lower()
+    owned = _STARTUP_OWNER_MARKER in content
+    invokes_dashboard = "-m amz_fbm start" in content
+    no_browser = "--open" not in content
+    no_external_url = "http://" not in low and "https://" not in low
+    verified = owned and invokes_dashboard and no_browser and no_external_url
+    return {"present": True, "verified": verified, "owned": owned,
+            "invokes_dashboard": invokes_dashboard, "no_browser": no_browser,
+            "no_external_url": no_external_url, "path": path}
+
+
+def disable_startup_folder(env=None, startup_dir=None):
+    """Remove ONLY the toolkit-owned Startup launcher. Idempotent. Never unrelated files."""
+    path = _startup_launcher_path(startup_dir)
+    removed = False
+    if os.path.exists(path):
+        if _STARTUP_OWNER_MARKER in (_read_text(path) or ""):
+            try:
+                os.remove(path)
+                removed = True
+            except OSError:
+                pass
+    _oplog(env, "autostart", "startup_folder_disable", {"removed": removed})
+    return {"ok": True, "removed": removed, "path": path}
+
+
+def autostart_state(env=None, startup_dir=None):
+    """Combined autostart state: the actual active method across both mechanisms."""
+    task = autostart_status(env)
+    sf = startup_folder_status(env, startup_dir=startup_dir)
+    task_valid = bool(task.get("valid"))
+    if task.get("installed") and task_valid:
+        method, enabled = AUTOSTART_TASK_SCHEDULER, True
+    elif sf["present"] and sf["verified"]:
+        method, enabled = AUTOSTART_STARTUP_FOLDER, True
+    elif task.get("installed") or sf["present"]:
+        method, enabled = AUTOSTART_CONFIGURATION_INVALID, False
+    else:
+        method, enabled = AUTOSTART_DISABLED, False
+    return {
+        "ok": True,
+        "enabled": enabled,
+        "method": method,
+        "task_scheduler": {"present": bool(task.get("installed")), "available": task_valid,
+                           "valid": task_valid, "system": bool(task.get("system")),
+                           "highest_privilege": bool(task.get("highest_privilege"))},
+        "startup_folder": {"present": sf["present"], "verified": sf["verified"]},
+        "requires_admin": False,
+    }
 
 
 # ==============================================================================

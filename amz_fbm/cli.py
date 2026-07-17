@@ -175,18 +175,42 @@ def cmd_install_local(args, json_out):
 
 def cmd_autostart(args, json_out):
     if args.action == "enable":
-        res = WI.enable_autostart()
-        _emit(res, json_out, [f"autostart enable: ok={res['ok']} verified={res['verified']}"])
+        res = WI.enable_autostart(method=getattr(args, "method", "auto"))
+        note = res.get("warning") or res.get("detail") or ""
+        lines = [f"autostart enable: ok={res['ok']} method={res.get('method')} "
+                 f"verified={res.get('verified')}"]
+        if note:
+            lines.append("  " + note)
+        _emit(res, json_out, lines)
         return _ok_code(res["ok"])
     if args.action == "disable":
         res = WI.disable_autostart()
-        _emit(res, json_out, [f"autostart disable: ok={res['ok']}"])
+        _emit(res, json_out, [f"autostart disable: ok={res['ok']} "
+                              f"method={res.get('method')}"])
         return _ok_code(res["ok"])
-    res = WI.autostart_status()
-    _emit(res, json_out, [f"autostart status: installed={res['installed']} "
-                          f"valid={res['valid']} current_user={res['current_user']} "
-                          f"system={res['system']}"])
+    state = WI.autostart_state()
+    _emit(state, json_out, [f"autostart status: enabled={state['enabled']} "
+                            f"method={state['method']} "
+                            f"requires_admin={state['requires_admin']}"])
     return 0
+
+
+def cmd_bootstrap_offline(args, json_out):
+    import offline_bootstrap as OB    # local import: usable before the wrapper exists
+    if args.remove:
+        res = OB.remove_offline_source(python_executable=args.python)
+        _emit(res.to_dict(), json_out,
+              [f"bootstrap-offline remove: ok={res.ok} removed={len(res.files_removed)}"])
+        return _ok_code(res.ok)
+    source = args.source or PROJECT_ROOT
+    res = OB.bootstrap_offline_source(source, python_executable=args.python,
+                                      verify=args.verify)
+    lines = [f"bootstrap-offline: ok={res.ok} mode={res.mode}",
+             f"  created={len(res.files_created)} updated={len(res.files_updated)}"]
+    if res.errors:
+        lines.append("  errors: " + "; ".join(res.errors))
+    _emit(res.to_dict(), json_out, lines)
+    return _ok_code(res.ok)
 
 
 def cmd_shortcuts(args, json_out):
@@ -256,9 +280,24 @@ def build_parser():
     ip.add_argument("--autostart", action="store_true", help="also enable current-user autostart")
     ip.set_defaults(func=cmd_install_local)
 
-    ap = sub.add_parser("autostart", help="current-user Task Scheduler autostart")
+    ap = sub.add_parser("autostart", help="current-user login autostart (task or startup folder)")
     ap.add_argument("action", choices=["enable", "disable", "status"])
+    ap.add_argument("--method", choices=["auto", "task-scheduler", "startup-folder"],
+                    default="auto",
+                    help="enable via auto (default), task-scheduler, or startup-folder")
     ap.set_defaults(func=cmd_autostart)
+
+    bp = sub.add_parser("bootstrap-offline",
+                        help="setuptools-free offline source install (.pth + amz-fbm.cmd)")
+    bp.add_argument("--source", default=None, help="toolkit source root (default: this repo)")
+    bp.add_argument("--python", default=None, help="target interpreter (default: this python)")
+    bp.add_argument("--verify", dest="verify", action="store_true", default=True,
+                    help="verify both command forms after install (default)")
+    bp.add_argument("--no-verify", dest="verify", action="store_false",
+                    help="skip post-install verification")
+    bp.add_argument("--remove", action="store_true",
+                    help="remove only the toolkit-owned bootstrap files")
+    bp.set_defaults(func=cmd_bootstrap_offline)
 
     scp = sub.add_parser("shortcuts", help="Desktop + Start Menu shortcuts")
     scp.add_argument("action", choices=["create", "remove", "status"])

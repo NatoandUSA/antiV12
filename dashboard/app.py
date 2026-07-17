@@ -1010,13 +1010,25 @@ def api_local():
     except Exception:
         autostart = {"installed": False, "valid": False}
     try:
+        autostart_state = WI.autostart_state()
+    except Exception:
+        autostart_state = {"enabled": False, "method": WI.AUTOSTART_DISABLED,
+                           "task_scheduler": {"present": False, "available": False},
+                           "startup_folder": {"present": False, "verified": False},
+                           "requires_admin": False}
+    try:
         shortcuts = WI.shortcuts_status()
     except Exception:
         shortcuts = {"installed": False}
+    try:
+        installation_mode = LI.detect_installation_mode()
+    except Exception:
+        installation_mode = None
     last = DIAG.last_event()
     return jsonify({
         "installed": manifest is not None,
         "install_version": (manifest or {}).get("toolkit_version"),
+        "installation_mode": (manifest or {}).get("installation_mode") or installation_mode,
         "instance": {
             "status": IM.RUNNING_HEALTHY if healthy else IM.RUNNING_UNHEALTHY,
             "pid": os.getpid(),
@@ -1024,8 +1036,13 @@ def api_local():
             "startup_mode": STARTUP_MODE,
         },
         "autostart": {"installed": autostart.get("installed", False),
-                      "valid": autostart.get("valid", False)},
+                      "valid": autostart.get("valid", False),
+                      "enabled": autostart_state.get("enabled", False),
+                      "method": autostart_state.get("method"),
+                      "task_scheduler": autostart_state.get("task_scheduler"),
+                      "startup_folder": autostart_state.get("startup_folder")},
         "shortcuts": {"installed": shortcuts.get("installed", False)},
+        "requires_admin": False,
         "last_diagnostic": (last.code if last else None),
     })
 

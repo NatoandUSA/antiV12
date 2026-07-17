@@ -19,6 +19,7 @@ import sys
 import app_paths as AP
 import diagnostics as D
 import instance_manager as IM
+import offline_bootstrap as OB
 import runtime_policy as RP
 import windows_integration as WI
 
@@ -95,9 +96,30 @@ def _backup_file(path, env=None):
         return None
 
 
+# ---- installation mode -------------------------------------------------------
+def detect_installation_mode(python_executable=None):
+    """Best-effort, read-only classification of how amz_fbm is installed here.
+
+    OFFLINE_SOURCE_BOOTSTRAP when the toolkit-owned ``.pth`` is present;
+    PEP517_EDITABLE when a pip/PEP 517 distribution is registered; SOURCE_ON_PATH
+    otherwise. No network, no subprocess for the current interpreter.
+    """
+    try:
+        if OB.is_bootstrap_installed(python_executable):
+            return OB.MODE_OFFLINE_SOURCE_BOOTSTRAP
+    except Exception:
+        pass
+    try:
+        import importlib.metadata as ilm
+        ilm.distribution("amz-fbm-toolkit")
+        return OB.MODE_PEP517_EDITABLE
+    except Exception:
+        return "SOURCE_ON_PATH"
+
+
 # ---- manifest ----------------------------------------------------------------
 def build_manifest(env=None, shortcuts=None, autostart_enabled=False,
-                   last_health_check=None):
+                   last_health_check=None, installation_mode=None):
     now = IM._now_iso()
     return {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -106,6 +128,7 @@ def build_manifest(env=None, shortcuts=None, autostart_enabled=False,
         "installed_at": now,
         "updated_at": now,
         "package_source": "editable-local (pip install --no-deps -e .)",
+        "installation_mode": installation_mode or detect_installation_mode(),
         "executable_path": IM.preferred_python(),
         "python_path": sys.executable or "",
         "runtime_root": AP.base_dir(env),
@@ -205,9 +228,13 @@ def uninstall(env=None, policy=None):
     else:
         preserved.append("no running instance to stop")
 
-    # 2) scheduled task
+    # 2) autostart — scheduled task AND current-user Startup-folder launcher
     task = WI.disable_autostart(env)
     (removed if task["ok"] else failed).append("scheduled_task:" + WI.TASK_NAME)
+    if task.get("removed_startup_folder"):
+        removed.append("startup_folder_autostart")
+    else:
+        preserved.append("no startup-folder autostart present")
 
     # 3) shortcuts
     sc = WI.remove_shortcuts(env)
@@ -220,6 +247,16 @@ def uninstall(env=None, policy=None):
     wr = WI.remove_wrappers(env)
     removed.append(f"launcher_wrappers ({len(wr)})") if wr else preserved.append(
         "no launcher wrappers present")
+
+    # 4b) offline-bootstrap .pth + amz-fbm.cmd (only when toolkit-owned)
+    try:
+        boot = OB.remove_offline_source()
+        if boot.files_removed:
+            removed.append(f"offline_bootstrap ({len(boot.files_removed)})")
+        else:
+            preserved.append("no offline-bootstrap files present")
+    except Exception:
+        preserved.append("offline-bootstrap removal skipped")
 
     # 5) runtime metadata (active + archived stale) and package temp residue
     if IM.remove_metadata(env):
@@ -329,7 +366,26 @@ def doctor(env=None, policy=None):
                          "ok": bool(health and health.get("ok") is True)}
 
     checks["autostart"] = WI.autostart_status(env)
+    checks["autostart_state"] = WI.autostart_state(env)
     checks["shortcuts"] = WI.shortcuts_status(env)
+
+    # installation mode + offline-bootstrap presence (read-only, no network)
+    boot = {"installed": False}
+    try:
+        s = OB.bootstrap_status()
+        boot = {"installed": bool(s.get("installed")),
+                "pth_present": bool(s.get("pth_present")),
+                "pth_owned": bool(s.get("pth_owned")),
+                "wrapper_present": bool(s.get("wrapper_present")),
+                "wrapper_owned": bool(s.get("wrapper_owned"))}
+    except Exception:
+        pass
+    checks["installation"] = {
+        "mode": detect_installation_mode(),
+        "editable_available": _module_present("amz_fbm"),
+        "offline_bootstrap": boot,
+        "requires_admin": False,
+    }
 
     mods = {m: _module_present(m) for m in _REQUIRED_MODULES}
     checks["required_modules"] = {"all_present": all(mods.values()), "modules": mods}

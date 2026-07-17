@@ -1,0 +1,369 @@
+{
+  "authority_map": {
+    "current_authority": {
+      "LISTING-COPY-READY.txt": "e8d39458e8194f520b17e2fd4321629c909ed066540307d69c793ba35e5805c2",
+      "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json": "1432936776ff6d1b3a61f835f6fc45b29fc44e51ba244be067a275f7622266ef"
+    },
+    "deprecated_not_current": [
+      "PRODUCT-PAGE.json",
+      "CONTENT-COMPLIANCE-REPORT.json"
+    ],
+    "generated_at": "2026-07-17T14:29:04",
+    "safe_draft": true
+  },
+  "gates": [
+    {
+      "duration_seconds": 2.04,
+      "evidence": {
+        "app_home": "<TEMP>\\AMZ-FBM-Release1-Certification-20260717-142825\\app-home",
+        "inside_repository": false,
+        "port": 5057,
+        "workspace": "<TEMP>\\AMZ-FBM-Release1-Certification-20260717-142825"
+      },
+      "id": "A",
+      "mandatory": true,
+      "name": "Isolated certification workspace",
+      "status": "PASS",
+      "summary": "workspace under %TEMP%, port 5057, AMZ_FBM_HOME redirected, not inside repo=True"
+    },
+    {
+      "duration_seconds": 6.374,
+      "evidence": {
+        "cli_version": "2.4.0-rc2",
+        "console_script_resolves": true,
+        "import_no_error": true,
+        "json_parses": true,
+        "offline_install_exit": 2,
+        "offline_install_ok": false,
+        "python_m_amz_fbm_resolves": true,
+        "python_version": "3.12.10",
+        "setuptools_present_for_offline_build": false,
+        "unknown_command_nonzero": true,
+        "venv_created": true,
+        "version_matches_authority": true
+      },
+      "id": "B",
+      "mandatory": true,
+      "name": "Fresh venv + offline editable install + CLI resolution",
+      "status": "BLOCKED",
+      "summary": "CLI/version/offline-import all PASS on the installed package, but a fresh fully-offline editable build is BLOCKED: setuptools (PEP 517 backend) is absent and cannot be fetched offline. Remediation: install setuptools once (online), then offline reinstall works with --no-build-isolation."
+    },
+    {
+      "duration_seconds": 3.934,
+      "evidence": {
+        "autostart_not_enabled_by_default": true,
+        "external_ai_enabled": false,
+        "first_status": "INSTALLED",
+        "idempotent": true,
+        "loopback_host": "127.0.0.1",
+        "manifest_present": true,
+        "offline_only": true,
+        "runtime_root_is_isolated_home": true,
+        "second_status": "INSTALLED",
+        "sentinels_survived_second_install": true
+      },
+      "id": "C",
+      "mandatory": true,
+      "name": "install-local (idempotent) + config/data preservation",
+      "status": "PASS",
+      "summary": "install-local idempotent, offline, data preserved"
+    },
+    {
+      "duration_seconds": 5.771,
+      "evidence": {
+        "doctor_loopback": true,
+        "doctor_ok": true,
+        "health_bind_host": "127.0.0.1",
+        "health_bind_port": 5057,
+        "health_ok": true,
+        "health_service": "amz-fbm-toolkit",
+        "instance_id_matches": true,
+        "instance_status": "RUNNING_HEALTHY",
+        "metadata_hash_valid": true,
+        "metadata_removed_after_stop": true,
+        "pid_present": true,
+        "pid_unchanged_after_second_start": true,
+        "restart_healthy": true,
+        "restart_status": "STARTED",
+        "second_start_status": "ALREADY_RUNNING",
+        "start_status": "STARTED",
+        "status_after_stop": "STOPPED",
+        "stop_idempotent": true,
+        "stop_status": "STOPPED_OK"
+      },
+      "id": "D",
+      "mandatory": true,
+      "name": "Live start/health/status/doctor/second-start/restart/stop",
+      "status": "PASS",
+      "summary": "detached start->health->status->restart->stop verified"
+    },
+    {
+      "duration_seconds": 2.617,
+      "evidence": {
+        "health_checked_before_open": true,
+        "open_url": "http://127.0.0.1:5057/",
+        "refused_when_stopped": true,
+        "url_is_loopback": true,
+        "url_uses_test_port": true
+      },
+      "id": "E",
+      "mandatory": true,
+      "name": "open: refuses when unhealthy; loopback-only when healthy",
+      "status": "PASS",
+      "summary": "open refuses unhealthy; loopback+port enforced when healthy"
+    },
+    {
+      "duration_seconds": 5.409,
+      "evidence": {
+        "bounded_health_returns_without_hanging": true,
+        "corrupt_recovered": true,
+        "corrupt_status": "STALE_RUNTIME_STATE",
+        "dead_pid_metadata_cleared": true,
+        "dead_pid_status": "STALE_RUNTIME_STATE",
+        "logs_preserved_through_recovery": true,
+        "partial_residue_ignored": true,
+        "reused_pid_not_surfaced": true,
+        "reused_pid_refused_kill": true,
+        "reused_pid_status": "STALE_RUNTIME_STATE",
+        "victim_alive_after_refusal": true
+      },
+      "id": "F",
+      "mandatory": true,
+      "name": "Stale-state recovery: dead/reused/corrupt/partial + bounded health",
+      "status": "PASS",
+      "summary": "dead/reused/corrupt/partial handled; no unknown process killed"
+    },
+    {
+      "duration_seconds": 4.02,
+      "evidence": {
+        "listener_alive_after_refusal": true,
+        "no_metadata_written": true,
+        "occupied_port": 5057,
+        "start_result": "PORT_IN_USE_BY_UNKNOWN_PROCESS",
+        "status_on_occupied_port": "PORT_IN_USE_BY_UNKNOWN_PROCESS"
+      },
+      "id": "G",
+      "mandatory": true,
+      "name": "Unknown port owner preserved; toolkit refuses to start on it",
+      "status": "PASS",
+      "summary": "PORT_IN_USE_BY_UNKNOWN_PROCESS; listener untouched"
+    },
+    {
+      "duration_seconds": 0.048,
+      "evidence": {
+        "create_exit": 1,
+        "create_stderr": "ERROR: Access is denied.",
+        "existing_task_backed_up": false,
+        "temp_task_name": "AMZ-FBM-Toolkit-Release1-Certification-226144"
+      },
+      "id": "H",
+      "mandatory": true,
+      "name": "Live Task Scheduler create/query/delete (current-user, no-admin)",
+      "status": "BLOCKED",
+      "summary": "live schtasks /Create denied by this environment — cannot certify live. Root cause: the machine's sole account runs a UAC-filtered token in which Administrators is deny-only, so creating a scheduled task needs elevation, which the no-admin safety rule forbids. Remediation: run `amz-fbm autostart enable` once from an elevated terminal, or use a standard-user Windows profile where a current-user ONLOGON/LIMITED task needs no elevation."
+    },
+    {
+      "duration_seconds": 6.602,
+      "evidence": {
+        "created_count": 4,
+        "desktop_shortcut": true,
+        "installed_after_remove": false,
+        "removed_count": 4,
+        "second_remove_ok": true,
+        "start_menu_count": 3,
+        "status_installed": true,
+        "targets_ok": true
+      },
+      "id": "I",
+      "mandatory": true,
+      "name": "Live current-user shortcuts create/query/remove",
+      "status": "PASS",
+      "summary": "shortcuts created, detected, removed (idempotent)"
+    },
+    {
+      "duration_seconds": 0.947,
+      "evidence": {
+        "backend_generated": true,
+        "bullets_generated": true,
+        "copy_ready_written": true,
+        "external_ai_enabled": false,
+        "external_attempt_destinations": [],
+        "external_attempts": 0,
+        "loopback_permitted": true,
+        "outbound_network_enabled": false,
+        "pageauditor_ran": true,
+        "title_generated": true,
+        "workflow_ok": true
+      },
+      "id": "J",
+      "mandatory": true,
+      "name": "Offline network denial: full local workflow, zero external attempts",
+      "status": "PASS",
+      "summary": "local workflow succeeded offline; external attempts=0"
+    },
+    {
+      "duration_seconds": 1.432,
+      "evidence": {
+        "copy_ready_deterministic": true,
+        "keyword_source_is_lean": true,
+        "manual_plan_deterministic": true,
+        "mismatched_sections": [],
+        "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+        "section_hashes": {
+          "aplus_basic": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "aplus_premium_draft": "531646ff4dd7229282996ecd28bbe6b147dad91b6063c3e3ab0c65d533e84371",
+          "backend": "2b64a76ccc49c92ba9d0174e1dcfc66b9d4cfa8b293629d8c536b86cec5ac9eb",
+          "bullets": "829e774092d3e0838bf74d7cafb0cdc86733b8b032edbfe985f5453de70ba621",
+          "claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+          "description": "8beee92f050ed5c77f0c8a824577a02cec84e019ce635e6bb6a1ed39194a91b1",
+          "item_highlights_publishable": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "keyword_source_file": "MASTER-KEYWORDS-LEAN.json",
+          "keyword_tier_counts": {
+            "OUTLIER": 0,
+            "REJECTED": 3606,
+            "RESIDUE": 0,
+            "REVIEW": 2671,
+            "TIER_A": 74,
+            "TIER_B": 378,
+            "TIER_C": 0
+          },
+          "pageauditor": "3e2c483cffce7416751883cdbdc77a2b1ae5040798c85fb28a6f478a88ad5276",
+          "product_fact_sha256": null,
+          "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+          "title_candidates": "c467c788b2a0d40a240725427d1df9c6ad27b7c8a03a6d43ca5b05fb5a051698",
+          "title_recommended": "8c7fb363326562135bc9f8cff4405a39561cb205ce6afd6c7fd5c8d2ff13d341"
+        },
+        "tier_A": 74,
+        "tier_B": 378,
+        "wrong_audience_occasion_leakage": []
+      },
+      "id": "K",
+      "mandatory": true,
+      "name": "T2 twice-deterministic from immutable inputs",
+      "status": "PASS",
+      "summary": "T2 deterministic across 14 sections; A=74 B=378 state=SAFE_DRAFT_OWNER_FACTS_REQUIRED"
+    },
+    {
+      "duration_seconds": 0.009,
+      "evidence": {
+        "authoritative_outputs": {
+          "LISTING-COPY-READY.txt": {
+            "present": true,
+            "sha256": "e8d39458e8194f520b17e2fd4321629c909ed066540307d69c793ba35e5805c2"
+          },
+          "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json": {
+            "present": true,
+            "sha256": "1432936776ff6d1b3a61f835f6fc45b29fc44e51ba244be067a275f7622266ef"
+          },
+          "listing.json": {
+            "present": false,
+            "sha256": null
+          }
+        },
+        "copy_ready_present": true,
+        "deprecated_outputs_present": {
+          "CONTENT-COMPLIANCE-REPORT.json": false,
+          "PRODUCT-PAGE.json": false
+        },
+        "manual_plan_present": true,
+        "safe_draft_state_explicit": true
+      },
+      "id": "L",
+      "mandatory": true,
+      "name": "Single authoritative output package; deprecated not current",
+      "status": "PASS",
+      "summary": "one current copy/paste authority; deprecated outputs absent"
+    },
+    {
+      "duration_seconds": 3.911,
+      "evidence": {
+        "all_sentinels_preserved": true,
+        "first_status": "UNINSTALLED",
+        "idempotent": true,
+        "no_unknown_process_killed": true,
+        "repository_runs_preserved": true,
+        "second_status": "UNINSTALLED",
+        "sentinels_survived": {
+          "backups": true,
+          "config": true,
+          "data": true,
+          "logs": true
+        }
+      },
+      "id": "M",
+      "mandatory": true,
+      "name": "Uninstall preserves all business data; idempotent; no unknown kill",
+      "status": "PASS",
+      "summary": "uninstall preserved config/data/logs/backups + repo/runs"
+    },
+    {
+      "duration_seconds": 4.946,
+      "evidence": {
+        "doctor_ok": true,
+        "health_ok": true,
+        "manifest_recreated": true,
+        "reinstall_status": "INSTALLED",
+        "start_status": "STARTED"
+      },
+      "id": "N",
+      "mandatory": true,
+      "name": "Reinstall after uninstall; start healthy; data intact; offline",
+      "status": "PASS",
+      "summary": "reinstall recreated manifest and started healthy"
+    },
+    {
+      "duration_seconds": 0.002,
+      "evidence": {
+        "elevated": false
+      },
+      "id": "O",
+      "mandatory": true,
+      "name": "No-admin: process is not elevated; no elevation is required",
+      "status": "PASS",
+      "summary": "running non-elevated; no command required admin/UAC/SYSTEM"
+    },
+    {
+      "duration_seconds": 0.086,
+      "evidence": {
+        "files_scanned": 40,
+        "reachable_findings": []
+      },
+      "id": "P",
+      "mandatory": true,
+      "name": "Security source scan: no prohibited runtime behavior",
+      "status": "PASS",
+      "summary": "scanned 40 runtime files; 0 prohibited reachable pattern(s)"
+    },
+    {
+      "duration_seconds": 90.143,
+      "evidence": {
+        "duration_seconds": 90.1,
+        "ok": true,
+        "summary_tail": [
+          "Ran 785 tests in 89.291s",
+          "",
+          "OK"
+        ],
+        "tests_run": 785
+      },
+      "id": "U",
+      "mandatory": true,
+      "name": "Full unittest suite",
+      "status": "PASS",
+      "summary": "unittest: 785 tests, OK"
+    }
+  ],
+  "generated_at_end": "2026-07-17T14:30:44",
+  "generated_at_start": "2026-07-17T14:28:25",
+  "mandatory_blocked": [
+    "B",
+    "H"
+  ],
+  "mandatory_failed": [],
+  "mandatory_pass": 15,
+  "mandatory_total": 17,
+  "overall_status": "RELEASE1_BLOCKED",
+  "project_basename": "AMZ-FBM-Toolkit-v2_3_4-RC1",
+  "session": "5D",
+  "test_port": 5057
+}

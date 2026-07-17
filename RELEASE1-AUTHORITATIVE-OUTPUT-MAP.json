@@ -1,0 +1,56 @@
+{
+  "authority_gate": {
+    "duration_seconds": 0.009,
+    "evidence": {
+      "authoritative_outputs": {
+        "LISTING-COPY-READY.txt": {
+          "present": true,
+          "sha256": "e8d39458e8194f520b17e2fd4321629c909ed066540307d69c793ba35e5805c2"
+        },
+        "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json": {
+          "present": true,
+          "sha256": "1432936776ff6d1b3a61f835f6fc45b29fc44e51ba244be067a275f7622266ef"
+        },
+        "listing.json": {
+          "present": false,
+          "sha256": null
+        }
+      },
+      "copy_ready_present": true,
+      "deprecated_outputs_present": {
+        "CONTENT-COMPLIANCE-REPORT.json": false,
+        "PRODUCT-PAGE.json": false
+      },
+      "manual_plan_present": true,
+      "safe_draft_state_explicit": true
+    },
+    "id": "L",
+    "mandatory": true,
+    "name": "Single authoritative output package; deprecated not current",
+    "status": "PASS",
+    "summary": "one current copy/paste authority; deprecated outputs absent"
+  },
+  "authority_map": {
+    "current_authority": {
+      "LISTING-COPY-READY.txt": "e8d39458e8194f520b17e2fd4321629c909ed066540307d69c793ba35e5805c2",
+      "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json": "1432936776ff6d1b3a61f835f6fc45b29fc44e51ba244be067a275f7622266ef"
+    },
+    "deprecated_not_current": [
+      "PRODUCT-PAGE.json",
+      "CONTENT-COMPLIANCE-REPORT.json"
+    ],
+    "generated_at": "2026-07-17T14:29:04",
+    "safe_draft": true
+  },
+  "current_authoritative_outputs": [
+    "listing.json",
+    "LISTING-COPY-READY.txt",
+    "SELLER-CENTRAL-MANUAL-ENTRY-PLAN.json"
+  ],
+  "deprecated_not_current": [
+    "PRODUCT-PAGE.json",
+    "CONTENT-COMPLIANCE-REPORT.json"
+  ],
+  "generated_at": "2026-07-17T14:30:44",
+  "publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED"
+}

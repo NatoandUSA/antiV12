@@ -1,0 +1,160 @@
+{
+  "session": "6A.1",
+  "title": "Connectivity Policy Migration — connected research with permanent Amazon-account isolation",
+  "starting_commit": "e375705",
+  "final_commit": "b430ed4",
+  "checkpoint_tag": "session6a1-checkpoint-e375705",
+  "baseline_test_total": 920,
+  "full_test_total": 1035,
+  "new_tests_added": 115,
+  "test_runtime_seconds_full_suite": 102,
+  "legacy_policy": {
+    "identity": "offline-only",
+    "single_switch": "OFFLINE_ONLY (default true)",
+    "note": "offline_only is preserved unchanged and now means 'the legacy blanket outbound/external-AI path is closed'; the legacy policy_sha256 canonical is untouched so all prior hashes are stable."
+  },
+  "new_policy": {
+    "identity": "CONNECTED TO THE OPEN WORLD + ISOLATED FROM THE OWNER'S AMAZON ACCOUNT",
+    "document": "docs/CONNECTIVITY-POLICY.md",
+    "document_sha256": "df6d61b26abc9b5818f33af85dcf4aba17d5d5bff40472a8b77f18edc2be53bb",
+    "manifest": "docs/CONNECTIVITY-POLICY-MANIFEST.json"
+  },
+  "connectivity_modes": ["CONNECTED_RESEARCH", "LOCAL_SAFE", "TEST_DENY_EXTERNAL"],
+  "new_install_default_mode": "CONNECTED_RESEARCH",
+  "bare_environment_default_mode": "LOCAL_SAFE",
+  "legacy_migration": {
+    "OFFLINE_ONLY=true": "LOCAL_SAFE",
+    "OFFLINE_ONLY=false (no explicit mode)": "CONNECTED_RESEARCH",
+    "explicit CONNECTIVITY_MODE": "takes priority and reconciles offline_only",
+    "invalid mode": "fails clearly (validation error, is_valid false)",
+    "config_backup": "previous connectivity config backed up before replacement"
+  },
+  "connectivity_policy_sha256": {
+    "CONNECTED_RESEARCH": "7e885ca41b9e210f9c7669ff8c3b49cbaff7dd27dbb2521796d7fc7776546960",
+    "LOCAL_SAFE": "b218f6f78702d43da5290dbb48eec3b2e3288c2173e159045f6d3c1efb9dc5e9",
+    "TEST_DENY_EXTERNAL": "c88c4cb57ae666c64142f02182c412404dbd148d9e19bd7c3ccd36302748a6a5"
+  },
+  "capability_model": {
+    "allowed": ["LOOPBACK_ACCESS", "PUBLIC_WEB_RESEARCH", "PUBLIC_POLICY_RESEARCH",
+                "AMAZON_PUBLIC_DOCUMENTATION_READ", "THIRD_PARTY_DATA",
+                "MARKET_DATA_CONNECTION", "SUPPLIER_CONNECTION", "EXTERNAL_AI_CONNECTION",
+                "TOOLKIT_UPDATE_DISCOVERY"],
+    "prohibited_permanently": ["AMAZON_LOGIN", "AMAZON_SELLER_CENTRAL_ACCESS",
+                "AMAZON_AUTHENTICATED_ACCESS", "AMAZON_SELLER_SESSION",
+                "AMAZON_CREDENTIAL_STORAGE", "AMAZON_API_ACCESS", "AMAZON_SP_API",
+                "AMAZON_MWS", "AMAZON_ADVERTISING_API", "AMAZON_BROWSER_AUTOMATION",
+                "AMAZON_ACCOUNT_REPORT_PULL", "AMAZON_LISTING_WRITE", "AMAZON_PRICE_WRITE",
+                "AMAZON_INVENTORY_WRITE", "AMAZON_APLUS_WRITE", "AMAZON_PPC_WRITE",
+                "AMAZON_REVIEW_MANIPULATION"]
+  },
+  "amazon_hard_boundary_result": {
+    "amazon_account_isolation": true,
+    "amazon_credential_store_available": false,
+    "amazon_seller_central_enabled": false,
+    "amazon_authenticated_access_enabled": false,
+    "amazon_api_enabled": false,
+    "amazon_browser_automation_enabled": false,
+    "amazon_account_report_pull_enabled": false,
+    "amazon_network_writes_enabled": false,
+    "immutable_in_every_mode": true,
+    "no_config_or_cli_can_enable": true,
+    "no_credential_store_exists": true
+  },
+  "public_amazon_documentation_contract": {
+    "module": "core/amazon_docs_contract.py",
+    "capability": "AMAZON_PUBLIC_DOCUMENTATION_READ",
+    "default_enabled": false,
+    "methods": ["GET", "HEAD"],
+    "requires": ["human_triggered", "no auth", "no cookies", "no request body"],
+    "denies": ["product/search scraping", "bulk crawling", "unverified official docs"],
+    "unverified_reason_code": "AMAZON_PUBLIC_DOCUMENTATION_UNVERIFIED",
+    "results": "advisory_only=true, verified_as_product_fact=false, owner review required",
+    "adapter_built_this_session": false
+  },
+  "approved_client_result": {
+    "module": "core/approved_http_client.py",
+    "api": "request(method, url, *, capability, timeout_seconds, max_response_bytes, headers=None, body=None, data_classification='PUBLIC', owner_approved=False, human_triggered=False, follow_redirects=False, policy=None)",
+    "explicit_finite_positive_timeout_required": true,
+    "explicit_max_response_bytes_required_and_enforced": true,
+    "tls_verification": "always on (CERT_REQUIRED, check_hostname)",
+    "cookie_jar": "none (cookies never stored or sent)",
+    "redirects": "disabled by default; each hop reclassified + re-authorized when enabled",
+    "denied_requests_fail_before_connection": true,
+    "loopback_available": true,
+    "secret_headers_redacted": true,
+    "request_body_excluded_from_diagnostics": true,
+    "shell_http_used": false,
+    "new_third_party_dependency_added": false
+  },
+  "data_classification_model": ["PUBLIC", "SANITIZED_BUSINESS", "PAID_RESEARCH_DATA",
+                                 "CUSTOMER_DATA", "CREDENTIAL", "AMAZON_ACCOUNT_DATA"],
+  "external_ai_boundary": {
+    "allowed_only_in": "CONNECTED_RESEARCH",
+    "requires": ["EXTERNAL_AI_ALLOWED (mode)", "EXTERNAL_AI_ENABLED=true", "approved provider configured", "declared data classification"],
+    "api_key_alone_enables": false,
+    "cannot_receive": ["CUSTOMER_DATA", "CREDENTIAL", "AMAZON_ACCOUNT_DATA"],
+    "defaults": {"advisory_only": true, "verified_as_product_fact": false},
+    "generation_workflow_built_this_session": false
+  },
+  "update_discovery_boundary": {
+    "module": "core/update_discovery.py",
+    "read_only": true,
+    "can_install": false,
+    "install_refused_with": "TOOLKIT_UPDATE_INSTALL_PROHIBITED",
+    "governance": ["discover", "display_changes", "owner_approves", "validate_hashes", "install", "run_regression_checks", "preserve_rollback"],
+    "installer_built_this_session": false
+  },
+  "source_scan": {
+    "artifact": "CONNECTED-RESEARCH-NETWORK-SCAN.json",
+    "files_scanned": 73,
+    "total_findings": 36,
+    "no_active_amazon_account_path": true,
+    "counts_by_classification": {
+      "APPROVED_CLIENT_PATH": 5,
+      "DOCUMENTATION_ONLY": 9,
+      "LEGACY_EXTERNAL_PATH": 3,
+      "LOOPBACK_INTERNAL": 4,
+      "PROHIBITED_AMAZON_PATH": 7,
+      "REVIEW_REQUIRED": 8
+    },
+    "review_required_note": "REVIEW_REQUIRED findings are pre-existing legacy AI routes (dashboard, gated offline) and the research/kw_expand.py keyword-suggest module; none is an Amazon-account path."
+  },
+  "phase6a_three_mode_determinism": {
+    "proof_workspace": "T2",
+    "modes": ["CONNECTED_RESEARCH", "LOCAL_SAFE", "TEST_DENY_EXTERNAL"],
+    "stable_artifacts_byte_identical_across_modes": true,
+    "compared": ["PRODUCT-WORKSPACE.json", "OWNER-INPUT-REQUIRED.json",
+                 "NORMALIZED-PRODUCT-FACTS.json", "CLAIM-EVIDENCE.json",
+                 "PRODUCT-READINESS-REPORT.md", "STAGE-6A-MANIFEST deterministic_content_sha256"],
+    "product_fact_sha256": "0199b4de0ebce165af359a117ab437983d4ff1d6d98d94f4bf9999b6cfbca274",
+    "claim_evidence_sha256": "5e3a69d6644298f7c8c33cd1c2841e12d80c9183d2c31a9213eb3021a575069a",
+    "keyword_source_sha256": "52b02f162e75f70806a8e2893a5327210037135cb8b4b3834fc192b318f8e8e7",
+    "tier_a": 74,
+    "tier_b": 378,
+    "ready_for_6b": true,
+    "current_listing_publishability_state": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+    "audience_leakage": 0,
+    "product_leakage": 0,
+    "occasion_leakage": 0,
+    "brand_ip_leakage": 0,
+    "note": "Phase 6A does not consult the connectivity policy or the network; determinism is unaffected by mode. The T2 block SKIPS on a clean checkout without paid runs/T2 data."
+  },
+  "authority_preserved": {
+    "product_facts_authoritative": true,
+    "claim_evidence_authoritative": true,
+    "page_auditor_final_safety_authority": true,
+    "external_research_auto_verified": false,
+    "external_ai_can_mark_publishable": false
+  },
+  "compilation_result": "python -m compileall listing compliance dashboard research core tests amz_fbm scripts production -> OK",
+  "test_result": "python -m unittest discover -s tests -> Ran 1035 tests, OK",
+  "known_limitations": [
+    "Session 6A.1 ships the connectivity POLICY BOUNDARY + capability model + approved-client transport only. No live research adapter, external-AI generation workflow, update installer, or public-Amazon-documentation reader is implemented; each is future, owner-approved work behind the contracts defined here.",
+    "The dashboard reflects CONNECTED_RESEARCH only when the launcher/env passes the mode; a direct in-process dashboard (and the test suite) resolves the safe LOCAL_SAFE default from an env-only policy, keeping the permanent Amazon boundary identical either way.",
+    "The Phase 6A three-mode determinism block requires the paid, gitignored runs/T2 workspace and SKIPS on a clean checkout that lacks it (no paid data is committed)."
+  ],
+  "phase5_regression": "RELEASE1_CERTIFIED preserved; all Session 5 tests green",
+  "phase6a_regression": "PHASE6A_COMPLETE preserved; T2 tiers/hashes/leakage unchanged",
+  "no_phase6b_artifact_created": true,
+  "final_status": "SESSION6A1_READY_FOR_REVIEW"
+}

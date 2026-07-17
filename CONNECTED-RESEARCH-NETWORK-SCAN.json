@@ -1,0 +1,330 @@
+{
+  "active_amazon_path_findings": [],
+  "amazon_account_path_findings": [
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/local_install.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 384,
+      "text": "and not cpol.amazon_authenticated_access_enabled"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 108,
+      "text": "AMAZON_AUTHENTICATED = \"AMAZON_AUTHENTICATED\""
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 113,
+      "text": "_AMAZON_ACCOUNT_CLASSES = frozenset({AMAZON_SELLER_CENTRAL, AMAZON_AUTHENTICATED, AMAZON_API})"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 172,
+      "text": "_AMAZON_AUTH_PATH_HINTS = (\"/ap/signin\", \"/gp/sign-in\", \"/gp/css\", \"/ap/oa\","
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 213,
+      "text": "if any(hint in p for hint in _AMAZON_AUTH_PATH_HINTS):"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 214,
+      "text": "return AMAZON_AUTHENTICATED"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 314,
+      "text": "if dest_class == AMAZON_AUTHENTICATED:"
+    }
+  ],
+  "approved_client_module": "core/approved_http_client.py",
+  "counts_by_classification": {
+    "APPROVED_CLIENT_PATH": 5,
+    "DOCUMENTATION_ONLY": 9,
+    "LEGACY_EXTERNAL_PATH": 3,
+    "LOOPBACK_INTERNAL": 4,
+    "PROHIBITED_AMAZON_PATH": 7,
+    "REVIEW_REQUIRED": 8
+  },
+  "files_scanned": 73,
+  "findings": [
+    {
+      "classification": "APPROVED_CLIENT_PATH",
+      "file": "core/approved_http_client.py",
+      "label": "urllib",
+      "line": 26,
+      "text": "import urllib.request"
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "core/approved_http_client.py",
+      "label": "provider-sdk",
+      "line": 35,
+      "text": "\"proxy-authorization\", \"anthropic-api-key\")"
+    },
+    {
+      "classification": "APPROVED_CLIENT_PATH",
+      "file": "core/approved_http_client.py",
+      "label": "urllib",
+      "line": 48,
+      "text": "class _NoRedirect(urllib.request.HTTPRedirectHandler):"
+    },
+    {
+      "classification": "APPROVED_CLIENT_PATH",
+      "file": "core/approved_http_client.py",
+      "label": "urllib",
+      "line": 111,
+      "text": "req = urllib.request.Request(url, method=method_u,"
+    },
+    {
+      "classification": "APPROVED_CLIENT_PATH",
+      "file": "core/approved_http_client.py",
+      "label": "urllib",
+      "line": 117,
+      "text": "opener = urllib.request.build_opener(_NoRedirect,"
+    },
+    {
+      "classification": "APPROVED_CLIENT_PATH",
+      "file": "core/approved_http_client.py",
+      "label": "urllib",
+      "line": 118,
+      "text": "urllib.request.HTTPSHandler(context=ctx))"
+    },
+    {
+      "classification": "LOOPBACK_INTERNAL",
+      "file": "core/instance_manager.py",
+      "label": "urllib",
+      "line": 34,
+      "text": "import urllib.request"
+    },
+    {
+      "classification": "LOOPBACK_INTERNAL",
+      "file": "core/instance_manager.py",
+      "label": "socket",
+      "line": 186,
+      "text": "with socket.create_connection((host, int(port)), timeout=timeout):"
+    },
+    {
+      "classification": "LOOPBACK_INTERNAL",
+      "file": "core/instance_manager.py",
+      "label": "urllib",
+      "line": 202,
+      "text": "req = urllib.request.Request(url, method=\"GET\")"
+    },
+    {
+      "classification": "LOOPBACK_INTERNAL",
+      "file": "core/instance_manager.py",
+      "label": "urllib",
+      "line": 204,
+      "text": "with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (loopback-checked)"
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "core/local_install.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 376,
+      "text": "\"amazon_authenticated_access_enabled\": cpol.amazon_authenticated_access_enabled,"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/local_install.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 384,
+      "text": "and not cpol.amazon_authenticated_access_enabled"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 108,
+      "text": "AMAZON_AUTHENTICATED = \"AMAZON_AUTHENTICATED\""
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 113,
+      "text": "_AMAZON_ACCOUNT_CLASSES = frozenset({AMAZON_SELLER_CENTRAL, AMAZON_AUTHENTICATED, AMAZON_API})"
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 144,
+      "text": "\"AMAZON_AUTHENTICATED_ACCESS\": D.AMAZON_ACCOUNT_ACCESS_PROHIBITED,"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 172,
+      "text": "_AMAZON_AUTH_PATH_HINTS = (\"/ap/signin\", \"/gp/sign-in\", \"/gp/css\", \"/ap/oa\","
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 213,
+      "text": "if any(hint in p for hint in _AMAZON_AUTH_PATH_HINTS):"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 214,
+      "text": "return AMAZON_AUTHENTICATED"
+    },
+    {
+      "classification": "PROHIBITED_AMAZON_PATH",
+      "file": "core/network_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 314,
+      "text": "if dest_class == AMAZON_AUTHENTICATED:"
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "core/network_policy.py",
+      "label": "provider-sdk",
+      "line": 394,
+      "text": "destination=\"https://api.anthropic.com/v1/messages\","
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "core/runtime_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 77,
+      "text": "\"AMAZON_AUTHENTICATED_ACCESS\","
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "core/runtime_policy.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 101,
+      "text": "\"amazon_authenticated_access_enabled\": False,"
+    },
+    {
+      "classification": "LEGACY_EXTERNAL_PATH",
+      "file": "dashboard/app.py",
+      "label": "http-lib-import",
+      "line": 25,
+      "text": "import requests"
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "dashboard/app.py",
+      "label": "provider-sdk",
+      "line": 68,
+      "text": "ANTHROPIC_URL = \"https://api.anthropic.com/v1\""
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "dashboard/app.py",
+      "label": "provider-sdk",
+      "line": 760,
+      "text": "NP.assert_outbound_allowed(\"anthropic-models\", ANTHROPIC_URL, policy=POLICY)"
+    },
+    {
+      "classification": "LEGACY_EXTERNAL_PATH",
+      "file": "dashboard/app.py",
+      "label": "requests-call",
+      "line": 761,
+      "text": "r = requests.get(ANTHROPIC_URL + \"/models\","
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "dashboard/app.py",
+      "label": "provider-sdk",
+      "line": 762,
+      "text": "headers={\"x-api-key\": SETTINGS[\"api_key\"], \"anthropic-version\": \"2023-06-01\"},"
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "dashboard/app.py",
+      "label": "provider-sdk",
+      "line": 827,
+      "text": "NP.assert_outbound_allowed(\"anthropic-messages\", ANTHROPIC_URL, policy=POLICY)"
+    },
+    {
+      "classification": "LEGACY_EXTERNAL_PATH",
+      "file": "dashboard/app.py",
+      "label": "requests-call",
+      "line": 828,
+      "text": "r = requests.post(ANTHROPIC_URL + \"/messages\","
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "dashboard/app.py",
+      "label": "provider-sdk",
+      "line": 829,
+      "text": "headers={\"x-api-key\": SETTINGS[\"api_key\"], \"anthropic-version\": \"2023-06-01\","
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "dashboard/app.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 978,
+      "text": "\"amazon_authenticated_access_enabled\": POLICY.amazon_authenticated_access_enabled,"
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "dashboard/app.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 1016,
+      "text": "\"amazon_authenticated_access_enabled\": POLICY.amazon_authenticated_access_enabled,"
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "research/kw_expand.py",
+      "label": "http-lib-import",
+      "line": 25,
+      "text": "import requests"
+    },
+    {
+      "classification": "REVIEW_REQUIRED",
+      "file": "research/kw_expand.py",
+      "label": "requests-call",
+      "line": 36,
+      "text": "r = requests.get(url, params={\"client\": \"firefox\", \"gl\": \"us\", \"q\": q},"
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "amz_fbm/cli.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 208,
+      "text": "\"amazon_authenticated_access_enabled\": policy.amazon_authenticated_access_enabled,"
+    },
+    {
+      "classification": "DOCUMENTATION_ONLY",
+      "file": "amz_fbm/cli.py",
+      "label": "amazon-endpoint-or-auth",
+      "line": 307,
+      "text": "\"amazon_authenticated_access_enabled\": p.amazon_authenticated_access_enabled,"
+    }
+  ],
+  "no_active_amazon_account_path": true,
+  "scan_dirs": [
+    "core",
+    "listing",
+    "dashboard",
+    "research",
+    "amz_fbm",
+    "production",
+    "compliance"
+  ],
+  "session": "6A.1",
+  "total_findings": 36
+}

@@ -1,0 +1,77 @@
+{
+  "report": "PHASE6B-COCKPIT-DELTA-REPORT",
+  "purpose": "Classify the advisory cockpit-branch handoff against the CURRENT origin/main repository (the implementation source of truth). No cockpit feature was ported during Phase 6B; this report is a branch-delta checklist only.",
+  "boundary": "During Phase 6B: no older cockpit ZIP was unpacked/merged; no listing/listing_generator.py v2, listing/a_plus_templates.py, dashboard, keyword-intelligence, or competitor-gap module was replaced; policy_watcher.py and uspto_check.py were not implemented; no title limit was changed from an unverified handoff claim.",
+  "classifications": [
+    {
+      "item": "keyword_intelligence",
+      "classification": "ALREADY_PRESENT",
+      "evidence": "research/keyword_intelligence.py — cross-platform (Helium 10 + optional YTrends) keyword opportunity scorer, read-only, explicit no-Amazon-account-access. It is the LEGACY intelligence path; the authoritative Phase 5+ path is listing/keyword_source_adapter.py over MASTER-KEYWORDS-LEAN.json.",
+      "action_in_6b": "None. Phase 6B consumes the adapter, not this legacy scorer."
+    },
+    {
+      "item": "competitor_gap_analysis",
+      "classification": "ALREADY_PRESENT",
+      "evidence": "research/competitor_gap_analyzer.py — turns a Helium 10 Xray export into ranked differentiation gaps -> COMPETITOR-GAP.json. The cockpit's expected filename competitor_gap.py is a naming mismatch only.",
+      "action_in_6b": "None."
+    },
+    {
+      "item": "alternate_listing_generator_v2",
+      "classification": "CURRENT_IMPLEMENTATION_NEWER",
+      "evidence": "listing/listing_generator.py already declares '(v2)' and 'Rules baked in (v2.4.0)'. The repository is already at (or ahead of) the v2 the cockpit proposes.",
+      "action_in_6b": "None. Not replaced."
+    },
+    {
+      "item": "alternate_a_plus_templates",
+      "classification": "CURRENT_IMPLEMENTATION_NEWER",
+      "duplicate_authority_risk": true,
+      "evidence": "listing/a_plus_templates.py is the LEGACY free-text template library. listing/aplus_module_registry.py explicitly REPLACES it with a declarative evidence contract, and listing/page_auditor.py quarantines legacy A+ as BLOCKED_LEGACY_UNVERIFIED / APLUS_EVIDENCE_REBUILD_REQUIRED. Reviving a_plus_templates as the A+ authority would conflict with aplus_module_registry + aplus_builder.",
+      "action_in_6b": "None. Legacy remains quarantined; Phase 6B leaves the A+ field empty (evidence-gated)."
+    },
+    {
+      "item": "dashboard_cockpit_modes",
+      "classification": "ALREADY_PRESENT",
+      "evidence": "dashboard/app.py provides STARTUP_MODE (launcher/manual) and connectivity_mode gating; the dashboard is the cockpit. No additional cockpit mode is required by 6B.",
+      "action_in_6b": "None."
+    },
+    {
+      "item": "ip_guard_behavior",
+      "classification": "ALREADY_PRESENT",
+      "evidence": "compliance/ip_guard.py (BLOCK/REVIEW/OK verdicts against ip_library.json) with base safe vocab from compliance/tm_guard.py; runtime enforcement via listing/page_auditor.py brand_ip_leakage. Keyword-source brand/IP terms are excluded upstream by keyword_source_adapter (blocking risks).",
+      "action_in_6b": "Reused. Phase 6B excludes brand/IP terms via the adapter's blocking-risk gate; zero brand/IP terms are allocated."
+    },
+    {
+      "item": "a_plus_dictionary_validation",
+      "classification": "ALREADY_PRESENT",
+      "evidence": "listing/aplus_module_registry.py — declarative per-module evidence contract with validate_capability(), InvalidCapabilityError, fixed BASIC_MODULE_KEYS; re-checked by listing/page_auditor.py. Invalid capability fails loudly, never silently defaulted.",
+      "action_in_6b": "None."
+    },
+    {
+      "item": "backend_title_word_deduplication",
+      "classification": "ALREADY_PRESENT",
+      "evidence": "listing/backend_optimizer.optimize_backend builds visible_parts = [title, description, item_highlights] + bullets and dedups at the CONCEPT level so anything already in visible copy (incl. title) is dropped.",
+      "action_in_6b": "Reused conceptually. Phase 6B backend CANDIDATES already exclude any concept surfaced in a visible field; the backend optimizer remains the final byte-ceiling + phrase-unit authority."
+    },
+    {
+      "item": "proposed_75_character_title_limit",
+      "classification": "UNVERIFIED_POLICY_CLAIM",
+      "evidence": "listing/category_policy_registry.py states a universal 75-char rule was the SUPERSEDED hardcoded approach; the current authority is per-category title_hard_limit resolved through the versioned registry (apparel resolves to 75, but via the registry, fallback_used=false). Enforced by title_engine.py + page_auditor.py.",
+      "action_in_6b": "No title limit was changed. Phase 6B does not define or enforce any title character limit; that stays the CategoryPolicy authority for Phase 6C."
+    },
+    {
+      "item": "policy_watcher",
+      "classification": "POTENTIAL_FUTURE_PORT",
+      "evidence": "No policy_watcher.py exists anywhere in the repository. Connectivity policy (docs/CONNECTIVITY-POLICY.md) permits a future, owner-approved public-documentation reader, but it is not built.",
+      "action_in_6b": "Deferred. Not implemented. Phase 6B calls no policy watcher and no connected service."
+    },
+    {
+      "item": "uspto_checker",
+      "classification": "POTENTIAL_FUTURE_PORT",
+      "evidence": "No uspto_check.py exists. USPTO appears only as a manual human-verification pointer (tmsearch.uspto.gov) in compliance/ip_guard.py.",
+      "action_in_6b": "Deferred. Not implemented. Phase 6B calls no USPTO service."
+    }
+  ],
+  "amazon_account_write_or_access_path": "NONE — only boundary assertions in core/network_policy.py + core/runtime_policy.py and negative tests; no login/SP-API/MWS/advertising/browser-automation/credential-store/write path exists.",
+  "duplicate_allocation_authority": "NONE — listing/keyword_allocation_planner.py is the single new Phase 6B authority; no prior allocation/13-field module existed.",
+  "summary": "Every relevant cockpit item is already present or superseded by newer current implementations, except policy_watcher and uspto_check (absent, correctly deferred) and the 75-char title claim (an unverified universal rule, superseded by the per-category registry). No cockpit feature was ported in Phase 6B."
+}

@@ -7,7 +7,7 @@
   ],
   "starting_commit": "c686adc",
   "checkpoint_tag": "session5b-checkpoint-c686adc",
-  "final_commit": "PENDING_COMMIT",
+  "final_commit": "8438497",
   "runtime_policy_defaults": {
     "offline_only": true,
     "external_ai_enabled": false,

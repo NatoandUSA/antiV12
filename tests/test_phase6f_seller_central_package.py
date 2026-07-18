@@ -23,6 +23,9 @@ import claim_evidence as CE
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUN = os.path.join(_ROOT, "runs", "T2")
+# The T2 workspace holds paid Helium 10 data and is gitignored, so it is absent in a clean checkout /
+# worktree. Tests that need it skip cleanly (hermetic resolver / path-safety / index tests still run).
+_HAS_RUN = os.path.isdir(os.path.join(RUN, "phase6", "6E"))
 
 
 def _clone_workspace(dst):
@@ -268,6 +271,7 @@ class TestPublishability(unittest.TestCase):
         self.assertEqual(r["package_state"], SCP.PHASE6_READY_FOR_LOCAL_DEPLOYMENT)
         self.assertTrue(r["ready_for_local_deployment"])
 
+    @unittest.skipUnless(_HAS_RUN, "T2 workspace fixture required")
     def test_t2_resolves_to_safe_draft_ready(self):
         r = SCP.assemble_phase6f(RUN, connectivity_mode="LOCAL_SAFE")
         self.assertEqual(r.package_state, SCP.PHASE6_SAFE_DRAFT_READY)
@@ -671,6 +675,7 @@ class TestLeakageAudit(Phase6FBase):
 
 
 # ============================================================ ATOMIC BUILD / PROMOTION
+@unittest.skipUnless(_HAS_RUN, "T2 workspace fixture (gitignored paid data) required")
 class TestAtomicBuildAndPromotion(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.mkdtemp()
@@ -792,6 +797,7 @@ class TestPathSecurity(unittest.TestCase):
 
 
 # ============================================================ ARTIFACTS
+@unittest.skipUnless(_HAS_RUN, "T2 workspace fixture (gitignored paid data) required")
 class TestArtifacts(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.mkdtemp()
@@ -910,10 +916,12 @@ class TestConnectivityBoundary(unittest.TestCase):
                       "seller_session", "login("):
             self.assertNotIn(token, src, token)
 
+    @unittest.skipUnless(_HAS_RUN, "T2 workspace fixture required")
     def test_amazon_account_actions_zero(self):
         r = SCP.assemble_phase6f(RUN, connectivity_mode="LOCAL_SAFE")
         self.assertEqual(r.final_listing_audit["amazon_account_actions"], 0)
 
+    @unittest.skipUnless(_HAS_RUN, "T2 workspace fixture required")
     def test_modes_do_not_change_content(self):
         a = SCP.assemble_phase6f(RUN, connectivity_mode="CONNECTED_RESEARCH")
         b = SCP.assemble_phase6f(RUN, connectivity_mode="TEST_DENY_EXTERNAL")

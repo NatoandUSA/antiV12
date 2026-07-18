@@ -1,0 +1,21 @@
+{
+  "amazon_automation": "PROHIBITED",
+  "aplus_eligibility": "UNVERIFIED",
+  "copy_now_count": 0,
+  "effective_publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+  "generated_from_commit": "f4694c0",
+  "local_deployment": "NOT_AUTHORIZED",
+  "manual_entry": "NOT_AUTHORIZED",
+  "owner_review": "READY",
+  "package_index_sha256_prefix": "e323a20f",
+  "package_root_relative_path": "runs/T2/phase6/6F/SELLER-CENTRAL-READY",
+  "phase6_status": "PHASE6_SAFE_DRAFT_READY",
+  "remaining_blockers": [
+    "owner facts",
+    "real product photos",
+    "A+ eligibility",
+    "category image-policy verification where required",
+    "owner approval"
+  ],
+  "upload_now_count": 0
+}

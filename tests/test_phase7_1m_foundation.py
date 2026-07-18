@@ -1023,6 +1023,25 @@ class ArtifactsCountersBoundary(unittest.TestCase):
         _, _, man, _ = self._write()
         self.assertEqual(man["image_generation_calls"], 0)
 
+    def test_175d_owner_input_accounting_reconciles_when_absent(self):
+        # required == verified + missing + contradictory; economics is NOT collapsed to one placeholder.
+        acc = F._input_accounting(_assemble())
+        self.assertEqual(acc["required_input_count"],
+                         acc["verified_input_count"] + acc["missing_input_count"]
+                         + acc["contradictory_input_count"])
+        self.assertEqual(acc["verified_input_count"], 0)
+        self.assertEqual(acc["missing_input_count"], acc["required_input_count"])  # all 36 absent
+        self.assertEqual(acc["required_input_count"],
+                         len(F.LIVE_STATE_REQUIRED_FIELDS) + len(F._ECON_REQUIRED_FIELDS))
+
+    def test_175e_owner_input_accounting_counts_economics_verified(self):
+        # a complete economics doc contributes its fields to VERIFIED, not only to missing.
+        acc = F._input_accounting(_assemble(economics=_full_economics()))
+        self.assertEqual(acc["verified_input_count"], len(F._ECON_REQUIRED_FIELDS))
+        self.assertEqual(acc["required_input_count"],
+                         acc["verified_input_count"] + acc["missing_input_count"]
+                         + acc["contradictory_input_count"])
+
 
 # ============================================================ DETERMINISM & REGRESSION (176-186)
 class DeterminismRegression(unittest.TestCase):

@@ -12,8 +12,8 @@
     "command": "python -m unittest discover -s tests",
     "errors": 0,
     "failures": 0,
-    "ran": 1662,
-    "runtime_s": 540.785,
+    "ran": 1832,
+    "runtime_s": 537.882,
     "skipped": 1
   },
   "bid_calculation_count": 0,
@@ -35,7 +35,7 @@
   "dashboard_bind_is_loopback": true,
   "decimal_convention": "core.money — Decimal only; float/NaN/Inf/blank/exponent rejected; serialized as plain strings; ROUND_HALF_UP currency; no float in output.",
   "decimal_money_authority": "core/money.py",
-  "deterministic_content_sha256": "9fb1f74739efef00a112f594b0b1278b3ca62ea69dee6271a1f3d7f37363c399",
+  "deterministic_content_sha256": "49dc9ca0992e9814e681bff3f1f936da83a8609cff94fe791a6fec0c32fccd1f",
   "duplicate_production_authority_count": 0,
   "economics_input_result": "PPC_ECONOMICS_OWNER_INPUT_REQUIRED",
   "economics_result": "PPC_ECONOMICS_OWNER_INPUT_REQUIRED",
@@ -60,7 +60,7 @@
   "marketplace": "US",
   "maximum_cpc_state": "BLOCKED_OR_MISSING",
   "minimum_profit_state": "PHASE7_1M_DECLARED_DEFAULT_8_00_USD",
-  "missing_input_count": 21,
+  "missing_input_count": 36,
   "negative_selection_count": 0,
   "net_sales_state": "BLOCKED_OR_MISSING",
   "network_no_active_amazon_account_path": true,
@@ -106,8 +106,8 @@
     "errors": 0,
     "failures": 0,
     "module": "tests.test_phase7_1m_foundation",
-    "ran": 168,
-    "skipped": 1
+    "ran": 170,
+    "skipped": 0
   },
   "verified_input_count": 0
 }

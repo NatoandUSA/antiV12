@@ -809,6 +809,10 @@ class PPCProductContractResult:
 _ECON_COST_FIELDS = ("amazon_referral_fee", "other_amazon_fees", "blank_product_cost", "decoration_cost",
                      "personalization_cost", "packaging_cost", "outbound_shipping_cost", "labor_cost",
                      "transaction_cost", "refund_reserve", "replacement_reserve", "other_variable_costs")
+# every required economics owner input (12 costs + price, discount, minimum profit, conversion rate).
+# used for both the economics-doc required count AND the reconciling owner-input accounting.
+_ECON_REQUIRED_FIELDS = (("selling_price", "expected_discount") + _ECON_COST_FIELDS
+                         + ("minimum_required_profit", "expected_ad_conversion_rate"))
 
 
 def build_economics_template(handoff):
@@ -1402,12 +1406,22 @@ def _session_status(decision):
 
 # ================================================================ INPUT COUNTING (sanitized proof)
 def _input_accounting(result):
-    lc = result.live_result.counts()
+    """Reconciling owner-input accounting over BOTH required documents (live product state + economics).
+
+    Both documents are counted at the SAME per-field granularity so the accounting always closes:
+    ``required == verified + missing + contradictory``. Economics fields contribute to ``verified`` (a
+    usable parsed value, including the declared min-profit default) as well as to ``missing`` — they are
+    NEVER counted only as missing, and are never collapsed into a single aggregate placeholder. An
+    invalid/unusable economics input is folded into ``missing`` (the economics validation artifact
+    reports invalid inputs separately); ``contradictory`` tracks live-state contradictions.
+    """
+    lc = result.live_result.counts()   # over the 20 live-state required fields
     ec = result.economics_result
-    required = len(LIVE_STATE_REQUIRED_FIELDS) + len(_ECON_COST_FIELDS) + 4
-    verified = lc[VERIFIED] + lc[NOT_APPLICABLE]
-    missing = lc[MISSING] + len(ec.missing)
+    required = len(LIVE_STATE_REQUIRED_FIELDS) + len(_ECON_REQUIRED_FIELDS)   # 20 + 16 = 36
+    econ_verified = sum(1 for f in _ECON_REQUIRED_FIELDS if ec.values.get(f) is not None)
+    verified = lc[VERIFIED] + lc[NOT_APPLICABLE] + econ_verified
     contradictory = lc[CONTRADICTORY]
+    missing = required - verified - contradictory
     return {"required_input_count": required, "verified_input_count": verified,
             "missing_input_count": missing, "contradictory_input_count": contradictory}
 

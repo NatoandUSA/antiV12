@@ -1,0 +1,127 @@
+{
+  "schema_version": "session7_1m-acceptance-proof-v1",
+  "session": "PHASE 7.1M-A — ACCEPTANCE AUDIT AND BASELINE TAG",
+  "acceptance_status": "PHASE7_1M_ACCEPTED_WITH_REPORTING_FIX",
+  "starting_commit": "90843a02dde3aa1a465fee71ead57ecdfc7f59cf",
+  "audited_commit": "90843a02dde3aa1a465fee71ead57ecdfc7f59cf",
+  "final_commit": "f7b62534fb47b860db284738992d177275adf882",
+  "branch": "main",
+  "origin_sync": "HEAD == origin/main before audit; pushed after acceptance",
+  "checkpoint_tag": "phase7-1m-checkpoint-3eeadaa -> 3eeadaa6b68514d9f6de7a73317ee501d03566a4 (local == remote)",
+  "acceptance_tag": "phase7-1m-accepted-f7b6253",
+
+  "dependency_results": {
+    "phase7_0_readiness": "PHASE7_OWNER_INPUT_REQUIRED",
+    "phase6_final_status": "PHASE6_SAFE_DRAFT_READY",
+    "listing_publishability": "SAFE_DRAFT_OWNER_FACTS_REQUIRED",
+    "listing_audit_state": "SAFE_DRAFT",
+    "phase6_package_index_sha256_prefix": "e323a20f",
+    "claim_evidence_sha256_prefix": "840e6216",
+    "keyword_allocation_sha256_prefix": "437efa13",
+    "keyword_source_sha256_prefix": "52b02f16",
+    "product_facts_sha256_prefix": "0199b4de"
+  },
+
+  "proof_result": "SESSION7_1M-PROOF-GATE regenerated from fixed code and reproduces byte-for-byte",
+  "money_authority": "core/money.py (single canonical Decimal authority)",
+  "foundation_authority": "production/phase7_minimal_launch_foundation.py (single Phase 7.1M authority)",
+  "duplicate_authority_count": 0,
+
+  "float_boundary_result": "PASS — public boundaries reject Python float and bool; canonical decimal strings only",
+  "silent_zero_result": "PASS — a missing input stays MISSING; sum_required_decimals blocks on any None; no cost defaults to 0",
+  "decimal_serialization_result": "PASS — Decimal serialized as plain strings (format 'f'), never a JSON number, never scientific notation",
+  "quantization_result": "PASS — currency ROUND_HALF_UP to 0.01; internal division at prec=50 before final quantization",
+  "internal_precision_result": "PASS — full Decimal precision retained through the formula chain; quantize only at serialization",
+
+  "formula_audit_result": {
+    "net_sales": "selling_price - expected_discount  [VERIFIED exact]",
+    "non_ad_variable_costs": "sum(12 required costs), never a silent 0  [VERIFIED exact]",
+    "contribution_margin_before_ads": "net_sales - non_ad_variable_costs  [VERIFIED exact]",
+    "break_even_ad_cost_per_order": "contribution_margin_before_ads  [VERIFIED exact]",
+    "target_ad_cost_per_order": "contribution_margin_before_ads - minimum_required_profit  [VERIFIED exact]",
+    "break_even_acos": "break_even_ad_cost_per_order / net_sales  [VERIFIED exact]",
+    "target_acos": "target_ad_cost_per_order / net_sales  [VERIFIED exact]",
+    "maximum_cpc": "target_ad_cost_per_order * expected_ad_conversion_rate  [VERIFIED exact]",
+    "blocks_present": ["MISSING_REQUIRED_INPUT", "INVALID_DECIMAL", "CURRENCY_MISMATCH", "NON_POSITIVE_NET_SALES", "NON_POSITIVE_CONTRIBUTION_MARGIN", "TARGET_AD_COST_NON_POSITIVE", "TARGET_ACOS_NOT_BELOW_BREAK_EVEN", "MAXIMUM_CPC_NON_POSITIVE", "CVR_OUT_OF_RANGE", "OWNER_CONFIRMATION_MISSING"]
+  },
+
+  "minimum_profit_default_result": "PASS — 8.00 USD is the ONLY business default; declared + source-recorded (PHASE7_1M_DECLARED_DEFAULT_8_00_USD); applied only when the owner omits it and only for USD; owner-reviewable; every other cost is required and never silently 0",
+  "maximum_cpc_semantics": "PASS — economic CEILING, not a recommended bid; no universal CPC clamp, no CPC fallback; used only as an upper bound in budget feasibility",
+  "currency_mismatch_result": "PASS — economics currency != live-state currency is rejected (CURRENCY_MISMATCH)",
+
+  "capacity_result": "PASS — missing capacity/backlog stays missing (CAPACITY_OWNER_INPUT_REQUIRED); backlog >= normal or peak < normal blocks (CAPACITY_BLOCKED); no inference from Phase 6 or history",
+  "handling_result": "PASS — missing handling stays missing (HANDLING_OWNER_INPUT_REQUIRED); non-positive handling blocks (HANDLING_BLOCKED)",
+  "budget_result": "PASS — owner-confirmed inputs only; no universal $25 threshold, no fixed-percentage allocator, no universal click threshold, no universal learning window, no campaign role selected, no role budget allocated; click-capacity bounds derive from owner inputs",
+
+  "readiness_result": "PHASE7_OWNER_INPUT_REQUIRED",
+  "most_restrictive_component": "phase6_listing_publishable (Phase 6 remains a safe draft, not publishable)",
+  "readiness_hierarchy_verified": "phase6 validity -> publishability -> live product state -> PPC contract -> economics completeness -> economics viability -> capacity -> handling -> budget completeness -> budget feasibility -> Amazon boundary -> artifact verification (most-restrictive wins)",
+
+  "owner_input_accounting_result": {
+    "verdict": "REPORTING DEFECT FOUND AND CORRECTED",
+    "prior_published": {"required_input_count": 36, "verified_input_count": 0, "missing_input_count": 21, "contradictory_input_count": 0},
+    "prior_flaw": "Asymmetric denominator: verified counted only live-state fields while missing counted live-state missing PLUS a single aggregate placeholder for the entire economics document. Economics fields could add to 'missing' but never to 'verified', so 0 + 21 + 0 != 36 (15-field gap that never closed).",
+    "corrected_published_T2": {"required_input_count": 36, "verified_input_count": 0, "missing_input_count": 36, "contradictory_input_count": 0},
+    "correction": "_input_accounting now counts both required documents (20 live-product-state + 16 economics via _ECON_REQUIRED_FIELDS) at the same per-field granularity so required == verified + missing + contradictory always holds. Economics fields with a usable parsed value (including the declared $8.00 USD min-profit default) count toward 'verified'.",
+    "readiness_state_unchanged": true
+  },
+
+  "artifact_result": "PASS — 13 local artifacts present under runs/T2/phase7/7.1M/ (gitignored); required set complete",
+  "proof_sanitation_result": "PASS — states, prefixes, counts, reason codes only; no absolute private path, ASIN/SKU, live price/capacity, credential, cookie, token, customer data, Seller Central export, or paid keyword row",
+  "private_data_leakage": "NONE",
+  "credential_leakage": "NONE (only defensive rejection patterns _FORBIDDEN_SUBSTRINGS / _contains_credentials)",
+  "amazon_boundary_result": "PASS — no login, SP-API/MWS/Ads API, browser automation, credential/cookie/token store, automated report retrieval; loopback-only bind (127.0.0.1; 0.0.0.0 rejected); Phase 7.1M authority makes zero network calls",
+  "campaign_scope_result": "PASS — no keyword/target/negative selection, match-type/role choice, bid computation, campaign-budget allocation, launch package, report ingestion, or optimization",
+
+  "zero_action_counters": {
+    "external_amazon_account_attempts": 0,
+    "amazon_account_actions": 0,
+    "campaign_write_actions": 0,
+    "target_selection_count": 0,
+    "negative_selection_count": 0,
+    "bid_calculation_count": 0,
+    "launch_package_count": 0,
+    "later_phase_artifact_count": 0,
+    "image_generation_calls": 0,
+    "external_network_attempts": 0
+  },
+
+  "compile_result": "PASS — python -m compileall listing compliance dashboard research core tests production creative scripts (exit 0)",
+  "targeted_tests": {"module": "tests.test_phase7_1m_foundation", "ran": 170, "failures": 0, "errors": 0, "skipped": 0, "runtime_s": 12.9},
+  "full_tests": {"command": "python -m unittest discover -s tests", "ran": 1832, "failures": 0, "errors": 0, "skipped": 1, "runtime_s": 537.882},
+  "full_tests_as_delivered_90843a0": {"ran": 1830, "failures": 0, "errors": 0, "skipped": 1, "runtime_s": 554.846},
+  "two_run_determinism": "PASS — stable artifacts and regenerated proof identical across two runs",
+  "three_mode_determinism": "PASS — CONNECTED_RESEARCH / LOCAL_SAFE / TEST_DENY_EXTERNAL produce identical stable artifacts and proof",
+  "clean_worktree_result": {
+    "commit": "f7b62534fb47b860db284738992d177275adf882",
+    "hermetic": "runs/ absent (only tracked files checked out)",
+    "compile": "PASS",
+    "phase7_1m_tests": {"ran": 170, "failures": 0, "errors": 0, "skipped": 0},
+    "phase7_0_preflight_tests": {"ran": 87, "failures": 0, "errors": 0, "skipped": 3, "note": "the 3 skips are the designed workspace-dependent tests when the paid runs/ fixture is absent — not failures"},
+    "proof_parses_standalone": true,
+    "accounting_closes": "36 == 0 + 36 + 0",
+    "private_paths_or_credentials": "NONE",
+    "amazon_integration": "NONE in Phase 7.1M authority",
+    "campaign_launch_artifacts": "NONE_FOUND",
+    "dashboard_bind": "loopback-only (127.0.0.1; 0.0.0.0 rejected)"
+  },
+
+  "files_changed": [
+    "production/phase7_minimal_launch_foundation.py (add _ECON_REQUIRED_FIELDS; reconciling _input_accounting)",
+    "tests/test_phase7_1m_foundation.py (add test_175d, test_175e accounting-reconciliation tests)",
+    "SESSION7_1M-PROOF-GATE.json (regenerated: missing_input_count 21 -> 36, deterministic hash, test-run metadata)"
+  ],
+  "files_created": ["SESSION7_1M-ACCEPTANCE-PROOF.json", "PHASE7_1M-ACCEPTANCE-REVIEW.md"],
+  "legacy_failures": "NONE reproduced (the 3 Phase 7.0 env failures noted historically did not reproduce under discover; the clean-worktree Phase 7.0 skips are designed, not failures)",
+  "new_failures": "NONE",
+  "material_defects": "NONE",
+
+  "known_limitations": [
+    "Phase 6 remains a verified SAFE DRAFT; no live listing / ASIN / SKU / price / capacity / handling / eligibility is owner-confirmed, so Phase 7.1M truthfully resolves to PHASE7_OWNER_INPUT_REQUIRED.",
+    "required_input_count (36) sums the live-product-state document (20 fields) and the economics document (16 fields); a few concepts (currency, price) are required in BOTH documents by design and are therefore counted per-document, not de-duplicated.",
+    "An invalid (present-but-unparseable) economics input is folded into 'missing' in the accounting; the economics validation artifact reports invalid inputs separately with detail.",
+    "The $8.00 USD minimum-profit floor is a declared default applied only when the owner omits it (USD only) and is fully owner-reviewable.",
+    "maximum_cpc is an economic ceiling, NOT a recommended bid; no bid/target/negative/budget allocation is performed this session."
+  ],
+  "sanitization_note": "States, prefixes, counts, and reason codes only. No absolute paths, no raw owner values, no ASIN/SKU, no live price/capacity, no paid keyword rows, no credentials."
+}

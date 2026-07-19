@@ -284,8 +284,17 @@ class TestFormatDetection(Base):
         r = self._detect("a.tsv", campaign_csv())
         self.assertEqual(r["reason"], RI.EXTENSION_CONTENT_MISMATCH)
 
-    def test_xlsx_unsupported(self):
+    def test_xlsx_detected_as_supported(self):
+        # a .xlsx with a zip signature is now natively supported (openpyxl); the reason is set only for
+        # a corrupt workbook at READ time, not at signature detection.
         r = self._detect("a.xlsx", "PK\x03\x04 rest")
+        self.assertEqual(r["format"], "XLSX")
+        self.assertIsNone(r["reason"])
+        self.assertEqual(r["parser"], RI.PARSER_XLSX)
+
+    def test_xlsm_still_unsupported(self):
+        # a macro workbook (.xlsm, also a zip) stays refused
+        r = self._detect("a.xlsm", "PK\x03\x04 rest")
         self.assertEqual(r["reason"], RI.UNSUPPORTED_REPORT_FORMAT)
 
     def test_zip_content_in_csv_mismatch(self):
@@ -1784,7 +1793,7 @@ class TestProofGate(Base):
         self.assertIn("deterministic_content_sha256", self._proof())
 
     def test_supported_formats(self):
-        self.assertEqual(self._proof()["supported_file_formats"], ["CSV", "CSV_BOM", "TSV"])
+        self.assertEqual(self._proof()["supported_file_formats"], ["CSV", "CSV_BOM", "TSV", "XLSX"])
 
     def test_duplicate_authority_zero(self):
         self.assertEqual(self._proof()["duplicate_authority_count"], 0)
@@ -1845,6 +1854,332 @@ class TestDependencyPreflight(Base):
 
     def test_money_authority_importable(self):
         self.assertTrue(hasattr(MONEY, "parse_money_decimal"))
+
+
+# ================================================================ V. NATIVE EXCEL / ENCODING INPUT (7.2 upgrade)
+def _xlsx_bytes(sheets):
+    """Build .xlsx BYTES from [(sheet_title, [row, ...]), ...]. Cells keep their Python type (str / int /
+    float / None) so the reader's displayed-value -> text conversion is exercised. Sheet titles are kept
+    <=31 chars (Excel limit). Bytes are built once and reused so a duplicate/determinism fixture is
+    byte-stable."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for title, rows in sheets:
+        ws = wb.create_sheet(title=title[:31])
+        for row in rows:
+            ws.append(list(row))
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# a valid SP search-term report as (header, rows) — reused for xlsx + csv duplicate fixtures.
+_ST_HEADER = ["Date", "Campaign Name", "Ad Group Name", "Targeting", "Match Type",
+              "Customer Search Term", "Impressions", "Clicks", "Spend", "7 Day Total Sales", "Currency"]
+# money values chosen with NO trailing-zero ambiguity so an Excel float and a CSV string canonicalize
+# identically (Decimal canonicalization preserves trailing zeros: '5.50' != '5.5').
+_ST_ROWS_NUM = [
+    ["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad", "gift for nurse",
+     300, 15, 5.25, 25.75, "USD"],
+    ["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "exact", "nurse gift",
+     120, 6, 2.5, 9.99, "USD"],
+]
+
+
+def _search_term_xlsx(rows=None, *, sheets=None, title="SP-SearchTerm"):
+    if sheets is not None:
+        return _xlsx_bytes(sheets)
+    rows = rows if rows is not None else _ST_ROWS_NUM
+    return _xlsx_bytes([(title, [_ST_HEADER] + [list(r) for r in rows])])
+
+
+class TestExcelAndEncodingInput(Base):
+    def dropb(self, dirs, name, data):
+        p = os.path.join(dirs["inbox"], name)
+        with open(p, "wb") as f:
+            f.write(data)
+        return p
+
+    # ---- 1. valid .xlsx Sponsored Products Search Term report ----
+    def test_xlsx_search_term_accepted(self):
+        d = self.ws()
+        self.dropb(d, "SP_SearchTerm.xlsx", _search_term_xlsx())
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.counts["accepted_source_count"], 1)
+        s = r.sources[0]
+        self.assertEqual(s["parser"], RI.PARSER_XLSX)
+        self.assertEqual(s["report_type"], RI.SP_SEARCH_TERM)
+        self.assertEqual(s["worksheet"], "SP-SearchTerm")
+        self.assertEqual(r.counts["normalized_sp_search_term_row_count"], 2)
+
+    def test_xlsx_no_longer_format_blocked(self):
+        # regression: a real .xlsx must NOT produce PHASE7_REPORT_FORMAT_BLOCKED
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx())
+        self.assertNotEqual(self.run_base(d).state, RI.REPORT_FORMAT_BLOCKED)
+
+    def test_xlsx_archived_with_xlsx_extension(self):
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx())
+        r = self.run_base(d)
+        sha = [s["source_file_sha256"] for s in r.sources if s["import_state"] == "ACCEPTED"][0]
+        self.assertTrue(os.path.exists(os.path.join(d["accepted_raw"], sha + ".xlsx")))
+
+    def test_xlsx_original_bytes_preserved(self):
+        d = self.ws()
+        data = _search_term_xlsx()
+        self.dropb(d, "r.xlsx", data)
+        r = self.run_base(d)
+        sha = [s["source_file_sha256"] for s in r.sources if s["import_state"] == "ACCEPTED"][0]
+        with open(os.path.join(d["accepted_raw"], sha + ".xlsx"), "rb") as f:
+            self.assertEqual(f.read(), data)          # archived workbook is byte-for-byte the original
+
+    # ---- 2/3/4/5. encoding + delimiter fixtures ----
+    def test_utf8_csv(self):
+        d = self.ws()
+        self.drop(d, "c.csv", campaign_csv(), encoding="utf-8")
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual([s for s in r.sources][0]["detected_encoding"], "utf-8")
+
+    def test_utf8_bom_csv(self):
+        d = self.ws()
+        self.drop(d, "c.csv", campaign_csv(), encoding="utf-8-sig")
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.sources[0]["detected_encoding"], "utf-8-sig")
+
+    def test_cp1252_csv_accents(self):
+        # Windows-1252 export with español / cumpleaños / mamá must import and preserve accents
+        rows = [["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad", "regalo español",
+                 300, 15, "5.25", "25.75", "USD"],
+                ["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "exact", "cumpleaños mamá",
+                 120, 6, "2.50", "9.99", "USD"]]
+        d = self.ws()
+        self.drop(d, "c.csv", _csv(_ST_HEADER, rows), encoding="cp1252")
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.sources[0]["detected_encoding"], "cp1252")
+        terms = {row["identity"]["search_term"] for row in r.normalized_by_type[RI.SP_SEARCH_TERM]}
+        self.assertEqual(terms, {"regalo español", "cumpleaños mamá"})   # exact, no transliteration
+
+    def test_tab_delimited_unicode_txt(self):
+        rows = [["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad", "regalo mamá",
+                 300, 15, "5.25", "25.75", "USD"]]
+        d = self.ws()
+        self.drop(d, "report.txt", _csv(_ST_HEADER, rows, delimiter="\t"), encoding="utf-8")
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.sources[0]["detected_delimiter"], "TAB")
+        self.assertEqual(r.sources[0]["detected_encoding"], "utf-8")
+
+    def test_semicolon_delimiter(self):
+        d = self.ws()
+        self.drop(d, "c.csv", campaign_csv().replace(",", ";"))
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.sources[0]["detected_delimiter"], "SEMICOLON")
+
+    def test_pipe_delimiter(self):
+        d = self.ws()
+        self.drop(d, "c.csv", campaign_csv().replace(",", "|"))
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.sources[0]["detected_delimiter"], "PIPE")
+
+    # ---- 6. Excel ~$ lock file ----
+    def test_lock_file_ignored_not_accepted(self):
+        d = self.ws()
+        self.dropb(d, "~$SP_SearchTerm.xlsx", b"PK\x03\x04 lockjunk")
+        r = self.run_base(d)
+        self.assertEqual(r.counts["ignored_source_count"], 1)
+        self.assertEqual(r.counts["accepted_source_count"], 0)
+        self.assertEqual(r.counts["quarantined_source_count"], 0)
+        # only a lock file present => no supported report => INPUT_REQUIRED (never FORMAT_BLOCKED)
+        self.assertEqual(r.state, RI.REPORT_INPUT_REQUIRED)
+
+    def test_lock_file_plus_valid_xlsx_ready(self):
+        # regression: a ~$ lock file must NOT cause FORMAT_BLOCKED when a valid .xlsx is present
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx())
+        self.dropb(d, "~$r.xlsx", b"PK\x03\x04 lockjunk")
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.counts["accepted_source_count"], 1)
+        self.assertEqual(r.counts["ignored_source_count"], 1)
+
+    # ---- 7. empty workbook ----
+    def test_empty_workbook_quarantined(self):
+        d = self.ws()
+        self.dropb(d, "empty.xlsx", _xlsx_bytes([("Sheet1", [])]))
+        r = self.run_base(d)
+        self.assertEqual(r.counts["quarantined_source_count"], 1)
+        self.assertEqual(r.state, RI.REPORT_FORMAT_BLOCKED)
+
+    # ---- 8. first empty sheet, second valid sheet ----
+    def test_first_empty_sheet_second_valid(self):
+        d = self.ws()
+        data = _search_term_xlsx(sheets=[("Empty", []),
+                                         ("Data", [_ST_HEADER] + [list(r) for r in _ST_ROWS_NUM])])
+        self.dropb(d, "two.xlsx", data)
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.sources[0]["worksheet"], "Data")
+
+    # ---- 9. unsupported .xls (OLE) ----
+    def test_xls_ole_unsupported(self):
+        d = self.ws()
+        self.dropb(d, "old.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 legacy ole body")
+        r = self.run_base(d)
+        self.assertEqual(r.counts["quarantined_source_count"], 1)
+        self.assertEqual(r.state, RI.REPORT_FORMAT_BLOCKED)
+
+    # ---- 10. ambiguous / one-column malformed CSV ----
+    def test_single_column_no_delimiter_quarantined(self):
+        d = self.ws()
+        self.drop(d, "one.csv", "OnlyColumnNoDelimiter\nvalue1\nvalue2\n")
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORT_FORMAT_BLOCKED)
+        self.assertEqual(r.sources[0]["quarantine_state"], RI.AMBIGUOUS_DELIMITER)
+
+    def test_ambiguous_delimiter_tie_quarantined(self):
+        d = self.ws()
+        self.drop(d, "tie.csv", "a,b;c\n1,2;3\n")     # comma==1 and semicolon==1 => tie => ambiguous
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORT_FORMAT_BLOCKED)
+        self.assertEqual(r.sources[0]["quarantine_state"], RI.AMBIGUOUS_DELIMITER)
+
+    # ---- 11. mixed inbox: valid xlsx + ~$ lock + unsupported ----
+    def test_mixed_inbox(self):
+        d = self.ws()
+        self.dropb(d, "good.xlsx", _search_term_xlsx())
+        self.dropb(d, "~$good.xlsx", b"PK\x03\x04 lockjunk")
+        self.dropb(d, "bad.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 ole")
+        r = self.run_base(d)
+        self.assertEqual(r.counts["accepted_source_count"], 1)   # xlsx still processed
+        self.assertEqual(r.counts["ignored_source_count"], 1)    # lock ignored, not accepted
+        self.assertEqual(r.counts["quarantined_source_count"], 1)  # the .xls
+        self.assertEqual(len(r.normalized_by_type[RI.SP_SEARCH_TERM]), 2)  # xlsx rows normalized
+        self.assertEqual(r.state, RI.REPORT_FORMAT_BLOCKED)      # unsupported .xls is most-restrictive
+
+    # ---- 12. duplicate .xlsx and equivalent .csv (identical logical rows) ----
+    def test_duplicate_xlsx_and_csv_dedup(self):
+        d = self.ws()
+        self.dropb(d, "report.xlsx", _search_term_xlsx())
+        # a CSV whose canonical rows equal the xlsx's (float 5.25 == '5.25', etc.)
+        csv_rows = [["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad",
+                     "gift for nurse", 300, 15, "5.25", "25.75", "USD"],
+                    ["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "exact",
+                     "nurse gift", 120, 6, "2.5", "9.99", "USD"]]
+        self.drop(d, "report.csv", _csv(_ST_HEADER, csv_rows))
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)             # equal metrics => duplicate, not conflict
+        self.assertEqual(r.counts["accepted_source_count"], 2)  # two distinct source files
+        # but the normalized dataset is per actual report (2 unique rows), not per representation (4)
+        self.assertEqual(len(r.normalized_by_type[RI.SP_SEARCH_TERM]), 2)
+        self.assertTrue(r.counts["duplicate_row_count"] >= 2)
+        self.assertEqual(r.counts["conflict_count"], 0)
+
+    # ---- 13. deterministic repeated import ----
+    def test_deterministic_repeated_import(self):
+        data = _search_term_xlsx()
+        b1, b2 = self.mkbase(), self.mkbase()
+        h = []
+        for b, now, rid in ((b1, "A", "1"), (b2, "B", "2")):
+            dirs = RI.ensure_workspace(b)
+            self.dropb(dirs, "r.xlsx", data)          # identical bytes => identical sha
+            h.append(RI.run_ingestion(b, reference_date=REF, now=now, run_id=rid).stable_hashes)
+        self.assertEqual(h[0], h[1])
+
+    # ---- 14. failure preserving last_valid ----
+    def test_blocked_run_preserves_last_valid(self):
+        d = self.ws()
+        self.dropb(d, "good.xlsx", _search_term_xlsx())
+        self.run_base(d)                              # run1: good final in place
+        st_file = RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM]
+        self.assertIn(st_file, os.listdir(d["final"]))
+        os.remove(os.path.join(d["inbox"], "good.xlsx"))
+        self.dropb(d, "bad.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 ole")  # run2: only an unsupported file
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_FORMAT_BLOCKED)
+        # the previous good dataset survives in last_valid (never partially replaced)
+        self.assertIn(st_file, os.listdir(d["last_valid"]))
+
+    # ---- 15. numeric Excel cells through the Decimal-safe path ----
+    def test_numeric_excel_cells_decimal_safe(self):
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx())
+        r = self.run_base(d)
+        for row in r.normalized_by_type[RI.SP_SEARCH_TERM]:
+            for field, val in row["metrics"].items():
+                # money is a canonical Decimal STRING; counts are int. NEVER a float in either path.
+                self.assertNotIsInstance(val, float)
+                if field in RI.MONEY_FIELDS:
+                    self.assertIsInstance(val, str)
+                    from decimal import Decimal
+                    Decimal(val)                      # parses cleanly as an exact decimal
+        spend = {row["metrics"]["spend"] for row in r.normalized_by_type[RI.SP_SEARCH_TERM]}
+        self.assertEqual(spend, {"5.25", "2.5"})      # 5.25 float -> '5.25' text -> Decimal-safe
+
+    def test_xlsx_number_to_text_no_float_noise(self):
+        self.assertEqual(RI._xlsx_number_to_text(1000), "1000")
+        self.assertEqual(RI._xlsx_number_to_text(1000.0), "1000")
+        self.assertEqual(RI._xlsx_number_to_text(12.34), "12.34")
+
+    # ---- 16. accented customer search terms preserved exactly (xlsx path) ----
+    def test_xlsx_accented_search_term_preserved(self):
+        rows = [["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad",
+                 "cumpleaños de mamá", 300, 15, 5.25, 25.75, "USD"]]
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx(rows=rows))
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        terms = {row["identity"]["search_term"] for row in r.normalized_by_type[RI.SP_SEARCH_TERM]}
+        self.assertEqual(terms, {"cumpleaños de mamá"})
+
+    # ---- per-file manifest (requirement-6 schema) ----
+    def test_per_file_manifest_schema(self):
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx())
+        self.dropb(d, "~$r.xlsx", b"PK\x03\x04 lockjunk")
+        self.run_base(d)
+        man = json.load(open(os.path.join(d["final"], RI.F_IMPORT_MANIFEST), encoding="utf-8"))
+        self.assertIn("per_file", man)
+        keys = {"source_filename", "source_extension", "source_sha256", "source_size_bytes", "parser",
+                "parser_version", "worksheet", "detected_encoding", "detected_delimiter", "rows_read",
+                "rows_valid", "rows_invalid", "report_type", "status", "reason_codes"}
+        for entry in man["per_file"]:
+            self.assertEqual(set(entry.keys()), keys)
+        statuses = {e["status"] for e in man["per_file"]}
+        self.assertEqual(statuses, {RI.FILE_STATUS_ACCEPTED, RI.FILE_STATUS_IGNORED})
+        acc = [e for e in man["per_file"] if e["status"] == RI.FILE_STATUS_ACCEPTED][0]
+        self.assertEqual(acc["parser"], RI.PARSER_XLSX)
+        ign = [e for e in man["per_file"] if e["status"] == RI.FILE_STATUS_IGNORED][0]
+        self.assertIn(RI.IGNORED_TEMP_LOCK_FILE, ign["reason_codes"])
+
+    # ---- boundary: no float ever reaches the money authority; no network in the xlsx path ----
+    def test_no_float_into_money_authority(self):
+        # feeding a float to the money authority is a hard error (never silently coerced)
+        with self.assertRaises(MONEY.MoneyError):
+            MONEY.parse_decimal_string(5.25, field="money")
+
+    def test_xlsx_path_adds_no_network_or_amazon(self):
+        d = self.ws()
+        self.dropb(d, "r.xlsx", _search_term_xlsx())
+        r = self.run_base(d)
+        proof = RI.build_proof_gate(r, starting_commit="x")
+        self.assertTrue(all(proof[k] == 0 for k in RI._ZERO_COUNTERS))
+        self.assertIn("XLSX", proof["supported_file_formats"])
+
+    def test_openpyxl_import_is_local_only(self):
+        # openpyxl must not pull a network/browser/api dependency into the module surface
+        src = TestSecurity.MODULE_SRC.lower()
+        self.assertIn("import openpyxl", src)
+        for banned in ("requests", "urllib", "http.client", "selenium", "webdriver", "boto",
+                       "sp_api", "advertising-api"):
+            self.assertNotIn(banned, src)
 
 
 if __name__ == "__main__":

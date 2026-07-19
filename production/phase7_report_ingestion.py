@@ -92,8 +92,26 @@ MAX_FIELD_LEN = 32_768                   # characters per cell
 
 ALLOWED_EXTENSIONS = (".csv", ".tsv", ".txt")
 XLSX_EXTENSIONS = (".xlsx", ".xlsm", ".xls")
+# .xlsx is natively supported (openpyxl, read-only/data-only); .xls (OLE) and .xlsm (macro) stay refused.
+SUPPORTED_XLSX_EXTENSION = ".xlsx"
+# extensions whose ORIGINAL extension is preserved for the immutable raw archive copy.
+_ARCHIVE_EXTS = frozenset(ALLOWED_EXTENSIONS + (SUPPORTED_XLSX_EXTENSION,))
 SUSPICIOUS_EXTENSIONS = (".exe", ".bat", ".cmd", ".com", ".js", ".vbs", ".scr", ".dll", ".msi",
                          ".ps1", ".sh", ".zip", ".rar", ".7z", ".gz", ".tar", ".jar", ".apk")
+
+# --- parsers + versions (recorded per source in the manifest) ---
+PARSER_XLSX = "xlsx_openpyxl"
+PARSER_TEXT = "delimited_text"
+PARSER_VERSION = "phase7-2-parser-v2"     # v2 = native .xlsx + multi-encoding + 4-delimiter text
+
+# deterministic text decode order (NO probabilistic detection). latin-1 never raises, so it is the
+# final total fallback; utf-8-sig is only selected when a real BOM is present.
+_TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
+# candidate delimiters, in a fixed order for deterministic reporting.
+_DELIMITERS = ((",", "COMMA"), ("\t", "TAB"), (";", "SEMICOLON"), ("|", "PIPE"))
+_DELIMITER_LABELS = dict(_DELIMITERS)
+# excel lock/temp file marker — owner Excel keeps a "~$Book.xlsx" open-file lock; never a report.
+LOCK_FILE_PREFIX = "~$"
 
 # ---------------------------------------------------------------- report types + semantics
 SP_CAMPAIGN = "SP_CAMPAIGN"
@@ -181,6 +199,10 @@ TOO_MANY_COLUMNS = "TOO_MANY_COLUMNS"
 TOO_MANY_ROWS = "TOO_MANY_ROWS"
 PATH_UNSAFE = "PATH_UNSAFE"
 TOO_MANY_FILES = "TOO_MANY_FILES"
+AMBIGUOUS_DELIMITER = "AMBIGUOUS_DELIMITER"        # a tie between candidates, or no delimiter at all
+XLSX_PARSER_UNAVAILABLE = "XLSX_PARSER_UNAVAILABLE"  # openpyxl import failed (declared dep missing)
+# ignore reasons (a file deliberately skipped, NEVER accepted and NEVER format-blocking)
+IGNORED_TEMP_LOCK_FILE = "IGNORED_TEMP_LOCK_FILE"
 
 # ---------------------------------------------------------------- overlap classification
 OV_NO_OVERLAP = "NO_OVERLAP"
@@ -221,6 +243,13 @@ _BLOCK_RANK = {
 
 # ---------------------------------------------------------------- idempotency result
 IDEMPOTENT_ALREADY_IMPORTED = "IDEMPOTENT_ALREADY_IMPORTED"
+# a file deliberately skipped without acceptance or format judgement (e.g. an Excel ~$ lock file).
+IMPORT_STATE_IGNORED = "IGNORED"
+
+# per-file manifest status vocabulary (requirement: ACCEPTED | QUARANTINED | IGNORED).
+FILE_STATUS_ACCEPTED = "ACCEPTED"
+FILE_STATUS_QUARANTINED = "QUARANTINED"
+FILE_STATUS_IGNORED = "IGNORED"
 
 # ---------------------------------------------------------------- artifact filenames
 F_SOURCE_REGISTRY = "PHASE7-REPORT-SOURCE-REGISTRY.json"
@@ -465,11 +494,53 @@ def map_headers(raw_headers):
 
 
 # ================================================================ FILE-FORMAT DETECTION
+def decode_delimited_text(raw):
+    """Deterministically decode report bytes to text. Tries utf-8-sig (only when a real BOM is
+    present), then utf-8, cp1252, latin-1 — in that fixed order, NEVER a probabilistic guess. Returns
+    (encoding_label, text) or (None, None). latin-1 decodes any byte string, so a non-None result is
+    effectively guaranteed for text that already passed the binary-signature guards."""
+    if raw[:3] == b"\xef\xbb\xbf":
+        try:
+            return "utf-8-sig", raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            pass
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return enc, raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return None, None
+
+
+def detect_delimiter(first_line, ext=""):
+    """Deterministic delimiter detection among comma / tab / semicolon / pipe. Returns
+    (delimiter, reason). For .tsv, tab is required (no tab => EXTENSION_CONTENT_MISMATCH). Otherwise the
+    single highest-count candidate wins; a tie between 2+ candidates, or NO candidate at all (which
+    would silently parse as one column), is AMBIGUOUS_DELIMITER — the file is quarantined, never guessed."""
+    if ext == ".tsv":
+        if "\t" in first_line:
+            return "\t", None
+        return None, EXTENSION_CONTENT_MISMATCH
+    counts = {d: first_line.count(d) for d, _ in _DELIMITERS}
+    max_count = max(counts.values())
+    if max_count == 0:
+        return None, AMBIGUOUS_DELIMITER
+    winners = [d for d, _ in _DELIMITERS if counts[d] == max_count]
+    if len(winners) > 1:
+        return None, AMBIGUOUS_DELIMITER
+    return winners[0], None
+
+
 def detect_format(path, *, sample_bytes=65536):
-    """Detect encoding + delimiter from BOTH extension and content signature. Never trusts the
-    extension alone. Returns a dict with format / delimiter / encoding / reason (reason set on block)."""
-    result = {"format": None, "delimiter": None, "encoding": None, "reason": None,
-              "extension": os.path.splitext(path)[1].lower()}
+    """Detect parser + encoding + delimiter from BOTH extension and content signature. Never trusts the
+    extension alone. Returns a dict with format / parser / delimiter / encoding / worksheet / reason
+    (reason set on block).
+
+    Natively supported: .csv/.tsv/.txt delimited text (utf-8-sig/utf-8/cp1252/latin-1; comma/tab/
+    semicolon/pipe) and .xlsx workbooks (openpyxl, read-only/data-only). .xls (OLE) and .xlsm (macro)
+    remain refused, as do zip/binary/office containers under a text extension."""
+    result = {"format": None, "parser": None, "delimiter": None, "encoding": None, "worksheet": None,
+              "reason": None, "extension": os.path.splitext(path)[1].lower()}
     ext = result["extension"]
     if ext in SUSPICIOUS_EXTENSIONS:
         result["reason"] = SUSPICIOUS_EXTENSION
@@ -491,59 +562,46 @@ def detect_format(path, *, sample_bytes=65536):
         return result
     with open(path, "rb") as f:
         head = f.read(sample_bytes)
-    # binary / archive / office signatures — reject even when the extension says .csv.
-    if head[:4] == b"PK\x03\x04":       # zip container (xlsx is a zip; also archive bomb vector)
-        result["reason"] = (UNSUPPORTED_REPORT_FORMAT if ext in XLSX_EXTENSIONS
-                            else EXTENSION_CONTENT_MISMATCH)
-        result["format"] = "UNSUPPORTED"
+    # binary / archive / office signatures — decided by signature, never by the extension alone.
+    if head[:4] == b"PK\x03\x04":       # zip container (xlsx/xlsm are zips; also an archive-bomb vector)
+        if ext == SUPPORTED_XLSX_EXTENSION:
+            result.update(format="XLSX", parser=PARSER_XLSX)   # supported; validity checked at read time
+            return result
+        if ext in XLSX_EXTENSIONS:      # .xlsm macro workbook — refused
+            result.update(format="UNSUPPORTED", reason=UNSUPPORTED_REPORT_FORMAT)
+            return result
+        result.update(format="UNSUPPORTED", reason=EXTENSION_CONTENT_MISMATCH)   # zip under .csv/.txt/...
         return result
-    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # legacy OLE / .xls
-        result["reason"] = UNSUPPORTED_REPORT_FORMAT
-        result["format"] = "UNSUPPORTED"
+    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # legacy OLE / .xls — refused
+        result.update(format="UNSUPPORTED", reason=UNSUPPORTED_REPORT_FORMAT)
         return result
-    if ext in XLSX_EXTENSIONS:
-        result["reason"] = UNSUPPORTED_REPORT_FORMAT
-        result["format"] = "UNSUPPORTED"
+    if ext in XLSX_EXTENSIONS:          # an excel extension WITHOUT a zip/OLE signature — corrupt/renamed
+        result.update(format="UNSUPPORTED", reason=EXTENSION_CONTENT_MISMATCH)
         return result
     if b"\x00" in head:                 # a NUL byte never appears in a text report
-        result["reason"] = EXTENSION_CONTENT_MISMATCH
-        result["format"] = "UNSUPPORTED"
+        result.update(format="UNSUPPORTED", reason=EXTENSION_CONTENT_MISMATCH)
         return result
-    # encoding: UTF-8 with or without BOM only.
-    if head[:3] == b"\xef\xbb\xbf":
-        encoding, fmt = "utf-8-sig", "CSV_BOM"
-        sample = head[3:]
-    else:
-        encoding, fmt = "utf-8", "CSV"
-        sample = head
-    try:
-        text = sample.decode(encoding if encoding == "utf-8" else "utf-8")
-    except UnicodeDecodeError:
-        # a truncated multibyte char at the sample boundary is tolerated; a real bad byte is not.
-        try:
-            text = sample.decode("utf-8", errors="strict")
-        except UnicodeDecodeError:
-            trimmed = sample.rstrip(b"\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f")
-            try:
-                text = trimmed[: max(0, len(trimmed) - 3)].decode("utf-8")
-            except UnicodeDecodeError:
-                result["reason"] = UNSUPPORTED_ENCODING
-                result["format"] = "UNSUPPORTED"
-                return result
-    first_line = text.splitlines()[0] if text.splitlines() else ""
-    tabs, commas = first_line.count("\t"), first_line.count(",")
-    if ext == ".tsv":
-        if "\t" not in first_line:
-            result["reason"] = EXTENSION_CONTENT_MISMATCH
-            result["format"] = "UNSUPPORTED"
-            return result
-        delimiter, fmt = "\t", "TSV" if fmt == "CSV" else fmt
-    elif tabs and (commas == 0 or tabs > commas):
-        delimiter = "\t"
-        fmt = "TSV" if fmt == "CSV" else fmt
-    else:
-        delimiter = ","
-    result.update({"format": fmt, "delimiter": delimiter, "encoding": encoding})
+    # delimited text: decode the WHOLE file (bounded by MAX_FILE_BYTES) so a non-ASCII byte beyond the
+    # sample can never mis-detect the encoding, then detect the delimiter from the header line.
+    with open(path, "rb") as f:
+        raw = f.read()
+    encoding, text = decode_delimited_text(raw)
+    if encoding is None:
+        result.update(format="UNSUPPORTED", reason=UNSUPPORTED_ENCODING)
+        return result
+    if "\x00" in text:                  # NUL anywhere in the decoded text => not a text report
+        result.update(format="UNSUPPORTED", reason=EXTENSION_CONTENT_MISMATCH)
+        return result
+    lines = text.splitlines()
+    first_line = lines[0] if lines else ""
+    delimiter, dreason = detect_delimiter(first_line, ext)
+    if dreason:
+        result.update(format="UNSUPPORTED", reason=dreason)
+        return result
+    fmt = "CSV_BOM" if encoding == "utf-8-sig" else "CSV"
+    if delimiter == "\t":
+        fmt = "TSV"
+    result.update(format=fmt, parser=PARSER_TEXT, delimiter=delimiter, encoding=encoding)
     return result
 
 
@@ -981,6 +1039,104 @@ def read_delimited(path, fmt_info):
     return headers, data, None
 
 
+# ================================================================ XLSX WORKBOOK READING
+def _xlsx_number_to_text(value):
+    """A numeric xlsx cell -> its displayed decimal TEXT. NEVER a float in a monetary path: the text is
+    parsed later through core.money's Decimal-safe parser. int stays exact; a float uses Python's
+    shortest round-tripping repr with a bare trailing '.0' dropped (so 1000.0 -> '1000', 12.34 -> '12.34')."""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    s = repr(float(value))          # shortest decimal that round-trips; 'nan'/'inf' pass through as text
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def _xlsx_cell_text(value):
+    """Convert one displayed xlsx cell (openpyxl data_only value) to normalized text without ever
+    coercing money/metrics to float. openpyxl yields None / bool / int / float / datetime / str."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return _xlsx_number_to_text(value)
+    if isinstance(value, _dt.datetime):
+        if (value.hour, value.minute, value.second, value.microsecond) == (0, 0, 0, 0):
+            return value.strftime("%Y-%m-%d")
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, _dt.date):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
+
+
+def read_xlsx_rows(path):
+    """Read an .xlsx workbook OFFLINE with openpyxl (read-only, data-only). Returns
+    (headers, data, reason, worksheet_title). openpyxl only ever touches local bytes — it opens no
+    socket. The first worksheet that has any non-empty cell is used (a deterministic report-sheet rule);
+    every cell becomes normalized text so all formats converge on the SAME canonical row path and the
+    existing Decimal-safe validation runs unchanged."""
+    try:
+        import openpyxl
+    except ImportError:
+        return None, None, XLSX_PARSER_UNAVAILABLE, None
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except Exception:                       # not a real workbook (bad zip / corrupt) -> format-refused
+        return None, None, UNSUPPORTED_REPORT_FORMAT, None
+    try:
+        chosen_title, chosen_rows = None, None
+        for ws in wb.worksheets:
+            rows, nonempty = [], False
+            for row in ws.iter_rows(values_only=True):
+                cells = [_xlsx_cell_text(c) for c in row]
+                if not nonempty and any(c != "" for c in cells):
+                    nonempty = True
+                rows.append(cells)
+                if len(rows) > MAX_ROWS + 2:
+                    return None, None, TOO_MANY_ROWS, ws.title
+            if nonempty:
+                chosen_title, chosen_rows = ws.title, rows
+                break
+    finally:
+        wb.close()
+    if chosen_title is None:
+        return None, None, EMPTY_FILE, None
+    # trim leading / trailing fully-empty rows so the header is the first non-empty row.
+    def _blank(r):
+        return all((c or "") == "" for c in r)
+    start, end = 0, len(chosen_rows)
+    while start < end and _blank(chosen_rows[start]):
+        start += 1
+    while end > start and _blank(chosen_rows[end - 1]):
+        end -= 1
+    trimmed = chosen_rows[start:end]
+    if not trimmed:
+        return None, None, EMPTY_FILE, chosen_title
+    headers = trimmed[0]
+    if all((c or "").strip() == "" for c in headers):
+        return None, None, NO_HEADER, chosen_title
+    if len(headers) > MAX_COLUMNS:
+        return None, None, TOO_MANY_COLUMNS, chosen_title
+    data = trimmed[1:]
+    if len(data) > MAX_ROWS:
+        return None, None, TOO_MANY_ROWS, chosen_title
+    if len(data) == 0:
+        return headers, [], NO_DATA_ROWS, chosen_title
+    return headers, data, None, chosen_title
+
+
+def canonicalize_input_rows(headers, data):
+    """Coerce every header + data cell to plain text so all source formats (delimited text and xlsx)
+    converge on ONE canonical row representation before the shared classification/validation pipeline.
+    csv cells are already str; this makes the convergence explicit and defends against any non-str."""
+    headers = [("" if h is None else str(h)) for h in headers]
+    data = [[("" if c is None else str(c)) for c in row] for row in data]
+    return headers, data
+
+
 def build_cells(header_map, raw_row):
     """Assemble one raw row into {canonical: value}, resolving duplicate canonical columns.
 
@@ -1218,13 +1374,19 @@ def _archive_copy(src_path, target_path):
 # ================================================================ PER-FILE PROCESSING
 _FORMAT_REASONS = frozenset((UNSUPPORTED_REPORT_FORMAT, EXTENSION_CONTENT_MISMATCH, SUSPICIOUS_EXTENSION,
                              UNSUPPORTED_ENCODING, FILE_TOO_LARGE, EMPTY_FILE, NO_HEADER, NO_DATA_ROWS,
-                             TOO_MANY_COLUMNS, TOO_MANY_ROWS))
+                             TOO_MANY_COLUMNS, TOO_MANY_ROWS, AMBIGUOUS_DELIMITER, XLSX_PARSER_UNAVAILABLE))
 _CLASSIFICATION_REASONS = frozenset((AMBIGUOUS_REPORT_TYPE, UNKNOWN_REPORT_TYPE))
+
+
+def _safe_archive_ext(ext):
+    """Preserve a supported original extension (.csv/.tsv/.txt/.xlsx) for the immutable raw copy so the
+    archived workbook stays openable; any other extension is neutralized to .dat."""
+    return ext if ext in _ARCHIVE_EXTS else ".dat"
 
 
 def _new_source_record(path, sha, byte_len):
     ext = os.path.splitext(path)[1].lower()
-    safe_ext = ext if ext in ALLOWED_EXTENSIONS else ".dat"
+    safe_ext = _safe_archive_ext(ext)
     return {
         "schema_version": SCHEMA_SOURCE_REGISTRY,
         "source_file_sha256": sha,
@@ -1233,6 +1395,7 @@ def _new_source_record(path, sha, byte_len):
         "source_safe_filename": f"{sha}{safe_ext}",
         "source_extension": ext,
         "detected_format": None, "detected_delimiter": None, "detected_encoding": None,
+        "parser": None, "parser_version": PARSER_VERSION, "worksheet": None,
         "report_type": None, "classification_evidence": None,
         "source_start_date": None, "source_end_date": None, "currency_set": [],
         "row_count_raw": 0, "row_count_valid": 0, "row_count_invalid": 0,
@@ -1263,16 +1426,28 @@ def process_source_file(path, dirs, *, reference_date=None, marketplace_default=
     # --- format detection (extension + content signature) ---
     fmt = detect_format(path)
     rec["detected_format"] = fmt.get("format")
-    rec["detected_delimiter"] = {"\t": "TAB", ",": "COMMA"}.get(fmt.get("delimiter"), fmt.get("delimiter"))
-    rec["detected_encoding"] = fmt.get("encoding")
+    rec["parser"] = fmt.get("parser")
+    is_xlsx = fmt.get("format") == "XLSX"
+    if is_xlsx:
+        rec["detected_delimiter"] = None
+        rec["detected_encoding"] = None
+    else:
+        rec["detected_delimiter"] = _DELIMITER_LABELS.get(fmt.get("delimiter"), fmt.get("delimiter"))
+        rec["detected_encoding"] = fmt.get("encoding")
     if fmt.get("reason") or fmt.get("format") == "UNSUPPORTED":
         return _quarantine_file(out, rec, dirs, path, sha, fmt.get("reason") or UNSUPPORTED_REPORT_FORMAT)
 
-    # --- read rows safely ---
-    headers, data, read_reason = read_delimited(path, fmt)
+    # --- read rows safely (all formats converge on one canonical text-row representation) ---
+    if is_xlsx:
+        headers, data, read_reason, worksheet = read_xlsx_rows(path)
+        rec["worksheet"] = worksheet
+    else:
+        headers, data, read_reason = read_delimited(path, fmt)
     if read_reason in (EMPTY_FILE, NO_HEADER, UNSUPPORTED_ENCODING, TOO_MANY_COLUMNS, TOO_MANY_ROWS,
-                       EXTENSION_CONTENT_MISMATCH):
+                       EXTENSION_CONTENT_MISMATCH, UNSUPPORTED_REPORT_FORMAT, XLSX_PARSER_UNAVAILABLE,
+                       AMBIGUOUS_DELIMITER):
         return _quarantine_file(out, rec, dirs, path, sha, read_reason)
+    headers, data = canonicalize_input_rows(headers, data or [])
     header_map = map_headers(headers)
     present = set(header_map["canonical"].keys())
     rec["row_count_raw"] = len(data or [])
@@ -1324,7 +1499,7 @@ def process_source_file(path, dirs, *, reference_date=None, marketplace_default=
 
 def _quarantine_file(out, rec, dirs, path, sha, reason):
     ext = os.path.splitext(path)[1].lower()
-    safe_ext = ext if ext in ALLOWED_EXTENSIONS else ".dat"
+    safe_ext = _safe_archive_ext(ext)
     qpath = os.path.join(dirs["quarantine"], f"{sha}{safe_ext}")
     try:
         _archive_copy(path, qpath)
@@ -1335,6 +1510,27 @@ def _quarantine_file(out, rec, dirs, path, sha, reason):
     rec["quarantine_state"] = reason
     out["quarantine"] = {"source_file_sha256": sha, "reason": reason}
     return out
+
+
+def _ignored_lock_record(path, *, now=None):
+    """Build an IGNORED source record for an Excel ~$ lock/temp file. It is deliberately skipped: never
+    accepted, never quarantined-as-a-format-error (so it can NEVER trigger PHASE7_REPORT_FORMAT_BLOCKED),
+    and never archived. Its per-file outcome is still reported truthfully as IGNORED."""
+    try:
+        byte_len = os.path.getsize(path)
+    except OSError:
+        byte_len = 0
+    try:
+        sha = _file_sha256_hex(path)
+    except OSError:
+        sha = _sha_bytes(os.path.basename(path).encode("utf-8"))
+    rec = _new_source_record(path, sha, byte_len)
+    rec["imported_at_volatile"] = now
+    rec["detected_format"] = "IGNORED"
+    rec["import_state"] = IMPORT_STATE_IGNORED
+    rec["quarantine_state"] = IGNORED_TEMP_LOCK_FILE
+    rec["accepted_raw_path"] = None
+    return {"source": rec, "normalized": [], "invalid": [], "idempotent": False}
 
 
 def _existing_accepted_hashes(accepted_dir):
@@ -1404,7 +1600,13 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
     if mode not in CONNECTIVITY_MODES:
         raise ReportIngestionError(f"unknown connectivity mode: {mode!r}")
     dirs = ensure_workspace(base_dir) if ensure_dirs else workspace_dirs(base_dir)
-    files, scan_rejects = scan_inbox(dirs["inbox"])
+    scanned_files, scan_rejects = scan_inbox(dirs["inbox"])
+    # partition out Excel ~$ lock/temp files: they are IGNORED, never processed as reports, and never
+    # counted toward the "any supported report present?" decision.
+    lock_files = [p for p in scanned_files if os.path.basename(p).startswith(LOCK_FILE_PREFIX)]
+    files = [p for p in scanned_files if not os.path.basename(p).startswith(LOCK_FILE_PREFIX)]
+    ignored = [_ignored_lock_record(p, now=now) for p in lock_files]
+
     known = _existing_accepted_hashes(dirs["accepted_raw"])
     seen, processed = set(), []
     for path in files:
@@ -1415,7 +1617,7 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
             seen.add(r["source"]["source_file_sha256"])
         processed.append(r)
 
-    sources = [p["source"] for p in processed]
+    sources = [p["source"] for p in processed] + [g["source"] for g in ignored]
     accepted = [p for p in processed if p["source"]["import_state"] == "ACCEPTED"]
     quarantined = [p for p in processed if p["source"]["import_state"] == "QUARANTINED"]
     idempotent = [p for p in processed if p["idempotent"]]
@@ -1456,6 +1658,7 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
         "scanned_file_count": len(files),
         "accepted_source_count": len(accepted),
         "quarantined_source_count": len(quarantined),
+        "ignored_source_count": len(ignored),
         "idempotent_source_count": len(idempotent),
         "duplicate_file_count": len(idempotent),
         "raw_source_count": len(sources),
@@ -1474,7 +1677,8 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
         base_dir=dirs["base"], dirs=dirs, mode=mode, state=state, run_id=run_id, now=now,
         started_at=started_at, completed_at=completed_at, reference_date=reference_date,
         marketplace_default=marketplace_default, sources=sources, accepted=accepted,
-        quarantined=quarantined, idempotent=idempotent, normalized_by_type=normalized_by_type,
+        quarantined=quarantined, idempotent=idempotent, ignored=ignored,
+        normalized_by_type=normalized_by_type,
         invalid_rows=invalid_rows, overlaps=sorted(overlaps, key=_canonical_line),
         conflicts=sorted(conflicts, key=_canonical_line), reconcile_by_type=reconcile_by_type,
         scan_rejects=scan_rejects, counts=counts, currency_set=currency_set,
@@ -1570,6 +1774,57 @@ def _source_registry_doc(r):
     return _finalize(doc)
 
 
+def _file_status(s):
+    """Map an internal import_state to the per-file manifest status vocabulary."""
+    st = s.get("import_state")
+    if st == "ACCEPTED":
+        return FILE_STATUS_ACCEPTED
+    if st == "QUARANTINED":
+        return FILE_STATUS_QUARANTINED
+    # IGNORED lock file OR an idempotent already-imported duplicate both read as IGNORED here.
+    return FILE_STATUS_IGNORED
+
+
+def _file_reason_codes(s):
+    st = s.get("import_state")
+    codes = []
+    if st == "QUARANTINED" and s.get("quarantine_state"):
+        codes.append(s["quarantine_state"])
+    elif st == IMPORT_STATE_IGNORED and s.get("quarantine_state"):
+        codes.append(s["quarantine_state"])            # IGNORED_TEMP_LOCK_FILE
+    elif st == IDEMPOTENT_ALREADY_IMPORTED:
+        codes.append(IDEMPOTENT_ALREADY_IMPORTED)
+    elif st == "ACCEPTED" and s.get("quarantine_state") == CURRENCY_CONFLICT:
+        codes.append(CURRENCY_CONFLICT)                # advisory: a single accepted file mixes currencies
+    return sorted(set(codes))
+
+
+def _per_file_manifest_entry(s):
+    """One per-file record in the requirement-6 schema. Basenames only — never an absolute path."""
+    return {
+        "source_filename": s.get("source_original_filename"),
+        "source_extension": s.get("source_extension"),
+        "source_sha256": s.get("source_file_sha256"),
+        "source_size_bytes": s.get("source_byte_length"),
+        "parser": s.get("parser"),
+        "parser_version": s.get("parser_version"),
+        "worksheet": s.get("worksheet"),
+        "detected_encoding": s.get("detected_encoding"),
+        "detected_delimiter": s.get("detected_delimiter"),
+        "rows_read": s.get("row_count_raw", 0),
+        "rows_valid": s.get("row_count_valid", 0),
+        "rows_invalid": s.get("row_count_invalid", 0),
+        "report_type": s.get("report_type"),
+        "status": _file_status(s),
+        "reason_codes": _file_reason_codes(s),
+    }
+
+
+def _per_file_manifest(sources):
+    return sorted((_per_file_manifest_entry(s) for s in sources),
+                  key=lambda e: (e["source_sha256"] or "", e["source_filename"] or ""))
+
+
 def _import_manifest_doc(r):
     per_source = sorted(({
         "source_file_sha256": s["source_file_sha256"],
@@ -1590,6 +1845,7 @@ def _import_manifest_doc(r):
         "analysis_readiness": r.state,
         "counts": r.counts,
         "per_source": per_source,
+        "per_file": _per_file_manifest(r.sources),
         "run_id": r.run_id,
         "imported_at": r.now,
     }
@@ -1708,6 +1964,7 @@ def _summary_md(r):
          f"- scanned files: {r.counts['scanned_file_count']}",
          f"- accepted sources: {r.counts['accepted_source_count']}",
          f"- quarantined sources: {r.counts['quarantined_source_count']}",
+         f"- ignored (temp/lock) files: {r.counts['ignored_source_count']}",
          f"- idempotent (already imported): {r.counts['idempotent_source_count']}",
          f"- raw rows: {r.counts['raw_row_count']} · valid: {r.counts['valid_row_count']} · "
          f"invalid: {r.counts['invalid_row_count']}",
@@ -1868,7 +2125,7 @@ def build_proof_gate(result, *, starting_commit=None, final_commit=None, owner_r
         "final_commit": final_commit,
         "branch": "main",
         "origin_sync": None,
-        "checkpoint_tag": "phase7-2-checkpoint-363e58c",
+        "checkpoint_tag": "phase7-2-excel-input-checkpoint-a8364cf",
         # --- dependency chain (sanitized states) ---
         "phase6_dependency": phase6_dependency,
         "phase7_0_dependency": phase7_0_dependency,
@@ -1878,7 +2135,11 @@ def build_proof_gate(result, *, starting_commit=None, final_commit=None, owner_r
         "report_ingestion_authority": "production/phase7_report_ingestion.py",
         "money_authority": "core/money.py",
         "duplicate_authority_count": 0,
-        "supported_file_formats": ["CSV", "CSV_BOM", "TSV"],
+        "supported_file_formats": ["CSV", "CSV_BOM", "TSV", "XLSX"],
+        "supported_text_encodings": list(_TEXT_ENCODINGS),
+        "supported_delimiters": [label for _, label in _DELIMITERS],
+        "xlsx_parser": PARSER_XLSX,
+        "parser_version": PARSER_VERSION,
         "supported_report_types": list(REPORT_TYPES) + [UNKNOWN],
         "source_registry_schema": SCHEMA_SOURCE_REGISTRY,
         "normalized_row_schema": SCHEMA_NORMALIZED_ROW,
@@ -1890,6 +2151,7 @@ def build_proof_gate(result, *, starting_commit=None, final_commit=None, owner_r
         "raw_source_count": c["raw_source_count"],
         "accepted_source_count": c["accepted_source_count"],
         "quarantined_source_count": c["quarantined_source_count"],
+        "ignored_source_count": c.get("ignored_source_count", 0),
         "raw_row_count": c["raw_row_count"],
         "valid_row_count": c["valid_row_count"],
         "invalid_row_count": c["invalid_row_count"],
@@ -1948,8 +2210,15 @@ def build_proof_gate(result, *, starting_commit=None, final_commit=None, owner_r
             "inferred from one another; a bare unwindowed 'sales' header is preserved as an extra, "
             "never mapped to a window.",
             "Report classification is by declared headers only; a filename is non-authoritative "
-            "supporting evidence. XLSX/OLE/zip inputs are refused (UNSUPPORTED_REPORT_FORMAT) — no "
-            "heavy dependency is added.",
+            "supporting evidence.",
+            "Native input formats: .csv/.tsv/.txt delimited text (utf-8-sig/utf-8/cp1252/latin-1; "
+            "comma/tab/semicolon/pipe) and .xlsx workbooks (openpyxl, read-only/data-only — an already "
+            "declared dependency, no new heavy or network dependency). .xls (OLE), .xlsm (macro), .ods, "
+            "PDF, images, and other binary/zip inputs remain refused; an ambiguous or single-column "
+            "delimiter is quarantined, never guessed. Excel ~$ lock/temp files are IGNORED (never "
+            "accepted, never format-blocking). Every cell — including Excel numeric cells — enters the "
+            "one canonical parser as TEXT and is validated through the Decimal-safe money path; no float "
+            "ever reaches a monetary field.",
             "Phase 7.2 performs NO optimization: it never recommends a bid/budget/negative, never "
             "harvests a search term, never touches Amazon, and every action/network counter is zero.",
         ],
@@ -2001,10 +2270,14 @@ def main(argv=None):
         proof = build_proof_gate(result, starting_commit=a.starting_commit)
         _atomic_write_bytes(a.proof_out, canonical_json(proof).encode("utf-8"))
     promote = result.promote_report.get("result") if result.promote_report else "n/a"
-    print(f"analysis_readiness={result.state} promote={promote} "
-          f"accepted={result.counts['accepted_source_count']} "
-          f"valid_rows={result.counts['valid_row_count']} "
-          f"invalid_rows={result.counts['invalid_row_count']}")
+    c = result.counts
+    print(f"analysis_readiness={result.state}")
+    print(f"promote={promote}")
+    print(f"accepted={c['accepted_source_count']}")
+    print(f"quarantined={c['quarantined_source_count']}")
+    print(f"ignored={c['ignored_source_count']}")
+    print(f"valid_rows={c['valid_row_count']}")
+    print(f"invalid_rows={c['invalid_row_count']}")
     return 0
 
 

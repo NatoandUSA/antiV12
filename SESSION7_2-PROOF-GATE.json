@@ -10,41 +10,87 @@
   "browser_automation_attempts": 0,
   "budget_write_actions": 0,
   "campaign_write_actions": 0,
-  "checkpoint_tag": "phase7-2-checkpoint-363e58c",
-  "clean_worktree_result": null,
-  "compile_result": "PASS — python -m compileall listing compliance dashboard research core tests production creative scripts (exit 0)",
+  "checkpoint_tag": "phase7-2-excel-input-checkpoint-a8364cf",
+  "clean_worktree_result": "PASS (Phase 7.2) - fresh detached git worktree from df76301: openpyxl 3.1.5 present, compileall production core exit 0, tests/test_phase7_2_report_ingestion.py 316 passed / 1 skipped, representative .xlsx CLI import => SESSION7_2_REPORTS_READY_FOR_ANALYSIS. 16 unrelated failures (T2-data-dependent Session 5D/6 determinism tests, e.g. test_session5d_certification 8 failed/39 passed) reproduce IDENTICALLY in a fresh worktree at the baseline commit a8364cf and are pre-existing/environmental (a fresh checkout lacks the gitignored runs/ T2 product data); they are not caused by this change.",
+  "compile_result": "PASS - python -m compileall production core tests (exit 0)",
   "conflict_count": 0,
   "credential_leakage_result": "NONE",
   "credential_store_count": 0,
   "csv_formula_safety": "PASS",
   "currency_state": "NONE",
   "date_state": "NONE",
-  "deterministic_content_sha256": "0d7a53dcd39da8d1fa485097e2a515d613b8fc1e7952ba60dba5c9b77df3f330",
+  "deterministic_content_sha256": "4340595eeb2786331ecedc62f8e9834e927578218119e8bc5c5e4dc57c31fc87",
   "duplicate_authority_count": 0,
   "duplicate_file_count": 0,
   "duplicate_row_count": 0,
+  "excel_input_upgrade": {
+    "ambiguous_delimiter_result": "QUARANTINED - a tie between candidate delimiters or a single-column file is quarantined (AMBIGUOUS_DELIMITER), never silently parsed as one column",
+    "baseline_commit": "a8364cf",
+    "changed_files": [
+      "production/phase7_report_ingestion.py",
+      "tests/test_phase7_2_report_ingestion.py",
+      "SESSION7_2-PROOF-GATE.json"
+    ],
+    "checkpoint_tag": "phase7-2-excel-input-checkpoint-a8364cf",
+    "cp1252_fixture_result": "PASS - a Windows-1252 CSV containing espanol/cumpleanos/mama imports to READY; detected_encoding=cp1252; accented search terms preserved exactly (no transliteration)",
+    "dependency_changes": "NONE - openpyxl>=3.0 was already declared in pyproject.toml and requirements.txt (installed 3.1.5). No pandas, no LibreOffice, no network-dependent runtime behavior added.",
+    "duplicate_representation_result": "PASS - a duplicate .xlsx and equivalent .csv are both accepted as sources but collapse to one normalized row per entity (per actual report, not per representation); zero conflicts",
+    "implementation_commit": "df76301",
+    "lock_file_result": "IGNORED - a ~$ Excel lock file is never accepted and never format-blocks; lock-file-only inbox => PHASE7_REPORT_INPUT_REQUIRED; a lock file next to a valid .xlsx => READY (never PHASE7_REPORT_FORMAT_BLOCKED)",
+    "native_input_formats": [
+      ".xlsx",
+      ".csv",
+      ".tsv",
+      ".txt"
+    ],
+    "parser_version": "phase7-2-parser-v2",
+    "phase_7_3_7_4_started": false,
+    "readiness_state_committed": "PHASE7_REPORT_INPUT_REQUIRED",
+    "readiness_states_available": [
+      "PHASE7_REPORT_INPUT_REQUIRED (no supported report)",
+      "PHASE7_REPORT_FORMAT_BLOCKED (only unsupported/invalid reports)",
+      "SESSION7_2_REPORTS_READY_FOR_ANALYSIS (>=1 accepted normalized report)"
+    ],
+    "real_xlsx_fixture_result": "PASS - a valid .xlsx SP search-term report imports to SESSION7_2_REPORTS_READY_FOR_ANALYSIS; parser=xlsx_openpyxl; numeric cells validated through the Decimal-safe money path (never a float)",
+    "supported_delimiters": [
+      "COMMA",
+      "TAB",
+      "SEMICOLON",
+      "PIPE"
+    ],
+    "supported_text_encodings": [
+      "utf-8-sig",
+      "utf-8",
+      "cp1252",
+      "latin-1"
+    ],
+    "xlsx_parser": "xlsx_openpyxl"
+  },
   "external_amazon_account_attempts": 0,
   "external_network_attempts": 0,
-  "final_commit": null,
+  "final_commit": "df76301",
   "final_status": "PHASE7_REPORT_INPUT_REQUIRED",
   "full_tests": {
-    "command": "python -m unittest discover -s tests",
-    "errors": 0,
-    "failures": 0,
-    "ran": 2389,
-    "runtime_s": "591.275",
+    "baseline_passed": 2387,
+    "baseline_skipped": 2,
+    "command": "python -m pytest -q",
+    "failed": 0,
+    "note": "in-place full suite; +29 net new tests vs baseline, zero regressions",
+    "passed": 2416,
     "skipped": 2
   },
   "idempotency_result": "NO_DUPLICATE_INPUT",
+  "ignored_source_count": 0,
   "invalid_row_count": 0,
   "known_limitations": [
     "No owner-exported Amazon Ads report files exist for T2, so the truthful committed Phase 7.2 state is PHASE7_REPORT_INPUT_REQUIRED; the ready path is proven with SYNTHETIC_TEST_DATA_ONLY fixtures, never mixed with any T2 owner dataset.",
     "The upstream T2 product state remains PHASE7_OWNER_INPUT_REQUIRED and is recorded separately; the two states are never conflated.",
     "Attribution windows (1/7/14/30-day sales/orders/units) are kept distinct and never inferred from one another; a bare unwindowed 'sales' header is preserved as an extra, never mapped to a window.",
-    "Report classification is by declared headers only; a filename is non-authoritative supporting evidence. XLSX/OLE/zip inputs are refused (UNSUPPORTED_REPORT_FORMAT) — no heavy dependency is added.",
+    "Report classification is by declared headers only; a filename is non-authoritative supporting evidence.",
+    "Native input formats: .csv/.tsv/.txt delimited text (utf-8-sig/utf-8/cp1252/latin-1; comma/tab/semicolon/pipe) and .xlsx workbooks (openpyxl, read-only/data-only — an already declared dependency, no new heavy or network dependency). .xls (OLE), .xlsm (macro), .ods, PDF, images, and other binary/zip inputs remain refused; an ambiguous or single-column delimiter is quarantined, never guessed. Excel ~$ lock/temp files are IGNORED (never accepted, never format-blocking). Every cell — including Excel numeric cells — enters the one canonical parser as TEXT and is validated through the Decimal-safe money path; no float ever reaches a monetary field.",
     "Phase 7.2 performs NO optimization: it never recommends a bid/budget/negative, never harvests a search term, never touches Amazon, and every action/network counter is zero."
   ],
-  "last_valid_protection": "PASS — a tampered candidate is refused and the prior final bytes are preserved; each promotion snapshots final -> last_valid (test_tamper_not_promoted_preserves_final)",
+  "last_valid_protection": "PASS - a blocked re-run preserves the prior good dataset in last_valid; a tampered candidate is refused (test_blocked_run_preserves_last_valid, test_tamper_not_promoted_preserves_final)",
   "lineage_schema": "phase7-2-lineage-v1",
   "lineage_verification": "PASS",
   "money_authority": "core/money.py",
@@ -55,11 +101,12 @@
   "normalized_row_schema": "phase7-2-normalized-row-v1",
   "normalized_search_term_row_count": 0,
   "normalized_targeting_row_count": 0,
-  "origin_sync": "HEAD == origin/main after push",
+  "origin_sync": "pending push",
   "overlap_count": 0,
   "overlap_registry_schema": "phase7-2-report-overlap-analysis-v1",
   "overlap_state": "NO_OVERLAP",
   "owner_report_file_count": 0,
+  "parser_version": "phase7-2-parser-v2",
   "path_safety": "PASS",
   "phase6_dependency": "PHASE6_SAFE_DRAFT_READY",
   "phase7_0_dependency": "PHASE7_OWNER_INPUT_REQUIRED",
@@ -82,11 +129,18 @@
   "schema_version": "session7_2-proof-gate-v1",
   "session_id": "PHASE 7.2 — OFFLINE AMAZON ADS REPORT INGESTION, VALIDATION, NORMALIZATION, RECONCILIATION, AND AUDIT FOUNDATION",
   "source_registry_schema": "phase7-2-report-source-registry-v1",
-  "starting_commit": "363e58c",
+  "starting_commit": "a8364cf",
+  "supported_delimiters": [
+    "COMMA",
+    "TAB",
+    "SEMICOLON",
+    "PIPE"
+  ],
   "supported_file_formats": [
     "CSV",
     "CSV_BOM",
-    "TSV"
+    "TSV",
+    "XLSX"
   ],
   "supported_report_types": [
     "SP_CAMPAIGN",
@@ -98,18 +152,26 @@
     "SP_BUDGET",
     "UNKNOWN"
   ],
-  "synthetic_fixture_count": 30,
+  "supported_text_encodings": [
+    "utf-8-sig",
+    "utf-8",
+    "cp1252",
+    "latin-1"
+  ],
+  "synthetic_fixture_count": 46,
   "t2_product_readiness": "PHASE7_OWNER_INPUT_REQUIRED",
   "target_write_actions": 0,
   "targeted_tests": {
+    "command": "python -m pytest -q tests/test_phase7_2_report_ingestion.py",
     "errors": 0,
-    "failures": 0,
+    "failed": 0,
     "module": "tests.test_phase7_2_report_ingestion",
     "note": "1 skip = symlink test when symlink creation is not permitted",
-    "ran": 288,
+    "passed": 316,
     "skipped": 1
   },
-  "three_mode_determinism": "PASS — LOCAL_SAFE / CONNECTED_RESEARCH / TEST_DENY_EXTERNAL produce identical stable hashes; zero network attempts (test_three_modes_identical)",
-  "two_run_determinism": "PASS — identical stable content hashes across two runs with different imported_at / run_id (test_two_runs_identical)",
-  "valid_row_count": 0
+  "three_mode_determinism": "PASS - LOCAL_SAFE / CONNECTED_RESEARCH / TEST_DENY_EXTERNAL produce identical stable hashes (test_three_modes_identical)",
+  "two_run_determinism": "PASS - two CLI runs against identical fixtures (xlsx + ~$ lock) produced identical promoted stable_content_hashes",
+  "valid_row_count": 0,
+  "xlsx_parser": "xlsx_openpyxl"
 }

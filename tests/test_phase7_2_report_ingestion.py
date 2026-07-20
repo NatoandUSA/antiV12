@@ -1172,13 +1172,22 @@ class TestArtifacts(Base):
         self.assertIn(RI.F_VALIDATION, got)
 
     def test_no_empty_normalized_claimed(self):
-        # idempotent-only re-import (no new rows) must NOT emit an empty normalized file
+        # An idempotent-only re-import normalizes no new rows, so it must never publish an EMPTY
+        # normalized file. It carries the already-promoted rows forward instead of erasing them.
         d = self.ws()
         self.drop(d, "camp.csv", campaign_csv())
-        self.run_base(d)
+        r1 = self.run_base(d)
+        rows = r1.counts["normalized_sp_campaign_row_count"]
+        self.assertGreater(rows, 0)
         r2 = self.run_base(d)
         self.assertEqual(r2.state, RI.REPORTS_READY)
-        self.assertNotIn(RI.NORMALIZED_FILE[RI.SP_CAMPAIGN], os.listdir(d["final"]))
+        name = RI.NORMALIZED_FILE[RI.SP_CAMPAIGN]
+        self.assertIn(name, os.listdir(d["final"]))
+        with open(os.path.join(d["final"], name), encoding="utf-8") as f:
+            kept = [line for line in f if line.strip()]
+        self.assertEqual(len(kept), rows)          # preserved, never emptied
+        # a report type that never had rows still gets no artifact at all
+        self.assertNotIn(RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM], os.listdir(d["final"]))
 
     def test_manifest_has_output_hashes(self):
         d = self.ws()
@@ -2180,6 +2189,188 @@ class TestExcelAndEncodingInput(Base):
         for banned in ("requests", "urllib", "http.client", "selenium", "webdriver", "boto",
                        "sp_api", "advertising-api"):
             self.assertNotIn(banned, src)
+
+
+# ================================================================ X. PROMOTED-DATA CARRY-FORWARD
+def _search_term_rows(n):
+    """n deterministic SYNTHETIC search-term rows (never an owner export)."""
+    rows = []
+    for i in range(n):
+        rows.append(["2026-07-01", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad",
+                     f"synthetic term {i:03d}", 300 + i, 15, "5.00", "25.00", "USD"])
+    return rows
+
+
+class TestPromotedCarryForward(Base):
+    """An idempotent re-run normalizes nothing. Promoting its empty candidate would erase the rows a
+    previous run promoted. These tests pin the no-op + the never-erase failure mode."""
+
+    ROWS = 114   # mirrors the live T2 dataset size; the data itself stays synthetic
+
+    def _seed(self):
+        d = self.ws()
+        self.drop(d, "search_terms.csv", search_term_csv(_search_term_rows(self.ROWS)))
+        return d
+
+    @staticmethod
+    def _snapshot(final_dir):
+        out = {}
+        for name in sorted(os.listdir(final_dir)):
+            p = os.path.join(final_dir, name)
+            if os.path.isfile(p):
+                with open(p, "rb") as f:
+                    out[name] = f.read()
+        return out
+
+    # ---- 1. first run promotes the full dataset ----
+    def test_first_run_promotes_all_rows(self):
+        d = self._seed()
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.promote_report["result"], "PASS")
+        self.assertEqual(r.counts["accepted_source_count"], 1)
+        self.assertEqual(r.counts["normalized_sp_search_term_row_count"], self.ROWS)
+        self.assertTrue(os.path.isfile(os.path.join(
+            d["final"], RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM])))
+
+    # ---- 2. second identical run accepts nothing ----
+    def test_second_run_accepts_zero(self):
+        d = self._seed()
+        self.run_base(d)
+        r2 = self.run_base(d)
+        self.assertEqual(r2.counts["accepted_source_count"], 0)
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PRESERVE)
+        self.assertTrue(r2.promote_report["carried_forward"])
+        self.assertFalse(r2.promote_report["promoted"])
+
+    # ---- 3. second run preserves every promoted file byte-for-byte ----
+    def test_second_run_preserves_bytes(self):
+        d = self._seed()
+        self.run_base(d)
+        before = self._snapshot(d["final"])
+        self.run_base(d)
+        self.assertEqual(self._snapshot(d["final"]), before)
+
+    def test_second_run_preserves_last_valid_bytes(self):
+        d = self._seed()
+        self.run_base(d)
+        before = self._snapshot(d["last_valid"])
+        self.run_base(d)
+        self.assertEqual(self._snapshot(d["last_valid"]), before)
+
+    # ---- 4. the promoted manifest still reports the full row count ----
+    def test_manifest_still_reports_rows_after_reruns(self):
+        d = self._seed()
+        self.run_base(d)
+        self.run_base(d)
+        self.run_base(d)
+        m = RI.read_promoted_manifest(d["final"])
+        self.assertEqual(m["analysis_readiness"], RI.REPORTS_READY)
+        self.assertEqual(m["counts"]["normalized_sp_search_term_row_count"], self.ROWS)
+        self.assertEqual(m["counts"]["valid_row_count"], self.ROWS)
+
+    def test_normalized_rows_survive_reruns(self):
+        d = self._seed()
+        self.run_base(d)
+        self.run_base(d)
+        path = os.path.join(d["final"], RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM])
+        with open(path, encoding="utf-8") as f:
+            rows = [json.loads(line) for line in f if line.strip()]
+        self.assertEqual(len(rows), self.ROWS)
+        self.assertEqual(len({r["canonical_row_key"] for r in rows}), self.ROWS)
+
+    def test_rerun_reports_preserved_row_count(self):
+        d = self._seed()
+        self.run_base(d)
+        r2 = self.run_base(d)
+        self.assertEqual(r2.carry_forward["preserved_row_count"], self.ROWS)
+        self.assertEqual(r2.carry_forward["preserved_artifacts"],
+                         [RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM]])
+
+    # ---- an emptied inbox must not erase promoted rows either ----
+    def test_empty_inbox_does_not_erase_promoted_rows(self):
+        d = self._seed()
+        self.run_base(d)
+        before = self._snapshot(d["final"])
+        os.remove(os.path.join(d["inbox"], "search_terms.csv"))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PRESERVE)
+        self.assertEqual(self._snapshot(d["final"]), before)
+
+    # ---- 5. carry-forward validation failure BLOCKS instead of erasing ----
+    def test_tampered_promoted_row_file_blocks(self):
+        d = self._seed()
+        self.run_base(d)
+        path = os.path.join(d["final"], RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM])
+        with open(path, "ab") as f:
+            f.write(b'{"tampered":true}\n')
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CARRY_FORWARD_BLOCKED)
+        self.assertEqual(r2.promote_report["result"], "BLOCKED")
+        self.assertFalse(r2.promote_report["promoted"])
+
+    def test_blocked_carry_forward_still_leaves_files_in_place(self):
+        d = self._seed()
+        self.run_base(d)
+        path = os.path.join(d["final"], RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM])
+        with open(path, "ab") as f:
+            f.write(b'{"tampered":true}\n')
+        before = self._snapshot(d["final"])
+        self.run_base(d)
+        # a blocked carry-forward never deletes or rewrites the promoted state it refused to replace
+        self.assertEqual(self._snapshot(d["final"]), before)
+
+    def test_missing_promoted_row_file_blocks(self):
+        d = self._seed()
+        self.run_base(d)
+        os.remove(os.path.join(d["final"], RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM]))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CARRY_FORWARD_BLOCKED)
+        self.assertIn(RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM],
+                      r2.promote_report["preserved_verification"]["missing"])
+
+    def test_tampered_manifest_blocks(self):
+        d = self._seed()
+        self.run_base(d)
+        mpath = os.path.join(d["final"], RI.F_MANIFEST)
+        m = RI.read_promoted_manifest(d["final"])
+        m["counts"]["normalized_sp_search_term_row_count"] = 9999
+        with open(mpath, "wb") as f:
+            f.write(RI.canonical_json(m).encode("utf-8"))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CARRY_FORWARD_BLOCKED)
+        self.assertFalse(r2.promote_report["preserved_verification"]["manifest_hash_verified"])
+
+    # ---- a run that DID normalize rows still promotes normally ----
+    def test_new_data_still_promotes(self):
+        d = self._seed()
+        self.run_base(d)
+        self.drop(d, "more_terms.csv", search_term_csv(
+            [["2026-07-02", "Nurse SP Manual", "Core", "nurse sweatshirt", "broad",
+              "second file term", 100, 5, "1.00", "0.00", "USD"]]))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PROMOTE)
+        self.assertEqual(r2.counts["accepted_source_count"], 1)
+        self.assertTrue(r2.promote_report["promoted"])
+
+    def test_first_ever_run_has_no_prior_data(self):
+        d = self._seed()
+        r = self.run_base(d)
+        self.assertEqual(r.carry_forward["decision"], RI.CF_PROMOTE)
+
+    def test_empty_workspace_run_has_no_prior_data(self):
+        d = self.ws()
+        r = self.run_base(d)
+        self.assertEqual(r.carry_forward["decision"], RI.CF_NO_PRIOR_DATA)
+        self.assertEqual(r.state, RI.REPORT_INPUT_REQUIRED)
+
+    # ---- carry-forward is a read-only decision: it opens no network / takes no Amazon action ----
+    def test_carry_forward_keeps_amazon_boundary_zero(self):
+        d = self._seed()
+        self.run_base(d)
+        r2 = self.run_base(d)
+        proof = RI.build_proof_gate(r2, starting_commit="x")
+        self.assertTrue(all(proof[k] == 0 for k in RI._ZERO_COUNTERS))
 
 
 if __name__ == "__main__":

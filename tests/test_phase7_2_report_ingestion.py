@@ -22,6 +22,7 @@ for _sub in ("", "core", "listing", "production", "scripts"):
         sys.path.insert(0, _p)
 
 from production import phase7_report_ingestion as RI   # noqa: E402
+from production import phase7_ads_analysis as AA         # noqa: E402  Phase 7.3 compatibility checks
 from core import money as MONEY                          # noqa: E402
 
 REF = "2026-07-19"
@@ -2104,17 +2105,31 @@ class TestExcelAndEncodingInput(Base):
 
     # ---- 14. failure preserving last_valid ----
     def test_blocked_run_preserves_last_valid(self):
+        # STRENGTHENED for cumulative ingestion. The pre-cumulative engine erased final on a blocked
+        # incremental run and this test asserted the good dataset survived only in last_valid — i.e. it
+        # encoded data-loss-from-final as the contract. The cumulative engine leaves the last valid
+        # cumulative dataset in FINAL byte-for-byte on a blocked run (strictly stronger: the promoted,
+        # analysis-ready dataset is never erased, not merely recoverable from a side copy).
+        def snap(directory):
+            return {n: open(os.path.join(directory, n), "rb").read()
+                    for n in sorted(os.listdir(directory))
+                    if os.path.isfile(os.path.join(directory, n))}
         d = self.ws()
         self.dropb(d, "good.xlsx", _search_term_xlsx())
-        self.run_base(d)                              # run1: good final in place
+        self.run_base(d)                              # run1: good cumulative final in place
         st_file = RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM]
-        self.assertIn(st_file, os.listdir(d["final"]))
+        before = snap(d["final"])
+        self.assertIn(st_file, before)
         os.remove(os.path.join(d["inbox"], "good.xlsx"))
         self.dropb(d, "bad.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 ole")  # run2: only an unsupported file
         r2 = self.run_base(d)
         self.assertEqual(r2.state, RI.REPORT_FORMAT_BLOCKED)
-        # the previous good dataset survives in last_valid (never partially replaced)
-        self.assertIn(st_file, os.listdir(d["last_valid"]))
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PRESERVE_BLOCKED)
+        # the previous good cumulative dataset survives in FINAL, byte-for-byte, never erased
+        self.assertEqual(snap(d["final"]), before)
+        self.assertIn(st_file, os.listdir(d["final"]))
+        # and it remains analysis-ready for Phase 7.3 (the persisted manifest is untouched)
+        self.assertEqual(RI.read_promoted_manifest(d["final"])["analysis_readiness"], RI.REPORTS_READY)
 
     # ---- 15. numeric Excel cells through the Decimal-safe path ----
     def test_numeric_excel_cells_decimal_safe(self):
@@ -2371,6 +2386,539 @@ class TestPromotedCarryForward(Base):
         r2 = self.run_base(d)
         proof = RI.build_proof_gate(r2, starting_commit="x")
         self.assertTrue(all(proof[k] == 0 for k in RI._ZERO_COUNTERS))
+
+
+# ================================================================ Y. CUMULATIVE INGESTION (Session 7.2)
+# SYNTHETIC scenario fixtures (never an owner export). One entity, aggregate date-range rows unless the
+# builder says daily. A/B/C are consecutive weekly windows; Conflict D partially overlaps them; Duplicate
+# E is A's exact facts with different raw bytes; Daily F is single-day rows.
+_CUM_CAMP, _CUM_ADG, _CUM_TARG, _CUM_MATCH = ("Nurse SP Manual", "Core", "nurse sweatshirt", "broad")
+_CUM_TERMS = ("gift for nurse", "nurse appreciation")
+
+
+def _agg_st_csv(start, end, terms=_CUM_TERMS, *, currency="USD", spend="5.00", sales="25.00",
+                sales_header="7 Day Total Sales", money_prefix="", pad="", base_impr=300):
+    """An aggregate (Start/End date-range) Sponsored Products search-term report over ONE entity."""
+    header = ["Start Date", "End Date", "Campaign Name", "Ad Group Name", "Targeting", "Match Type",
+              "Customer Search Term", "Impressions", "Clicks", "Spend", sales_header, "Currency"]
+    rows = []
+    for i, term in enumerate(terms):
+        rows.append([start, end, _CUM_CAMP, _CUM_ADG, _CUM_TARG, _CUM_MATCH, term,
+                     f"{pad}{base_impr + i}{pad}", "15", f"{money_prefix}{spend}",
+                     f"{money_prefix}{sales}", currency])
+    return _csv(header, rows)
+
+
+def _daily_st_csv(date_term_impr, *, currency="USD", spend="5.00", sales="25.00"):
+    """Daily (single Date) search-term rows: [(date, term, impressions), ...]."""
+    header = ["Date", "Campaign Name", "Ad Group Name", "Targeting", "Match Type",
+              "Customer Search Term", "Impressions", "Clicks", "Spend", "7 Day Total Sales", "Currency"]
+    rows = [[d, _CUM_CAMP, _CUM_ADG, _CUM_TARG, _CUM_MATCH, term, impr, "15", spend, sales, currency]
+            for (d, term, impr) in date_term_impr]
+    return _csv(header, rows)
+
+
+# canonical scenario windows (spec fixtures A/B/C, Conflict D, Duplicate E).
+_A = ("2026-07-01", "2026-07-05")
+_B = ("2026-07-06", "2026-07-10")
+_C = ("2026-07-11", "2026-07-15")
+_D = ("2026-07-04", "2026-07-08")   # partially overlaps both A and B
+
+
+class TestCumulativeIngestion(Base):
+    """The promoted dataset is the CUMULATIVE analytical dataset: verified prior promoted rows UNION new
+    rows, minus exact duplicates, minus overlap-excluded rows. A blocked/empty/duplicate-only/unverifiable
+    run never erases or shrinks it. All Amazon action/network counters stay zero throughout."""
+
+    ST = RI.NORMALIZED_FILE[RI.SP_SEARCH_TERM]
+
+    # -------------------------------------------------- helpers
+    def _snap(self, directory):
+        out = {}
+        for n in sorted(os.listdir(directory)):
+            p = os.path.join(directory, n)
+            if os.path.isfile(p):
+                with open(p, "rb") as f:
+                    out[n] = f.read()
+        return out
+
+    def _final_rows(self, d):
+        path = os.path.join(d["final"], self.ST)
+        if not os.path.isfile(path):
+            return []
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def _terms(self, d):
+        return sorted(r["identity"]["search_term"] + "@" + r["start_date"] for r in self._final_rows(d))
+
+    def _seed_A(self):
+        d = self.ws()
+        self.drop(d, "A.csv", _agg_st_csv(*_A))
+        self.run_base(d)
+        return d
+
+    # -------------------------------------------------- 1-2: cumulative A+B and A+B+C
+    def test_A_plus_B_cumulative(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.counts["cumulative_row_count"], 4)         # A(2) + B(2)
+        self.assertEqual(len(self._final_rows(d)), 4)
+
+    def test_A_plus_B_plus_C_cumulative(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d)
+        self.drop(d, "C.csv", _agg_st_csv(*_C))
+        r = self.run_base(d)
+        self.assertEqual(r.state, RI.REPORTS_READY)
+        self.assertEqual(r.counts["cumulative_row_count"], 6)         # A+B+C
+        starts = {row["start_date"] for row in self._final_rows(d)}
+        self.assertEqual(starts, {"2026-07-01", "2026-07-06", "2026-07-11"})
+
+    # -------------------------------------------------- 3-5, 28: duplicate policies
+    def test_same_report_reimport_no_duplicate(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        r2 = self.run_base(d)                                          # A still in inbox -> idempotent
+        self.assertEqual(r2.counts["accepted_source_count"], 0)
+        self.assertEqual(r2.counts["cumulative_row_count"], 2)
+        self.assertEqual(self._snap(d["final"]), before)              # byte-identical
+
+    def test_renamed_identical_bytes_idempotent(self):
+        d = self._seed_A()
+        os.remove(os.path.join(d["inbox"], "A.csv"))
+        self.drop(d, "A_renamed.csv", _agg_st_csv(*_A))               # identical BYTES, new name
+        r2 = self.run_base(d)
+        self.assertEqual(r2.counts["idempotent_source_count"], 1)
+        self.assertEqual(r2.counts["accepted_source_count"], 0)
+        self.assertEqual(len(self._final_rows(d)), 2)                 # never duplicated
+
+    def test_same_facts_different_bytes_not_double_counted(self):
+        d = self._seed_A()
+        # Duplicate E: A's exact normalized facts, renamed file + harmless raw formatting ($ + padding).
+        e = _agg_st_csv(*_A, money_prefix="$", pad=" ")
+        self.assertNotEqual(e, _agg_st_csv(*_A))                      # different raw bytes
+        self.drop(d, "E_dup.csv", e)
+        r2 = self.run_base(d)
+        self.assertEqual(r2.counts["accepted_source_count"], 1)      # accepted (different sha)
+        self.assertEqual(r2.counts["cumulative_row_count"], 2)      # but not double counted
+        self.assertEqual(r2.counts["duplicate_row_count"], 2)       # both rows collapsed as duplicates
+        self.assertEqual(r2.counts["new_rows_merged"], 0)
+
+    def test_content_hash_duplicate_detection(self):
+        # a byte-identical export under a different name is detected by CONTENT HASH, not filename.
+        import hashlib as _h
+        d = self._seed_A()
+        sha_a = _h.sha256(_agg_st_csv(*_A).encode("utf-8")).hexdigest()
+        os.remove(os.path.join(d["inbox"], "A.csv"))
+        self.drop(d, "totally_different_name.csv", _agg_st_csv(*_A))
+        r2 = self.run_base(d)
+        idem = [s for s in r2.sources if s["import_state"] == RI.IDEMPOTENT_ALREADY_IMPORTED]
+        self.assertEqual(len(idem), 1)
+        self.assertEqual(idem[0]["source_file_sha256"], sha_a)
+
+    # -------------------------------------------------- 6-11: blocked/empty/invalid never erase
+    def test_empty_inbox_preserves_bytes(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        os.remove(os.path.join(d["inbox"], "A.csv"))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PRESERVE)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    def test_unsupported_xlsx_preserves_final(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        self.drop(d, "junk.xlsx", "PK\x03\x04not a real workbook")
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_FORMAT_BLOCKED)
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PRESERVE_BLOCKED)
+        self.assertEqual(self._snap(d["final"]), before)             # cumulative dataset intact
+
+    def test_malformed_csv_preserves_final(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        with open(os.path.join(d["inbox"], "bad.csv"), "wb") as f:
+            f.write(b"PK\x03\x04 zip-bytes-under-a-csv-extension")
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_FORMAT_BLOCKED)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    def test_invalid_row_only_preserves_final(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        # a well-formed search-term file whose only row is invalid (missing campaign identity).
+        bad = _csv(["Date", "Campaign Name", "Ad Group Name", "Targeting", "Match Type",
+                    "Customer Search Term", "Impressions", "Clicks", "Spend", "7 Day Total Sales",
+                    "Currency"],
+                   [["2026-07-18", "", "Core", "nurse sweatshirt", "broad", "x", 10, 1, "1.00", "1.00",
+                     "USD"]])
+        self.drop(d, "invalid.csv", bad)
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_VALIDATION_BLOCKED)
+        self.assertEqual(r2.carry_forward["decision"], RI.CF_PRESERVE_BLOCKED)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    # -------------------------------------------------- 12-17: overlap policy
+    def test_exact_overlap_identical_content_skipped(self):
+        d = self._seed_A()
+        self.drop(d, "A_again.csv", _agg_st_csv(*_A, money_prefix="$"))  # same range+facts, new bytes
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORTS_READY)
+        self.assertEqual(r2.counts["cumulative_row_count"], 2)          # skipped, not added twice
+        self.assertEqual(r2.counts["overlap_conflict_count"], 0)
+
+    def test_exact_overlap_conflicting_content_blocks(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        self.drop(d, "A_conflict.csv", _agg_st_csv(*_A, spend="9.99"))  # same key, different metric
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CONFLICT_BLOCKED)
+        self.assertTrue(any(c["code"] == RI.DUPLICATE_ROW_CONFLICT for c in r2.conflicts))
+        self.assertEqual(self._snap(d["final"]), before)
+
+    def test_partial_aggregate_overlap_blocks(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        self.drop(d, "D_conflict.csv", _agg_st_csv(*_D))                # 07-04..07-08 partially overlaps A
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_OVERLAP_REVIEW_REQUIRED)
+        self.assertGreaterEqual(r2.counts["overlap_conflict_count"], 1)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    def test_full_aggregate_overlap_contained_blocks(self):
+        d = self._seed_A()
+        before = self._snap(d["final"])
+        self.drop(d, "G.csv", _agg_st_csv("2026-07-02", "2026-07-04"))  # fully contained within A
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_OVERLAP_REVIEW_REQUIRED)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    def test_unknown_semantics_blocks_aggregation(self):
+        row = TestOverlap()._nrow("N", "2026-07-01", "2026-07-05", {"spend": "5.00"})
+        rc = RI.reconcile_interval_group([row], RI.SEM_UNKNOWN)
+        self.assertEqual(rc["result"], RI.REPORT_SEMANTICS_REQUIRED)
+        self.assertEqual(rc["rows"], [])
+
+    def test_disjoint_aggregate_ranges_merge(self):
+        d = self._seed_A()
+        self.drop(d, "far.csv", _agg_st_csv("2026-07-14", "2026-07-18"))  # gap after A -> disjoint
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORTS_READY)
+        self.assertEqual(r2.counts["cumulative_row_count"], 4)
+        self.assertEqual(r2.counts["overlap_conflict_count"], 0)
+
+    # -------------------------------------------------- 18-20: daily granularity
+    def test_daily_rows_different_dates_merge(self):
+        d = self.ws()
+        self.drop(d, "F1.csv", _daily_st_csv([("2026-07-01", "gift for nurse", 300),
+                                              ("2026-07-02", "gift for nurse", 301)]))
+        self.run_base(d)
+        self.drop(d, "F2.csv", _daily_st_csv([("2026-07-03", "gift for nurse", 302),
+                                              ("2026-07-04", "gift for nurse", 303)]))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORTS_READY)
+        self.assertEqual(r2.counts["cumulative_row_count"], 4)          # four distinct daily rows
+
+    def test_daily_same_date_identical_dedup(self):
+        d = self.ws()
+        self.drop(d, "F.csv", _daily_st_csv([("2026-07-01", "gift for nurse", 300),
+                                             ("2026-07-01", "gift for nurse", 300)]))
+        r = self.run_base(d)
+        self.assertEqual(r.counts["cumulative_row_count"], 1)
+        self.assertEqual(r.counts["duplicate_row_count"], 1)
+
+    def test_daily_same_date_conflicting_blocks(self):
+        d = self.ws()
+        self.drop(d, "F.csv", _daily_st_csv([("2026-07-01", "gift for nurse", 300)]))
+        self.run_base(d)
+        before = self._snap(d["final"])
+        self.drop(d, "F_conflict.csv", _daily_st_csv([("2026-07-01", "gift for nurse", 999)]))  # same key
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CONFLICT_BLOCKED)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    # -------------------------------------------------- 21-23: attribution windows + currency
+    def test_different_attribution_windows_remain_separate(self):
+        d = self.ws()
+        self.drop(d, "w7.csv", _agg_st_csv(*_A, sales_header="7 Day Total Sales"))
+        self.run_base(d)
+        self.drop(d, "w14.csv", _agg_st_csv(*_B, sales_header="14 Day Total Sales"))  # disjoint range
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORTS_READY)
+        windows = set(r2.attribution_windows)
+        self.assertEqual(windows, {"7d", "14d"})                       # both windows kept, never merged
+        # each row keeps only its own window field
+        by_start = {row["start_date"]: row["metrics"] for row in self._final_rows(d)}
+        self.assertIn("sales_7d", by_start["2026-07-01"])
+        self.assertIn("sales_14d", by_start["2026-07-06"])
+        self.assertNotIn("sales_14d", by_start["2026-07-01"])
+
+    def test_different_currencies_do_not_merge(self):
+        d = self.ws()
+        self.drop(d, "usd.csv", _agg_st_csv(*_A, currency="USD"))
+        self.run_base(d)
+        self.drop(d, "eur.csv", _agg_st_csv(*_B, currency="EUR"))       # disjoint range, other currency
+        r2 = self.run_base(d)
+        # disjoint facts coexist as SEPARATE rows (never summed / collapsed across currencies)
+        self.assertEqual(r2.counts["cumulative_row_count"], 4)
+        self.assertEqual(set(r2.currency_set), {"USD", "EUR"})
+
+    def test_conflicting_currency_same_key_blocks(self):
+        d = self.ws()
+        self.drop(d, "usd.csv", _agg_st_csv(*_A, currency="USD"))
+        self.run_base(d)
+        before = self._snap(d["final"])
+        self.drop(d, "eur.csv", _agg_st_csv(*_A, currency="EUR"))       # SAME key, conflicting currency
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CONFLICT_BLOCKED)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    # -------------------------------------------------- 24-27: canonical identity contract
+    def test_identity_deterministic(self):
+        k1 = RI.canonical_row_key(RI.SP_SEARCH_TERM, "US", "2026-07-01", "2026-07-05",
+                                  {"campaign": "C", "ad_group": "G", "targeting": "t",
+                                   "search_term": "s", "match_type": "BROAD"})
+        k2 = RI.canonical_row_key(RI.SP_SEARCH_TERM, "US", "2026-07-01", "2026-07-05",
+                                  {"campaign": "C", "ad_group": "G", "targeting": "t",
+                                   "search_term": "s", "match_type": "BROAD"})
+        self.assertEqual(k1, k2)
+
+    def test_identity_ignores_filename(self):
+        # two files with different NAMES but the same fact map to ONE canonical row.
+        d = self.ws()
+        self.drop(d, "alpha.csv", _agg_st_csv(*_A, terms=("gift for nurse",)))
+        self.run_base(d)
+        self.drop(d, "zeta.csv", _agg_st_csv(*_A, terms=("gift for nurse",), money_prefix="$"))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.counts["cumulative_row_count"], 1)          # filename does not enter identity
+
+    def test_identity_ignores_row_number(self):
+        # same fact at DIFFERENT row positions normalizes to the SAME canonical key.
+        a = _agg_st_csv(*_A, terms=("gift for nurse", "nurse appreciation"))
+        b = _agg_st_csv(*_A, terms=("nurse appreciation", "gift for nurse"))  # order swapped
+        keys = []
+        for text in (a, b):
+            d = self.ws()
+            self.drop(d, "r.csv", text)
+            r = self.run_base(d)
+            keys.append({row["canonical_row_key"] for row in self._final_rows(d)})
+        self.assertEqual(keys[0], keys[1])
+
+    def test_identity_distinguishes_legitimate_facts(self):
+        d = self._seed_A()
+        # a genuinely different search term (different fact) must NOT collapse into A's rows.
+        self.drop(d, "new_term.csv", _agg_st_csv(*_A, terms=("brand new distinct term",)))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORTS_READY)
+        self.assertEqual(r2.counts["cumulative_row_count"], 3)          # A(2) + 1 distinct
+
+    # -------------------------------------------------- 29-30: accepted_raw archive
+    def test_accepted_raw_archive_byte_identical(self):
+        d = self._seed_A()
+        a_bytes = _agg_st_csv(*_A).encode("utf-8")
+        b_bytes = _agg_st_csv(*_B).encode("utf-8")
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d)
+        archives = sorted(os.listdir(d["accepted_raw"]))
+        self.assertEqual(len(archives), 2)                              # A (from seed) + B, immutable
+        for name in archives:
+            with open(os.path.join(d["accepted_raw"], name), "rb") as f:
+                self.assertIn(f.read(), (a_bytes, b_bytes))
+
+    def test_no_accepted_raw_deletion_required(self):
+        # deleting A's archive must NOT lose A's cumulative rows: final/ is the source of truth.
+        d = self._seed_A()
+        for name in os.listdir(d["accepted_raw"]):
+            os.remove(os.path.join(d["accepted_raw"], name))
+        os.remove(os.path.join(d["inbox"], "A.csv"))
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORTS_READY)
+        self.assertEqual(r2.counts["cumulative_row_count"], 4)          # A preserved from final, + B
+
+    def test_idempotency_is_lineage_based_not_archive_based(self):
+        # a valid file archived by a run that was BLOCKED (by a bad sibling) is never promoted, so it is
+        # NOT treated as idempotent later: its rows still merge once the blocking file is removed. This
+        # is why idempotency keys on promoted LINEAGE, not on accepted_raw presence.
+        d = self._seed_A()
+        self.drop(d, "good.csv", _agg_st_csv("2026-07-08", "2026-07-12"))   # disjoint, valid
+        self.drop(d, "bad.xls", "PK\x03\x04not a workbook")                  # blocks the whole run
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_FORMAT_BLOCKED)
+        self.assertEqual(len(self._final_rows(d)), 2)                      # only A actually promoted
+        os.remove(os.path.join(d["inbox"], "bad.xls"))
+        r3 = self.run_base(d)                                              # clean re-run
+        self.assertEqual(r3.state, RI.REPORTS_READY)
+        self.assertEqual(len(self._final_rows(d)), 4)                     # good.csv's rows recovered
+
+    # -------------------------------------------------- 31-34: prior-state validation
+    def test_existing_final_validated_before_merge(self):
+        d = self._seed_A()
+        prior = RI.load_prior_promoted_rows(d["final"])
+        self.assertEqual(prior["status"], RI.PRIOR_LOADED)
+        self.assertEqual(prior["row_count"], 2)
+        self.assertEqual(prior["verification"]["result"], "PASS")
+
+    def test_invalid_existing_final_blocks_with_new_data(self):
+        d = self._seed_A()
+        # tamper the promoted normalized rows, THEN try to add a new report.
+        with open(os.path.join(d["final"], self.ST), "ab") as f:
+            f.write(b'{"tampered":true}\n')
+        final_before = self._snap(d["final"])
+        lv_before = self._snap(d["last_valid"])
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CARRY_FORWARD_BLOCKED)
+        self.assertFalse(r2.promote_report["promoted"])
+        self.assertEqual(self._snap(d["final"]), final_before)         # never erased / merged onto
+        self.assertEqual(self._snap(d["last_valid"]), lv_before)
+
+    def test_manifest_tampering_blocks(self):
+        d = self._seed_A()
+        m = RI.read_promoted_manifest(d["final"])
+        m["counts"]["normalized_sp_search_term_row_count"] = 9999
+        with open(os.path.join(d["final"], RI.F_MANIFEST), "wb") as f:
+            f.write(RI.canonical_json(m).encode("utf-8"))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CARRY_FORWARD_BLOCKED)
+        self.assertFalse(r2.promote_report["preserved_verification"]["manifest_hash_verified"])
+
+    def test_source_lineage_mismatch_blocks(self):
+        d = self._seed_A()
+        # mutate a promoted normalized row's bytes so its hash no longer matches the manifest.
+        path = os.path.join(d["final"], self.ST)
+        data = open(path, "rb").read().replace(b"gift for nurse", b"gift for nurses")
+        with open(path, "wb") as f:
+            f.write(data)
+        r2 = self.run_base(d)
+        self.assertEqual(r2.state, RI.REPORT_CARRY_FORWARD_BLOCKED)
+        self.assertIn(self.ST, r2.promote_report["preserved_verification"]["mismatched"])
+
+    # -------------------------------------------------- 35-39: atomic promotion + determinism
+    def test_atomic_promotion_cumulative(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        r2 = self.run_base(d)
+        self.assertEqual(r2.promote_report["result"], "PASS")
+        self.assertTrue(r2.promote_report["promoted"])
+        self.assertFalse(os.path.isdir(os.path.join(d["base"], "candidate"))
+                         and os.listdir(os.path.join(d["base"], "candidate")))
+
+    def test_failed_candidate_preserves_final_and_last_valid(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))                        # a real cumulative promotion (A+B)
+        self.run_base(d)
+        final_before, lv_before = self._snap(d["final"]), self._snap(d["last_valid"])
+        # hand-build a candidate, tamper it, attempt promote -> must refuse and preserve both dirs.
+        r = RI.run_ingestion(d["base"], reference_date=REF, now=NOW, write=False)
+        RI._build_documents(r)
+        cand = os.path.join(d["base"], "cand_fail")
+        _, hashes = RI.write_candidate(r, cand)
+        with open(os.path.join(cand, RI.F_MANIFEST), "ab") as f:
+            f.write(b"x")
+        report = RI.promote_candidate(cand, d["final"], d["last_valid"], hashes, r.required_artifacts)
+        self.assertFalse(report["promoted"])
+        self.assertEqual(self._snap(d["final"]), final_before)
+        self.assertEqual(self._snap(d["last_valid"]), lv_before)
+
+    def test_incremental_equals_combined_bytes(self):
+        # {A} then {B} must yield the SAME promoted rows as {A,B} imported together (deterministic).
+        d1 = self._seed_A()
+        self.drop(d1, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d1)
+        d2 = self.ws()
+        self.drop(d2, "A.csv", _agg_st_csv(*_A))
+        self.drop(d2, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d2)
+        with open(os.path.join(d1["final"], self.ST), "rb") as f:
+            inc = f.read()
+        with open(os.path.join(d2["final"], self.ST), "rb") as f:
+            comb = f.read()
+        self.assertEqual(inc, comb)
+
+    def test_byte_identical_repeat_run(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d)
+        before = self._snap(d["final"])
+        r3 = self.run_base(d)                                           # identical inbox re-run
+        self.assertEqual(r3.carry_forward["decision"], RI.CF_PRESERVE)
+        self.assertEqual(self._snap(d["final"]), before)
+
+    # -------------------------------------------------- 40-44: manifest + count reporting
+    def test_cumulative_manifest_counts(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d)
+        m = RI.read_promoted_manifest(d["final"])
+        cum = m["cumulative"]
+        self.assertEqual(cum["prior_cumulative_row_count"], 2)
+        self.assertEqual(cum["new_valid_row_count"], 2)
+        self.assertEqual(cum["new_rows_merged"], 2)
+        self.assertEqual(cum["cumulative_row_count"], 4)
+        self.assertEqual(m["counts"]["normalized_sp_search_term_row_count"], 4)
+
+    def test_reported_counts_existing_new_duplicate_overlap(self):
+        d = self._seed_A()
+        self.drop(d, "E_dup.csv", _agg_st_csv(*_A, money_prefix="$"))   # duplicate of A
+        self.drop(d, "B.csv", _agg_st_csv(*_B))                        # genuinely new
+        r2 = self.run_base(d)
+        self.assertEqual(r2.counts["prior_cumulative_row_count"], 2)   # existing
+        self.assertEqual(r2.counts["new_valid_row_count"], 4)          # 2 dup (E) + 2 new (B)
+        self.assertEqual(r2.counts["new_rows_merged"], 2)              # only B is net-new
+        self.assertEqual(r2.counts["duplicate_row_count"], 2)          # E's two rows
+        self.assertEqual(r2.counts["overlap_conflict_count"], 0)
+        self.assertEqual(r2.counts["cumulative_row_count"], 4)
+
+    # -------------------------------------------------- 45-47: Phase 7.3 compatibility
+    def _cumulative_72_base(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        self.run_base(d)
+        return d
+
+    def test_phase73_analyzes_all_cumulative_rows(self):
+        d = self._cumulative_72_base()
+        r = AA.run_analysis(self.mkbase(), d["base"], reference_date="2026-07-31")
+        self.assertEqual(r.state, AA.ANALYSIS_READY)
+        self.assertEqual(r.analysis["data_quality"]["source_row_count"], 4)     # == cumulative rows
+        self.assertEqual(r.analysis["data_quality"]["analyzed_row_count"], 4)
+
+    def test_phase73_works_with_inbox_deleted(self):
+        d = self._cumulative_72_base()
+        for name in os.listdir(d["inbox"]):
+            os.remove(os.path.join(d["inbox"], name))
+        for name in os.listdir(d["accepted_raw"]):
+            os.remove(os.path.join(d["accepted_raw"], name))
+        r = AA.run_analysis(self.mkbase(), d["base"], reference_date="2026-07-31")
+        self.assertEqual(r.state, AA.ANALYSIS_READY)
+        self.assertEqual(r.analysis["data_quality"]["source_row_count"], 4)
+
+    def test_phase73_deterministic_over_cumulative(self):
+        d = self._cumulative_72_base()
+        a = AA.run_analysis(self.mkbase(), d["base"], reference_date="2026-07-31", write=False)
+        b = AA.run_analysis(self.mkbase(), d["base"], reference_date="2026-07-31", write=False)
+        self.assertEqual(a.analysis["deterministic_content_sha256"],
+                         b.analysis["deterministic_content_sha256"])
+
+    # -------------------------------------------------- 48-52: permanent Amazon boundary
+    def test_amazon_counters_zero_after_cumulative(self):
+        d = self._seed_A()
+        self.drop(d, "B.csv", _agg_st_csv(*_B))
+        r2 = self.run_base(d)
+        proof = RI.build_proof_gate(r2, starting_commit="x")
+        self.assertTrue(all(proof[k] == 0 for k in RI._ZERO_COUNTERS))
+        self.assertTrue(proof["cumulative_ingestion"])
+
+    def test_no_network_or_browser_symbols_in_module(self):
+        src = TestSecurity.MODULE_SRC.lower()
+        for banned in ("requests", "urllib", "http.client", "selenium", "webdriver", "boto",
+                       "sp_api", "advertising-api", "seleniumwire", "playwright"):
+            self.assertNotIn(banned, src)
 
 
 if __name__ == "__main__":

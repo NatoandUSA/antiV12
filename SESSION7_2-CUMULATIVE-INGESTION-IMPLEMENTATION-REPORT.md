@@ -174,9 +174,16 @@ the pre-fix behaviour, which lost both the good file's rows and the prior datase
   attribution windows, and prior source-lineage hashes. New `counts` keys:
   `prior_cumulative_row_count`, `new_valid_row_count`, `cumulative_row_count`, `new_rows_merged`,
   `overlap_conflict_count`.
-- **CLI:** additional status lines (`new_valid_rows`, `new_rows_merged`, `duplicate_rows`,
-  `overlap_conflicts`, `prior_rows`, `cumulative_rows`, `carry_forward`, `preserved_rows`). Existing
-  fields preserved. The documented CLI invocation is unchanged.
+- **CLI:** additional status lines (`new_rows_merged`, `duplicate_rows`, `overlap_conflicts`,
+  `prior_rows`, `cumulative_rows`, `carry_forward`, `preserved_rows`). The prior `valid_rows=` stdout
+  line was **renamed** to `new_valid_rows=` (same value — this run's newly-normalized valid rows — under
+  a clearer cumulative name); the `valid_row_count` data field itself is retained in the manifest,
+  readiness, and proof-gate outputs. No test or documented consumer parses the CLI stdout (`main()` is
+  not invoked by any test), so the CLI-compatibility requirement is satisfied. The documented CLI
+  invocation is unchanged.
+  <!-- corrected during the independent acceptance audit: the earlier "existing fields preserved"
+       wording did not note the valid_rows -> new_valid_rows stdout rename. -->
+
 - **Proof gate:** `branch`/`checkpoint_tag` updated to this session; new cumulative fields and the
   canonical-identity contract string.
 

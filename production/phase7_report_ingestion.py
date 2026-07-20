@@ -224,6 +224,9 @@ REPORT_DATE_BLOCKED = "PHASE7_REPORT_DATE_BLOCKED"
 REPORT_OVERLAP_REVIEW_REQUIRED = "PHASE7_REPORT_OVERLAP_REVIEW_REQUIRED"
 REPORT_CONFLICT_BLOCKED = "PHASE7_REPORT_CONFLICT_BLOCKED"
 REPORT_VERIFICATION_BLOCKED = "PHASE7_REPORT_VERIFICATION_BLOCKED"
+# a run that accepted nothing found an existing promoted state it could not re-verify. It refuses to
+# promote over it, so previously promoted rows are preserved rather than erased.
+REPORT_CARRY_FORWARD_BLOCKED = "PHASE7_REPORT_CARRY_FORWARD_BLOCKED"
 REPORTS_READY = "SESSION7_2_REPORTS_READY_FOR_ANALYSIS"
 SESSION_BLOCKED = "SESSION7_2_BLOCKED"
 # internal reconciliation code (not a session state)
@@ -240,6 +243,13 @@ _BLOCK_RANK = {
     REPORT_CONFLICT_BLOCKED: 6,
     REPORT_OVERLAP_REVIEW_REQUIRED: 7,
 }
+
+# ---------------------------------------------------------------- carry-forward decisions
+# a run that normalized no new rows must never publish an empty dataset over promoted rows.
+CF_PROMOTE = "PROMOTE_NEW_DATASET"        # this run produced rows -> normal promotion
+CF_NO_PRIOR_DATA = "NO_PROMOTED_DATA"     # nothing promoted yet -> normal promotion, nothing to lose
+CF_PRESERVE = "CARRY_FORWARD_PRESERVED"   # accepted 0 + prior rows verified -> promotion is a no-op
+CF_BLOCK = "CARRY_FORWARD_VERIFICATION_FAILED"   # prior state unverifiable -> block, never erase
 
 # ---------------------------------------------------------------- idempotency result
 IDEMPOTENT_ALREADY_IMPORTED = "IDEMPOTENT_ALREADY_IMPORTED"
@@ -1682,10 +1692,27 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
         invalid_rows=invalid_rows, overlaps=sorted(overlaps, key=_canonical_line),
         conflicts=sorted(conflicts, key=_canonical_line), reconcile_by_type=reconcile_by_type,
         scan_rejects=scan_rejects, counts=counts, currency_set=currency_set,
-        input_required=(state == REPORT_INPUT_REQUIRED), promote_report=None)
+        input_required=(state == REPORT_INPUT_REQUIRED), promote_report=None,
+        carry_forward=None)
     _build_documents(result)
 
     if write:
+        # A run that normalized nothing must never publish an empty dataset over promoted rows.
+        carry = carry_forward_decision(result, dirs["final"])
+        result.carry_forward = carry
+        if carry["decision"] == CF_BLOCK:
+            result.state = REPORT_CARRY_FORWARD_BLOCKED
+            result.promote_report = {"result": "BLOCKED", "promoted": False, "carried_forward": False,
+                                     "reason": CF_BLOCK, "preserved_verification": carry["verification"]}
+            return result
+        if carry["decision"] == CF_PRESERVE:
+            # promotion is a no-op: final/ and last_valid/ are left byte-for-byte untouched.
+            result.state = carry["preserved_state"] or result.state
+            result.promote_report = {"result": "PASS", "promoted": False, "carried_forward": True,
+                                     "reason": CF_PRESERVE,
+                                     "preserved_artifacts": carry["preserved_artifacts"],
+                                     "preserved_row_count": carry["preserved_row_count"]}
+            return result
         base = os.path.join(dirs["base"], "candidate")
         manifest, output_hashes = write_candidate(result, base)
         report = promote_candidate(base, dirs["final"], dirs["last_valid"], output_hashes)
@@ -2064,6 +2091,88 @@ def promote_candidate(candidate_dir, final_dir, last_valid_dir, output_hashes, r
     return report
 
 
+# ================================================================ CARRY-FORWARD (never erase rows)
+def read_promoted_manifest(final_dir):
+    """Parse the manifest of a previously promoted state. None when absent or unreadable."""
+    path = os.path.join(final_dir, F_MANIFEST)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            manifest = json.loads(f.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    return manifest if isinstance(manifest, dict) else None
+
+
+def promoted_normalized_artifacts(manifest):
+    """Normalized JSONL artifacts recorded by a promoted manifest, deterministically ordered."""
+    if not isinstance(manifest, dict):
+        return []
+    known = set(NORMALIZED_FILE.values())
+    return sorted(n for n in manifest.get("required_artifacts", []) or [] if n in known)
+
+
+def promoted_normalized_row_count(counts):
+    """Total normalized rows recorded by a promoted manifest's counts block."""
+    counts = counts or {}
+    return sum(int(counts.get(f"normalized_{t.lower()}_row_count", 0) or 0) for t in REPORT_TYPES)
+
+
+def verify_promoted_state(final_dir, manifest):
+    """Re-verify a promoted state from its own bytes: manifest integrity, then every recorded
+    artifact hash. Reads only — it never writes, moves, or removes a promoted file."""
+    missing, mismatched = [], []
+    stored = manifest.get("deterministic_content_sha256")
+    recomputed = content_sha256(_recursive_strip(manifest, set(_VOLATILE) | {"output_hashes"}))
+    manifest_ok = bool(stored) and stored == recomputed
+    hashes = manifest.get("output_hashes") or {}
+    for name in sorted(hashes):
+        path = os.path.join(final_dir, name)
+        if not os.path.isfile(path):
+            missing.append(name)
+            continue
+        with open(path, "rb") as f:
+            if _sha_bytes(f.read()) != hashes[name]:
+                mismatched.append(name)
+    for name in manifest.get("required_artifacts", []) or []:
+        if not os.path.isfile(os.path.join(final_dir, name)) and name not in missing:
+            missing.append(name)
+    ok = manifest_ok and not missing and not mismatched
+    return {"result": "PASS" if ok else "BLOCKED", "manifest_hash_verified": manifest_ok,
+            "missing": sorted(missing), "mismatched": sorted(mismatched),
+            "verified_file_count": len(hashes)}
+
+
+def carry_forward_decision(result, final_dir):
+    """Decide whether a run may promote its candidate over an existing promoted state.
+
+    An idempotent re-run re-normalizes nothing, so its candidate carries NO normalized JSONL.
+    Promoting it would publish an empty dataset over previously promoted rows and destroy them.
+    When prior promoted rows exist, such a run becomes a no-op instead; when that prior state cannot
+    be re-verified from its own bytes it BLOCKS, because erasing data is never the safe failure.
+    """
+    produced = sum(len(result.normalized_by_type[t]) for t in REPORT_TYPES)
+    # Anything NEW to report (fresh rows, or a newly quarantined / rejected file) must still be
+    # published: only a run with nothing new at all is allowed to become a no-op.
+    if result.accepted or produced or result.quarantined or result.scan_rejects:
+        return {"decision": CF_PROMOTE, "produced_row_count": produced,
+                "preserved_artifacts": [], "preserved_row_count": 0}
+    manifest = read_promoted_manifest(final_dir)
+    artifacts = promoted_normalized_artifacts(manifest)
+    if not artifacts:
+        return {"decision": CF_NO_PRIOR_DATA, "produced_row_count": 0,
+                "preserved_artifacts": [], "preserved_row_count": 0}
+    verification = verify_promoted_state(final_dir, manifest)
+    counts = manifest.get("counts") or {}
+    out = {"produced_row_count": 0, "preserved_artifacts": artifacts,
+           "preserved_row_count": promoted_normalized_row_count(counts),
+           "preserved_state": manifest.get("analysis_readiness"),
+           "preserved_counts": counts, "verification": verification}
+    out["decision"] = CF_PRESERVE if verification["result"] == "PASS" else CF_BLOCK
+    return out
+
+
 def _verification_doc(result):
     r = result
     doc = {
@@ -2278,6 +2387,10 @@ def main(argv=None):
     print(f"ignored={c['ignored_source_count']}")
     print(f"valid_rows={c['valid_row_count']}")
     print(f"invalid_rows={c['invalid_row_count']}")
+    cf = getattr(result, "carry_forward", None) or {}
+    if cf.get("decision") in (CF_PRESERVE, CF_BLOCK):
+        print(f"carry_forward={cf['decision']}")
+        print(f"preserved_rows={cf['preserved_row_count']}")
     return 0
 
 

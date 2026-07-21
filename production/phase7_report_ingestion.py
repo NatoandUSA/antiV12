@@ -72,6 +72,7 @@ SCHEMA_LINEAGE = "phase7-2-lineage-v1"
 SCHEMA_READINESS = "phase7-2-report-analysis-readiness-v1"
 SCHEMA_VERIFICATION = "phase7-2-report-verification-v1"
 SCHEMA_MANIFEST = "phase7-2-report-manifest-v1"
+SCHEMA_CUMULATIVE = "phase7-2-cumulative-merge-v1"
 SCHEMA_PROOF_GATE = "session7_2-proof-gate-v1"
 
 NORMALIZATION_SCHEMA_VERSION = SCHEMA_NORMALIZED_ROW
@@ -244,12 +245,20 @@ _BLOCK_RANK = {
     REPORT_OVERLAP_REVIEW_REQUIRED: 7,
 }
 
-# ---------------------------------------------------------------- carry-forward decisions
-# a run that normalized no new rows must never publish an empty dataset over promoted rows.
-CF_PROMOTE = "PROMOTE_NEW_DATASET"        # this run produced rows -> normal promotion
+# ---------------------------------------------------------------- carry-forward / cumulative decisions
+# The promoted dataset is the CUMULATIVE analytical dataset: verified prior promoted rows UNION the
+# newly accepted rows, deduplicated by canonical identity and reconciled for overlap. A blocked, empty,
+# duplicate-only, or unverifiable run must never erase or shrink the last valid cumulative dataset.
+CF_PROMOTE = "PROMOTE_CUMULATIVE_DATASET"  # new valid rows merged into (or first) cumulative dataset
 CF_NO_PRIOR_DATA = "NO_PROMOTED_DATA"     # nothing promoted yet -> normal promotion, nothing to lose
-CF_PRESERVE = "CARRY_FORWARD_PRESERVED"   # accepted 0 + prior rows verified -> promotion is a no-op
+CF_PRESERVE = "CARRY_FORWARD_PRESERVED"   # no new input + prior rows verified -> promotion is a no-op
+CF_PRESERVE_BLOCKED = "CARRY_FORWARD_PRESERVED_BLOCKED"  # this run blocked -> keep last valid, never erase
 CF_BLOCK = "CARRY_FORWARD_VERIFICATION_FAILED"   # prior state unverifiable -> block, never erase
+
+# prior-promoted-state load status (the cumulative merge base).
+PRIOR_NONE = "PRIOR_NONE"          # no promoted normalized rows exist yet -> nothing to preserve
+PRIOR_LOADED = "PRIOR_LOADED"      # promoted rows exist and re-verified from their own bytes -> loaded
+PRIOR_INVALID = "PRIOR_INVALID"    # promoted rows exist but cannot be re-verified -> block, never erase
 
 # ---------------------------------------------------------------- idempotency result
 IDEMPOTENT_ALREADY_IMPORTED = "IDEMPOTENT_ALREADY_IMPORTED"
@@ -1231,24 +1240,31 @@ def reconcile_interval_group(rows, semantics):
     duplicate_row_count = 0
 
     # 1) collapse exact-duplicate canonical rows (same key). Equal metrics -> merge; conflict -> flag.
+    #    This is the cumulative dedup seam: prior promoted rows and freshly normalized rows share one
+    #    canonical key when they are the SAME analytical fact, so an identical row re-imported from
+    #    another file (renamed export, reformatted bytes) collapses here and is never counted twice.
     by_key = {}
     for r in rows:
         by_key.setdefault(r["canonical_row_key"], []).append(r)
     collapsed = []
     for key in sorted(by_key):
-        group = by_key[key]
+        # deterministic base selection: the member with the smallest (source_sha, source_row) wins,
+        # independent of input order, so prior-then-new vs new-then-prior yields byte-identical output.
+        group = sorted(by_key[key], key=_row_provenance_key)
         base = group[0]
         conflict_here = False
         for other in group[1:]:
             if _metrics_equal(base, other):
-                duplicate_row_count += 1
+                duplicate_row_count += 1     # one canonical fact backed by an extra identical source row
             else:
                 conflict_here = True
         if conflict_here:
             conflicts.append({"canonical_row_key": key, "code": DUPLICATE_ROW_CONFLICT,
                               "row_count": len(group)})
         merged = dict(base)
-        merged["duplicate_count"] = len(group)
+        # duplicate_count is the number of raw source rows this one canonical fact stands for, summed
+        # across every member (a re-loaded promoted row may already stand for >1) — never reset to 1.
+        merged["duplicate_count"] = sum(int(m.get("duplicate_count", 1) or 1) for m in group)
         contributing = []
         for other in group:
             contributing.extend(other["lineage"]["contributing"])
@@ -1314,6 +1330,15 @@ def _dedup_contrib(contribs):
             seen.add(k)
             out.append(c)
     return sorted(out, key=lambda c: (c["source_file_sha256"], c["source_row_number"]))
+
+
+def _row_provenance_key(row):
+    """A stable ordering key for one normalized row: its smallest contributing (source_sha, source_row).
+    Used so a reconciliation group's base is chosen deterministically regardless of whether the row was
+    a freshly-normalized row or a re-loaded prior-promoted row."""
+    contribs = (row.get("lineage") or {}).get("contributing") or []
+    pairs = [(c.get("source_file_sha256") or "", int(c.get("source_row_number") or 0)) for c in contribs]
+    return min(pairs) if pairs else ("", 0)
 
 
 # ================================================================ WORKSPACE + PATH SAFETY
@@ -1425,9 +1450,12 @@ def process_source_file(path, dirs, *, reference_date=None, marketplace_default=
     rec["owner_source_note"] = owner_source_note
     out = {"source": rec, "normalized": [], "invalid": [], "idempotent": False}
 
-    # --- idempotency: identical bytes already accepted -> never re-import as new data ---
+    # --- idempotency: bytes already IN THE PROMOTED CUMULATIVE DATASET (by lineage content hash) or
+    # already accepted earlier in THIS run -> never re-import as new data. Mere presence in the
+    # accepted_raw archive is NOT sufficient: a file archived by a run that was later blocked (and so
+    # never promoted) is re-processed here so its rows can still be merged once the run is clean. ---
     accepted_path = os.path.join(dirs["accepted_raw"], rec["source_safe_filename"])
-    if sha in known_hashes or os.path.exists(accepted_path):
+    if sha in known_hashes:
         rec["import_state"] = IDEMPOTENT_ALREADY_IMPORTED
         rec["accepted_raw_path"] = _safe_rel(accepted_path, dirs["base"])
         out["idempotent"] = True
@@ -1543,16 +1571,6 @@ def _ignored_lock_record(path, *, now=None):
     return {"source": rec, "normalized": [], "invalid": [], "idempotent": False}
 
 
-def _existing_accepted_hashes(accepted_dir):
-    out = set()
-    if os.path.isdir(accepted_dir):
-        for name in os.listdir(accepted_dir):
-            stem = os.path.splitext(name)[0]
-            if re.fullmatch(r"[0-9a-f]{64}", stem):
-                out.add(stem)
-    return out
-
-
 # ================================================================ READINESS RESOLUTION
 def _resolve_state(scanned, fmt_q, cls_q, invalid_reason_bases, file_currency_conflict,
                    has_conflicts, has_review, accepted_with_files, total_valid, idempotent_count):
@@ -1617,7 +1635,19 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
     files = [p for p in scanned_files if not os.path.basename(p).startswith(LOCK_FILE_PREFIX)]
     ignored = [_ignored_lock_record(p, now=now) for p in lock_files]
 
-    known = _existing_accepted_hashes(dirs["accepted_raw"])
+    # ---- CUMULATIVE MERGE BASE: load the previously promoted normalized rows (write-mode only). ----
+    # The canonical source of truth for cumulative data is the promoted normalized JSONL under final/ —
+    # NOT the accepted_raw archive (an archive file may be deleted without losing cumulative data). It
+    # is loaded ONLY when it re-verifies from its own bytes; an unverifiable prior state is PRIOR_INVALID
+    # so the caller BLOCKS instead of erasing it. This is what makes an incremental import cumulative:
+    # existing promoted rows UNION new rows, minus exact duplicates, minus overlap-excluded rows.
+    prior = load_prior_promoted_rows(dirs["final"]) if write else _empty_prior()
+
+    # Idempotency is keyed on the promoted dataset's LINEAGE content hashes, never on accepted_raw alone:
+    # a file whose bytes already contributed to the promoted cumulative dataset is "already imported"; a
+    # file archived by a run that was blocked (never promoted) is NOT, so its rows can still be merged
+    # later, and deleting an accepted_raw archive file is never required for normal cumulative operation.
+    known = set(prior["lineage_source_hashes"])
     seen, processed = set(), []
     for path in files:
         r = process_source_file(path, dirs, reference_date=reference_date,
@@ -1634,11 +1664,15 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
     invalid_rows = sorted((iv for p in processed for iv in p["invalid"]),
                           key=lambda x: (x["source_file_sha256"], x["source_row_number"]))
 
-    # group valid normalized rows by type, then reconcile each group deterministically.
-    normalized_by_type = {t: [] for t in REPORT_TYPES}
+    # ---- rows normalized from THIS run's accepted files, grouped by report type ----
+    new_by_type = {t: [] for t in REPORT_TYPES}
     for p in accepted:
         for row in p["normalized"]:
-            normalized_by_type[row["report_type"]].append(row)
+            new_by_type[row["report_type"]].append(row)
+    new_row_count = sum(len(new_by_type[t]) for t in REPORT_TYPES)
+
+    # union the verified prior promoted rows (loaded above) with this run's new rows, then reconcile.
+    normalized_by_type = {t: list(prior["rows_by_type"].get(t, ())) + new_by_type[t] for t in REPORT_TYPES}
     reconcile_by_type, overlaps, conflicts = {}, [], []
     for t in REPORT_TYPES:
         rows = normalized_by_type[t]
@@ -1657,13 +1691,17 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
     cls_q = any(p["source"]["quarantine_state"] in _CLASSIFICATION_REASONS for p in quarantined)
     invalid_bases = {rc.split(":")[0] for iv in invalid_rows for rc in iv["reason_codes"]}
     file_cur_conflict = any(p["source"]["quarantine_state"] == CURRENCY_CONFLICT for p in accepted)
-    total_valid = sum(len(normalized_by_type[t]) for t in REPORT_TYPES)
+    cumulative_valid = sum(len(normalized_by_type[t]) for t in REPORT_TYPES)
     has_conflicts = bool(conflicts)
     has_review = any(reconcile_by_type[t]["result"] == "REVIEW" for t in REPORT_TYPES)
 
+    # the "accepted a file but yielded zero usable rows" guard is about THIS run's own contribution, so
+    # it is fed the NEW-row count — never the cumulative total, which a valid prior would otherwise mask.
     state = _resolve_state(len(files), fmt_q, cls_q, invalid_bases, file_cur_conflict,
-                           has_conflicts, has_review, bool(accepted), total_valid, len(idempotent))
+                           has_conflicts, has_review, bool(accepted), new_row_count, len(idempotent))
 
+    overlap_conflict_count = sum(1 for o in overlaps
+                                 if o.get("code") in (OV_PARTIAL, OV_CONTAINED, OV_EXACT_CONFLICT))
     counts = {
         "scanned_file_count": len(files),
         "accepted_source_count": len(accepted),
@@ -1678,17 +1716,28 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
         "duplicate_row_count": sum(reconcile_by_type[t]["duplicate_row_count"] for t in REPORT_TYPES),
         "conflict_count": len(conflicts),
         "overlap_count": len(overlaps),
+        # --- cumulative accounting (verified prior promoted rows + this run) ---
+        "prior_cumulative_row_count": prior["row_count"],
+        "new_valid_row_count": new_row_count,
+        "cumulative_row_count": cumulative_valid,
+        "new_rows_merged": cumulative_valid - prior["row_count"],
+        "overlap_conflict_count": overlap_conflict_count,
     }
     for t in REPORT_TYPES:
         counts[f"normalized_{t.lower()}_row_count"] = len(normalized_by_type[t])
-    currency_set = sorted({c for s in sources for c in s["currency_set"]})
+    # cumulative currencies / attribution windows: derived from the merged dataset (kept DISTINCT).
+    currency_set = sorted({r.get("currency") for t in REPORT_TYPES
+                           for r in normalized_by_type[t] if r.get("currency")}
+                          | {c for s in sources for c in s["currency_set"]})
+    attribution_windows = _cumulative_attribution_windows(normalized_by_type)
 
     result = IngestionResult(
         base_dir=dirs["base"], dirs=dirs, mode=mode, state=state, run_id=run_id, now=now,
         started_at=started_at, completed_at=completed_at, reference_date=reference_date,
         marketplace_default=marketplace_default, sources=sources, accepted=accepted,
         quarantined=quarantined, idempotent=idempotent, ignored=ignored,
-        normalized_by_type=normalized_by_type,
+        normalized_by_type=normalized_by_type, new_by_type=new_by_type, prior=prior,
+        attribution_windows=attribution_windows,
         invalid_rows=invalid_rows, overlaps=sorted(overlaps, key=_canonical_line),
         conflicts=sorted(conflicts, key=_canonical_line), reconcile_by_type=reconcile_by_type,
         scan_rejects=scan_rejects, counts=counts, currency_set=currency_set,
@@ -1697,22 +1746,31 @@ def run_ingestion(base_dir, *, reference_date=None, marketplace_default="US", mo
     _build_documents(result)
 
     if write:
-        # A run that normalized nothing must never publish an empty dataset over promoted rows.
-        carry = carry_forward_decision(result, dirs["final"])
-        result.carry_forward = carry
-        if carry["decision"] == CF_BLOCK:
+        decision = cumulative_promotion_decision(result, prior)
+        result.carry_forward = decision
+        # 1) a prior promoted dataset exists but cannot be re-verified -> block, never merge onto / erase.
+        if decision["decision"] == CF_BLOCK:
             result.state = REPORT_CARRY_FORWARD_BLOCKED
             result.promote_report = {"result": "BLOCKED", "promoted": False, "carried_forward": False,
-                                     "reason": CF_BLOCK, "preserved_verification": carry["verification"]}
+                                     "reason": CF_BLOCK, "preserved_verification": decision["verification"]}
             return result
-        if carry["decision"] == CF_PRESERVE:
-            # promotion is a no-op: final/ and last_valid/ are left byte-for-byte untouched.
-            result.state = carry["preserved_state"] or result.state
+        # 2) no new input over a valid prior dataset -> byte-identical no-op (final/last_valid untouched).
+        if decision["decision"] == CF_PRESERVE:
+            result.state = decision["preserved_state"] or result.state
             result.promote_report = {"result": "PASS", "promoted": False, "carried_forward": True,
                                      "reason": CF_PRESERVE,
-                                     "preserved_artifacts": carry["preserved_artifacts"],
-                                     "preserved_row_count": carry["preserved_row_count"]}
+                                     "preserved_artifacts": decision["preserved_artifacts"],
+                                     "preserved_row_count": decision["preserved_row_count"]}
             return result
+        # 3) this run is blocked (conflict / overlap / bad input) yet a valid prior dataset exists ->
+        #    keep the last valid cumulative dataset byte-for-byte in place; report the block, never erase.
+        if decision["decision"] == CF_PRESERVE_BLOCKED:
+            result.promote_report = {"result": "PRESERVED", "promoted": False, "carried_forward": True,
+                                     "reason": CF_PRESERVE_BLOCKED, "block_state": result.state,
+                                     "preserved_artifacts": decision["preserved_artifacts"],
+                                     "preserved_row_count": decision["preserved_row_count"]}
+            return result
+        # 4) first / cumulative promotion -> write the full cumulative candidate and promote atomically.
         base = os.path.join(dirs["base"], "candidate")
         manifest, output_hashes = write_candidate(result, base)
         report = promote_candidate(base, dirs["final"], dirs["last_valid"], output_hashes)
@@ -2144,33 +2202,108 @@ def verify_promoted_state(final_dir, manifest):
             "verified_file_count": len(hashes)}
 
 
-def carry_forward_decision(result, final_dir):
-    """Decide whether a run may promote its candidate over an existing promoted state.
+def _empty_prior():
+    return {"status": PRIOR_NONE, "rows_by_type": {}, "row_count": 0, "artifacts": [],
+            "verification": None, "readiness": None, "counts": {}, "dataset_hash": None,
+            "lineage_source_hashes": []}
 
-    An idempotent re-run re-normalizes nothing, so its candidate carries NO normalized JSONL.
-    Promoting it would publish an empty dataset over previously promoted rows and destroy them.
-    When prior promoted rows exist, such a run becomes a no-op instead; when that prior state cannot
-    be re-verified from its own bytes it BLOCKS, because erasing data is never the safe failure.
+
+def load_prior_promoted_rows(final_dir):
+    """Load the previously promoted CUMULATIVE normalized rows to serve as the merge base.
+
+    The canonical source of truth for cumulative data is the promoted normalized JSONL under final/ —
+    NOT the accepted_raw archive (an archive file may be deleted without losing cumulative data). The
+    rows are read back as canonical normalized records ONLY when the promoted state re-verifies from
+    its own bytes (manifest integrity + every recorded artifact hash). A present-but-unverifiable state
+    returns PRIOR_INVALID so the caller BLOCKS rather than erasing it. Reads only — never writes.
     """
-    produced = sum(len(result.normalized_by_type[t]) for t in REPORT_TYPES)
-    # Anything NEW to report (fresh rows, or a newly quarantined / rejected file) must still be
-    # published: only a run with nothing new at all is allowed to become a no-op.
-    if result.accepted or produced or result.quarantined or result.scan_rejects:
-        return {"decision": CF_PROMOTE, "produced_row_count": produced,
-                "preserved_artifacts": [], "preserved_row_count": 0}
+    out = _empty_prior()
     manifest = read_promoted_manifest(final_dir)
+    if manifest is None:
+        return out                                  # no promoted state at all -> nothing to preserve
     artifacts = promoted_normalized_artifacts(manifest)
     if not artifacts:
-        return {"decision": CF_NO_PRIOR_DATA, "produced_row_count": 0,
-                "preserved_artifacts": [], "preserved_row_count": 0}
+        return out                                  # a promoted non-data state -> nothing to preserve
+    out["artifacts"] = artifacts
+    out["readiness"] = manifest.get("analysis_readiness")
+    out["counts"] = manifest.get("counts") or {}
     verification = verify_promoted_state(final_dir, manifest)
-    counts = manifest.get("counts") or {}
-    out = {"produced_row_count": 0, "preserved_artifacts": artifacts,
-           "preserved_row_count": promoted_normalized_row_count(counts),
-           "preserved_state": manifest.get("analysis_readiness"),
-           "preserved_counts": counts, "verification": verification}
-    out["decision"] = CF_PRESERVE if verification["result"] == "PASS" else CF_BLOCK
+    out["verification"] = verification
+    if verification["result"] != "PASS":
+        out["status"] = PRIOR_INVALID
+        out["row_count"] = promoted_normalized_row_count(out["counts"])
+        return out
+    by_name = {NORMALIZED_FILE[t]: t for t in REPORT_TYPES}
+    rows_by_type = {t: [] for t in REPORT_TYPES}
+    blob, lineage_hashes = [], set()
+    for name in artifacts:
+        rtype = by_name.get(name)
+        if rtype is None:
+            continue
+        with open(os.path.join(final_dir, name), "rb") as f:
+            data = f.read()
+        blob.append(data)
+        for line in io.StringIO(data.decode("utf-8")):
+            if not line.strip():
+                continue
+            row = json.loads(line)                  # a canonical normalized record, loaded verbatim
+            rows_by_type[rtype].append(row)
+            for c in (row.get("lineage") or {}).get("contributing") or []:
+                if c.get("source_file_sha256"):
+                    lineage_hashes.add(c["source_file_sha256"])
+    out["status"] = PRIOR_LOADED
+    out["rows_by_type"] = rows_by_type
+    out["row_count"] = sum(len(v) for v in rows_by_type.values())
+    out["dataset_hash"] = _sha_bytes(b"".join(blob))
+    out["lineage_source_hashes"] = sorted(lineage_hashes)
     return out
+
+
+def cumulative_promotion_decision(result, prior):
+    """Decide how this run resolves against the last valid CUMULATIVE dataset.
+
+    Never last-write-wins, never erase, never shrink: a blocked / empty / duplicate-only / unverifiable
+    run leaves the promoted dataset in place. Only a run that assembled a clean cumulative dataset (the
+    verified prior rows unioned with new rows) promotes. Distinguishable outcomes:
+      CF_BLOCK           prior exists but is unverifiable -> block, preserve last_valid, never erase
+      CF_NO_PRIOR_DATA   no prior + no new input -> nothing to lose (input-required / diagnostics only)
+      CF_PROMOTE         first dataset OR new rows merged into the cumulative dataset -> atomic promote
+      CF_PRESERVE        no new input over a valid prior dataset -> byte-identical no-op
+      CF_PRESERVE_BLOCKED this run blocked over a valid prior dataset -> keep last valid, report block
+    """
+    produced = sum(len(result.normalized_by_type[t]) for t in REPORT_TYPES)   # cumulative row count
+    new_rows = result.counts["new_valid_row_count"]
+    has_activity = bool(result.accepted or result.quarantined or result.scan_rejects)
+    base = {"produced_row_count": produced, "preserved_artifacts": prior["artifacts"],
+            "preserved_row_count": prior["row_count"], "preserved_state": prior["readiness"]}
+    if prior["status"] == PRIOR_INVALID:
+        return {**base, "decision": CF_BLOCK, "verification": prior["verification"]}
+    if prior["status"] == PRIOR_NONE:
+        if not has_activity and new_rows == 0:
+            return {**base, "decision": CF_NO_PRIOR_DATA}
+        return {**base, "decision": CF_PROMOTE}
+    # PRIOR_LOADED: a verified cumulative dataset already exists and must never be shrunk or erased.
+    if not has_activity:
+        return {**base, "decision": CF_PRESERVE}
+    if result.state != REPORTS_READY:
+        return {**base, "decision": CF_PRESERVE_BLOCKED, "block_state": result.state}
+    return {**base, "decision": CF_PROMOTE}
+
+
+_WINDOW_SUFFIXES = ("1d", "7d", "14d", "30d")
+
+
+def _cumulative_attribution_windows(normalized_by_type):
+    """The attribution windows (1d/7d/14d/30d) actually present across the cumulative dataset, derived
+    from the windowed metric field names. Windows are kept DISTINCT and never merged or inferred."""
+    out = set()
+    for t in REPORT_TYPES:
+        for row in normalized_by_type[t]:
+            for field in (row.get("metrics") or {}):
+                for suf in _WINDOW_SUFFIXES:
+                    if field.endswith("_" + suf):
+                        out.add(suf)
+    return sorted(out, key=_WINDOW_SUFFIXES.index)
 
 
 def _verification_doc(result):
@@ -2193,6 +2326,29 @@ def _verification_doc(result):
     return _finalize(doc)
 
 
+def _cumulative_manifest_block(result):
+    """The cumulative-merge bookkeeping recorded in the promoted manifest (deterministic)."""
+    r = result
+    c = r.counts
+    prior = getattr(r, "prior", None) or _empty_prior()
+    return {
+        "schema_version": SCHEMA_CUMULATIVE,
+        "prior_promoted_dataset_hash": prior.get("dataset_hash"),
+        "prior_cumulative_row_count": c["prior_cumulative_row_count"],
+        "prior_source_lineage_hashes": prior.get("lineage_source_hashes", []),
+        "new_source_file_count": c["scanned_file_count"],
+        "new_accepted_file_count": c["accepted_source_count"],
+        "new_valid_row_count": c["new_valid_row_count"],
+        "new_rows_merged": c["new_rows_merged"],
+        "duplicate_raw_file_count": c["duplicate_file_count"],
+        "duplicate_normalized_row_count": c["duplicate_row_count"],
+        "overlap_conflict_count": c["overlap_conflict_count"],
+        "cumulative_row_count": c["cumulative_row_count"],
+        "cumulative_currencies": r.currency_set,
+        "cumulative_attribution_windows": getattr(r, "attribution_windows", []),
+    }
+
+
 def build_report_manifest(result, output_hashes):
     r = result
     body = {
@@ -2201,6 +2357,7 @@ def build_report_manifest(result, output_hashes):
         "stage_name": STAGE_NAME,
         "analysis_readiness": r.state,
         "counts": r.counts,
+        "cumulative": _cumulative_manifest_block(r),
         "required_artifacts": sorted(r.required_artifacts),
         "generated_outputs": sorted(output_hashes),
         "stable_content_hashes": r.stable_hashes,
@@ -2232,9 +2389,9 @@ def build_proof_gate(result, *, starting_commit=None, final_commit=None, owner_r
                       "RECONCILIATION, AND AUDIT FOUNDATION",
         "starting_commit": starting_commit,
         "final_commit": final_commit,
-        "branch": "main",
+        "branch": "phase7-2-cumulative-ingestion",
         "origin_sync": None,
-        "checkpoint_tag": "phase7-2-excel-input-checkpoint-a8364cf",
+        "checkpoint_tag": "phase7-2-cumulative-checkpoint-3056bb4",
         # --- dependency chain (sanitized states) ---
         "phase6_dependency": phase6_dependency,
         "phase7_0_dependency": phase7_0_dependency,
@@ -2275,6 +2432,17 @@ def build_proof_gate(result, *, starting_commit=None, final_commit=None, owner_r
         "normalized_other_row_count": (c["normalized_sp_purchased_product_row_count"]
                                        + c["normalized_sp_placement_row_count"]
                                        + c["normalized_sp_budget_row_count"]),
+        # --- cumulative ingestion (this run's contribution vs the last valid cumulative dataset) ---
+        "cumulative_ingestion": True,
+        "cumulative_source_of_truth": "PROMOTED_NORMALIZED_JSONL_NOT_ACCEPTED_RAW",
+        "canonical_row_identity": "type|marketplace|start_date:end_date|<ordered identity dims>",
+        "prior_cumulative_row_count": c["prior_cumulative_row_count"],
+        "new_valid_row_count": c["new_valid_row_count"],
+        "new_rows_merged": c["new_rows_merged"],
+        "cumulative_row_count": c["cumulative_row_count"],
+        "overlap_conflict_count": c["overlap_conflict_count"],
+        "cumulative_attribution_windows": getattr(r, "attribution_windows", []),
+        "carry_forward_decision": (getattr(r, "carry_forward", None) or {}).get("decision"),
         # --- states ---
         "analysis_readiness": r.state,
         "t2_product_readiness": t2_product_readiness,
@@ -2380,16 +2548,22 @@ def main(argv=None):
         _atomic_write_bytes(a.proof_out, canonical_json(proof).encode("utf-8"))
     promote = result.promote_report.get("result") if result.promote_report else "n/a"
     c = result.counts
+    cf = getattr(result, "carry_forward", None) or {}
     print(f"analysis_readiness={result.state}")
     print(f"promote={promote}")
     print(f"accepted={c['accepted_source_count']}")
     print(f"quarantined={c['quarantined_source_count']}")
     print(f"ignored={c['ignored_source_count']}")
-    print(f"valid_rows={c['valid_row_count']}")
+    print(f"new_valid_rows={c['new_valid_row_count']}")
+    print(f"new_rows_merged={c['new_rows_merged']}")
     print(f"invalid_rows={c['invalid_row_count']}")
-    cf = getattr(result, "carry_forward", None) or {}
-    if cf.get("decision") in (CF_PRESERVE, CF_BLOCK):
+    print(f"duplicate_rows={c['duplicate_row_count']}")
+    print(f"overlap_conflicts={c['overlap_conflict_count']}")
+    print(f"prior_rows={c['prior_cumulative_row_count']}")
+    print(f"cumulative_rows={c['cumulative_row_count']}")
+    if cf.get("decision"):
         print(f"carry_forward={cf['decision']}")
+    if cf.get("decision") in (CF_PRESERVE, CF_PRESERVE_BLOCKED, CF_BLOCK):
         print(f"preserved_rows={cf['preserved_row_count']}")
     return 0
 

@@ -1,0 +1,132 @@
+{
+  "schema_version": "session7_2-cumulative-ingestion-proof-gate-v1",
+  "session_id": "PHASE 7.2 — CUMULATIVE INGESTION HARDENING (preserve promoted rows across incremental imports)",
+  "status": "IMPLEMENTED_NOT_ACCEPTED",
+  "phase_7_4_started": false,
+
+  "branch": "phase7-2-cumulative-ingestion",
+  "baseline_commit": "3056bb4",
+  "checkpoint_tag": "phase7-2-cumulative-checkpoint-3056bb4",
+  "accepted_phase7_3_tag_target": "phase7-3-accepted-7005275 -> 7005275 (unchanged)",
+  "implementation_commit": "d12de0b",
+  "proof_commit": "the docs commit that adds this file (reported in the session response; a file cannot embed its own commit hash)",
+  "merged_into_main": false,
+  "accepted_tag_created": false,
+
+  "authorities": {
+    "report_ingestion_authority": "production/phase7_report_ingestion.py",
+    "money_authority": "core/money.py",
+    "phase7_3_authority": "production/phase7_ads_analysis.py",
+    "duplicate_ingestion_engine_count": 0,
+    "phase7_3_modified": false
+  },
+
+  "files_created": [
+    "SESSION7_2-CUMULATIVE-INGESTION-IMPLEMENTATION-REPORT.md",
+    "SESSION7_2-CUMULATIVE-INGESTION-PROOF-GATE.json"
+  ],
+  "files_modified": [
+    "production/phase7_report_ingestion.py",
+    "tests/test_phase7_2_report_ingestion.py"
+  ],
+
+  "reproduction_of_original_limitation": {
+    "before_fix": "import A (3 rows) then disjoint B -> final has 2 rows (A erased), promote=PASS (BUG REPRODUCED)",
+    "after_fix": "import A (3 rows) then disjoint B -> final has 5 rows (A+B), promote=PASS (SAFE/CUMULATIVE)",
+    "evidence": "inline before/after transcripts in SESSION7_2-CUMULATIVE-INGESTION-IMPLEMENTATION-REPORT.md section 3; also pinned by test_A_plus_B_cumulative and the reproduction of the bug in the erasure path"
+  },
+
+  "canonical_row_identity": {
+    "contract": "type=<report_type>|mk=<marketplace>|range=<start_iso>:<end_iso>|<ordered identity dims>",
+    "function": "canonical_row_key",
+    "never_uses": ["source_filename", "row_number", "ingestion_timestamp", "random_uuid",
+                   "filesystem_path", "wall_clock_time"],
+    "escaped_collision_resistant": true,
+    "deterministic": true,
+    "distinguishes_legitimate_facts": true,
+    "byte_different_same_fact_not_double_counted": true
+  },
+
+  "cumulative_data_contract": "prior_promoted_rows UNION new_valid_rows - exact_duplicates - overlap_excluded_rows; rebuilt from canonical normalized records (promoted final/ JSONL) with deterministic ordering; source of truth is the promoted JSONL, NOT accepted_raw",
+
+  "idempotency": "keyed on the promoted dataset's LINEAGE content hashes (plus same-run seen), never on accepted_raw presence alone; a valid file archived by a blocked run is re-processed on the next clean run so its rows still merge; deleting an accepted_raw file is never required (test_idempotency_is_lineage_based_not_archive_based, test_no_accepted_raw_deletion_required)",
+
+  "overlap_policy": {
+    "disjoint_or_adjacent": "merge cumulatively",
+    "exact_duplicate_identical": "skip (collapse, not double-counted)",
+    "exact_conflict": "block REPORT_CONFLICT_BLOCKED, preserve",
+    "partial_overlap": "block REPORT_OVERLAP_REVIEW_REQUIRED, preserve",
+    "contained_range": "block REPORT_OVERLAP_REVIEW_REQUIRED, preserve",
+    "unknown_semantics": "block aggregation (REPORT_SEMANTICS_REQUIRED), preserve",
+    "no_prorating": true, "no_subtraction": true, "no_daily_inference": true,
+    "no_newer_file_preference": true, "no_last_write_wins": true,
+    "currencies_never_merged": true, "attribution_windows_never_merged": true
+  },
+
+  "promotion_decisions": {
+    "NO_PROMOTED_DATA": "no prior + no new input -> write diagnostics (nothing to lose)",
+    "PROMOTE_CUMULATIVE_DATASET": "first dataset or new rows merged -> atomic promote",
+    "CARRY_FORWARD_PRESERVED": "no new input over valid prior -> byte-identical no-op",
+    "CARRY_FORWARD_PRESERVED_BLOCKED": "blocked run over valid prior -> keep last valid byte-identically",
+    "CARRY_FORWARD_VERIFICATION_FAILED": "prior unverifiable -> block REPORT_CARRY_FORWARD_BLOCKED, never erase"
+  },
+
+  "test_counts": {
+    "baseline_full_suite": "2551 tests OK (skipped 2)",
+    "focused_phase7_2_before": 333,
+    "focused_phase7_2_after": 377,
+    "focused_phase7_2_result": "OK (skipped 1)",
+    "focused_phase7_3": 117,
+    "focused_phase7_3_result": "OK (unchanged, engine not modified)",
+    "cumulative_tests_added": 44,
+    "full_suite_after": "2595 tests OK (skipped 2) — +44 new, zero regressions"
+  },
+
+  "compile_result": "python -m compileall production core tests -> exit 0 PASS",
+
+  "scenario_results": {
+    "A_plus_B": "4 rows, READY, promote PASS",
+    "A_plus_B_plus_C": "6 rows, READY, promote PASS",
+    "renamed_duplicate_E": "accepted, cumulative stays 2, duplicate_rows=2, new_rows_merged=0 (not double-counted)",
+    "exact_duplicate_rerun": "CARRY_FORWARD_PRESERVED, final byte-identical",
+    "overlap_conflict_D": "REPORT_OVERLAP_REVIEW_REQUIRED, CARRY_FORWARD_PRESERVED_BLOCKED, final byte-identical, 2 overlap conflicts",
+    "empty_run_preservation": "CARRY_FORWARD_PRESERVED, final byte-identical",
+    "invalid_prior_run_preservation": "REPORT_CARRY_FORWARD_BLOCKED, promoted=false, final byte-identical",
+    "archive_integrity": "accepted_raw byte-identical to originals; no deletion required (final/ is source of truth)",
+    "determinism": "incremental A->B JSONL == combined {A,B} JSONL (identical hash); byte-identical repeat run",
+    "phase7_3_compatibility": "6 source rows == 6 analysed; works with inbox+accepted_raw deleted; deterministic decision hash",
+    "atomic_promotion": "PASS; failed candidate preserves final + last_valid",
+    "last_valid_preservation": "prior snapshot on promote; untouched on preserve/block"
+  },
+
+  "manifest_result": "cumulative block (schema phase7-2-cumulative-merge-v1): prior_promoted_dataset_hash, prior/new/cumulative row counts, duplicate + overlap_conflict counts, cumulative currencies + attribution windows, prior source lineage hashes",
+  "source_lineage_result": "per-row lineage retains source_file_sha256 + contributing[]; source-lineage/hash mismatch blocks (REPORT_CARRY_FORWARD_BLOCKED)",
+
+  "fresh_worktree_result": "clean detached worktree at d12de0b: focused Phase 7.2 = 377 OK (skipped 1), focused Phase 7.3 = 117 OK",
+
+  "prohibited_integration_search": "no Amazon SP-API / Ads API / login / browser / credential / download integrations; only the boundary docstring and the credential-leak DETECTOR match the search terms",
+  "runs_tracked_file_count": 0,
+
+  "amazon_boundary": {
+    "amazon_connection_count": 0,
+    "amazon_sp_api_count": 0,
+    "amazon_ads_api_count": 0,
+    "browser_automation_count": 0,
+    "amazon_mutation_count": 0,
+    "report_download_count": 0,
+    "credential_store_count": 0,
+    "external_network_count": 0,
+    "api_payload_count": 0,
+    "all_zero": true
+  },
+
+  "known_limitations": [
+    "first-accepted dataset version tracked at the dataset level (prior_promoted_dataset_hash) not per row, to preserve byte-identical round-tripping of prior rows; per-row lineage still records every contributing source hash",
+    "overlap conflicts require owner action by design (no prorating/subtraction/last-write-wins)",
+    "T2 committed state unchanged; ready path proven with SYNTHETIC_TEST_DATA_ONLY fixtures; runs/ gitignored",
+    "implemented and self-verified, NOT self-accepted"
+  ],
+
+  "exact_next_action": "independent acceptance audit of the implementation commit against this contract; do not merge into main, do not create an accepted tag, do not begin Phase 7.4",
+  "exact_cli": "python -m production.phase7_report_ingestion --base-dir \"runs/T2/phase7/7.2\" --reference-date \"2026-07-20\""
+}

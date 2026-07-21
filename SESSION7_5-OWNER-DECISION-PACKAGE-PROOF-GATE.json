@@ -1,0 +1,162 @@
+{
+  "phase": "7.5",
+  "title": "Offline Owner Decision Package",
+  "branch": "phase7-5-owner-decision-package",
+  "baseline_commit": "0d85e03bba5fdc3e63103c02abc78b6ff6b79b4c",
+  "checkpoint_tag": "phase7-5-decision-package-checkpoint-0d85e03",
+  "accepted_phase7_2_tag": "phase7-2-cumulative-accepted-d5ad841",
+  "accepted_phase7_3_tag": "phase7-3-accepted-7005275",
+  "accepted_phase7_4_tag": "phase7-4-owner-dashboard-accepted-eebecc5",
+  "implementation_commit": "ae07310",
+  "proof_commit": "the docs commit that adds this file (see final response)",
+  "files_created": [
+    "production/phase7_owner_decision_package.py",
+    "tests/test_phase7_5_owner_decision_package.py",
+    "SESSION7_5-OWNER-DECISION-PACKAGE-IMPLEMENTATION-REPORT.md",
+    "SESSION7_5-OWNER-DECISION-PACKAGE-PROOF-GATE.json"
+  ],
+  "files_modified": [],
+  "canonical_authority": "production/phase7_owner_decision_package.py — the ONE Phase 7.5 authority; no competing package engine",
+  "source_authority": {
+    "reuses": "production/phase7_owner_dashboard (Phase 7.4 authority)",
+    "load_source": "DASH.load_source — promoted/ precedes stale final/; producer-exact integrity (manifest deterministic hash + every output_hashes artifact + required-artifact presence)",
+    "readiness_gate": "analysis_readiness must equal SESSION7_3_ANALYSIS_READY_FOR_OWNER_REVIEW",
+    "entity_identity": "DASH.build_views — search-term entity_id = st:<lineage_hash>, content_sha256 = _row_material(row)",
+    "rejects": [
+      "malformed JSON", "NaN", "Infinity", "null bytes", "oversize artifacts",
+      "wrong root types", "wrong schema versions", "duplicate stable IDs",
+      "count inconsistency", "manifest/analysis count mismatch",
+      "unsafe artifact names / path traversal", "integrity hash mismatch / missing artifact"
+    ]
+  },
+  "review_state_authority": {
+    "path": "runs/T2/phase7/7.4/review_state/review-state.json",
+    "schema_version": "phase7-4-review-state-v1",
+    "record_fields": ["entity_id", "entity_type", "review_status", "owner_note", "source_manifest_sha256", "content_sha256", "revision", "created_at", "updated_at"],
+    "strict_loader_blocks": ["duplicate JSON keys", "non-finite numbers", "null bytes", "malformed JSON", "wrong root type", "wrong schema"],
+    "per_record_exclusions": ["invalid review_status", "invalid 64-hex hash shape", "mismatched inner entity id"],
+    "source_manifest_reference": "Phase 7.3 manifest deterministic_content_sha256"
+  },
+  "eligibility_rules": [
+    "source valid", "analysis readiness accepted", "review record valid", "entity id present",
+    "status == APPROVED_FOR_MANUAL_ACTION", "source manifest hash matches", "content hash matches",
+    "not SOURCE_CHANGED", "not ENTITY_ABSENT", "not blocked", "required owner policy present",
+    "currency unambiguous", "attribution window unambiguous", "evidence sufficient", "no duplicate action identity"
+  ],
+  "content_manifest_matrix": {
+    "content_mismatch_manifest_mismatch": "SOURCE_CHANGED",
+    "content_mismatch_manifest_match": "HASH_MISMATCH",
+    "content_match_manifest_mismatch": "SOURCE_MANIFEST_MISMATCH"
+  },
+  "supported_recommendation_types": ["REVIEW_FOR_MANUAL_NEGATIVE", "REVIEW_FOR_MANUAL_EXACT_KEYWORD", "REVIEW_BID_OR_BUDGET_CONTEXT"],
+  "missing_policy_rule": "only REVIEW_BID_OR_BUDGET_CONTEXT with target_acos_source != OWNER_DECLARED",
+  "package_item_identity": {
+    "package_item_id": "item: + sha256(canonical action identity + source content hash)",
+    "action_identity_fields": ["recommendation_type", "campaign", "ad_group", "targeting", "match_type", "customer_search_term", "currency", "attribution_window", "report_period"],
+    "not_derived_from": ["row number", "sort position", "timestamp", "random UUID", "frontend id"]
+  },
+  "duplicate_policy": {
+    "identical": "deduplicate deterministically (keep smallest entity id), record duplicate count + lineage",
+    "conflict": "exclude ALL members (DUPLICATE_CONFLICT), record conflict — no last-write-wins"
+  },
+  "exclusion_reasons": [
+    "NOT_APPROVED", "SOURCE_CHANGED", "ENTITY_ABSENT", "HASH_MISMATCH", "SOURCE_MANIFEST_MISMATCH",
+    "BLOCKED_RECOMMENDATION", "MISSING_POLICY", "MISSING_EVIDENCE", "AMBIGUOUS_CURRENCY",
+    "AMBIGUOUS_ATTRIBUTION_WINDOW", "DUPLICATE_IDENTICAL", "DUPLICATE_CONFLICT", "INVALID_REVIEW_STATE",
+    "UNKNOWN_ENTITY", "UNSUPPORTED_RECOMMENDATION_TYPE", "MISSING_REQUIRED_FIELD"
+  ],
+  "package_files": [
+    "OWNER_READ_FIRST.md", "executive_summary.md", "manual_action_checklist.tsv",
+    "manual_action_checklist.json", "decision_details.md", "excluded_items.tsv",
+    "excluded_items.json", "source_lineage.json", "package_manifest.json"
+  ],
+  "optional_package_files": ["deferred_items.tsv", "policy_requirements.md"],
+  "never_generates": [
+    "Amazon bulk operation spreadsheet", "Ads bulk sheet", "SP-API JSON", "Ads API JSON",
+    "browser automation script", "PowerShell/shell script for Amazon", "Selenium/Playwright instructions",
+    "any file designed for direct Amazon upload"
+  ],
+  "manifest_schema": "phase7-5-package-manifest-v1",
+  "manifest_includes": [
+    "schema_version", "package_id", "readiness", "package_content_sha256", "generator_version",
+    "reference_date", "config", "phase7_3_source_dir_type", "phase7_3_manifest_sha256",
+    "phase7_4_review_state_aggregate_sha256", "source_rows", "analyzed_rows", "review_state_records",
+    "approved_records", "eligible_action_count", "excluded_item_count", "duplicate_identical_count",
+    "duplicate_conflict_count", "source_changed_count", "blocked_count", "policy_required_count",
+    "currencies", "attribution_windows", "output_artifacts", "artifact_sha256", "amazon_boundary",
+    "this_session_never", "manual_action_disclaimer", "amazon_action_performed", "runtime_metadata"
+  ],
+  "deterministic_design": "canonical_json (sorted keys, ensure_ascii=False, UTF-8, indent=2) + SHA-256; every artifact except package_manifest.json is timestamp-free and byte-deterministic; runtime generated_at isolated in runtime_metadata and never feeds package_content_sha256",
+  "atomic_write_design": "build into runtime/.build-<name>, verify artifacts from bytes, best-effort fsync (file + dir), os.replace onto final dir; failure removes temp and leaves no partial/successful package",
+  "idempotency_design": "content-addressed default name pkg-<hash16>; identical content -> IDEMPOTENT_REUSE; same name + different content -> SESSION7_5_PACKAGE_BLOCKED (integrity conflict, last valid package preserved)",
+  "formula_injection_design": "reuse accepted DASH._tsv_cell: leading = + - @ (and tab/CR/LF/pipe) neutralized with leading quote, genuine numbers preserved (-2.50 intact), control chars stripped; fixed column tuple guarantees equal columns; JSON preserves Unicode",
+  "readiness_states": [
+    "SESSION7_5_PACKAGE_READY", "SESSION7_5_PACKAGE_READY_EMPTY", "SESSION7_5_SOURCE_REQUIRED",
+    "SESSION7_5_SOURCE_BLOCKED", "SESSION7_5_REVIEW_STATE_REQUIRED", "SESSION7_5_REVIEW_STATE_BLOCKED",
+    "SESSION7_5_SOURCE_CHANGED_REVIEW_REQUIRED", "SESSION7_5_POLICY_REQUIRED",
+    "SESSION7_5_CONFLICT_REVIEW_REQUIRED", "SESSION7_5_PACKAGE_BLOCKED"
+  ],
+  "tests": {
+    "baseline_compileall": "exit 0",
+    "baseline_focused_7_2_7_3_7_4": "588 passed, 1 skipped",
+    "baseline_full_suite": "2689 passed, 2 skipped (at 0d85e03)",
+    "phase7_5_focused": "109 passed",
+    "phase7_2_7_3_7_4_focused_after": "588 passed, 1 skipped (no regressions)",
+    "full_suite_after": "2798 passed, 2 skipped",
+    "compileall_after": "exit 0",
+    "fresh_worktree": "PASS — detached worktree at ae07310: runs/ absent, compileall exit 0, 109 Phase 7.5 tests pass with synthetic fixtures only"
+  },
+  "synthetic_validation": "PASS — 109 tests across every required fixture (no/empty/valid review state; approved/rejected/deferred/needs-more-data/needs-policy/already-handled/not-applicable; source-changed; entity-absent; blocked; missing policy/evidence; ambiguous/multi currency; multi window; duplicate identical/conflict; malformed source; malformed/duplicate-key/NaN/null-byte review state; tampered manifest/artifact; invalid hashes; unknown id; formula injection; Unicode notes; empty + populated packages)",
+  "empty_package_validation": "PASS — SESSION7_5_PACKAGE_READY_EMPTY writes package + exclusions, exit 0",
+  "populated_package_validation": "PASS — SESSION7_5_PACKAGE_READY, checklist item with neutral manual-review action description",
+  "duplicate_conflict_validation": "PASS — conflicting approvals excluded, SESSION7_5_CONFLICT_REVIEW_REQUIRED",
+  "source_change_validation": "PASS — changed row -> SOURCE_CHANGED; removed row -> ENTITY_ABSENT; readiness SESSION7_5_SOURCE_CHANGED_REVIEW_REQUIRED",
+  "validate_only_validation": "PASS — no package created; correct counts; nonzero exit on blocked input",
+  "real_t2_validation": {
+    "package_readiness": "SESSION7_5_PACKAGE_READY_EMPTY",
+    "source_readiness": "SESSION7_3_ANALYSIS_READY_FOR_OWNER_REVIEW",
+    "source_rows": 114,
+    "analyzed_rows": 114,
+    "review_state_records": 1,
+    "approved_records": 0,
+    "eligible_actions": 0,
+    "excluded_items": 1,
+    "excluded_reason": "NOT_APPROVED (the single local record is DEFERRED)",
+    "duplicate_identical": 0,
+    "duplicate_conflicts": 0,
+    "source_changed": 0,
+    "blocked_items": 0,
+    "phase7_3_source_byte_identical_after_run": true,
+    "phase7_4_review_state_byte_identical_after_run": true
+  },
+  "determinism_result": "PASS — identical inputs -> byte-identical analytical artifacts + identical package_content_sha256; reference date changes identity",
+  "idempotency_result": "PASS — repeated run -> IDEMPOTENT_REUSE; same name + altered content -> SESSION7_5_PACKAGE_BLOCKED, last valid package preserved",
+  "atomic_write_result": "PASS — injected failure leaves no packages/<id> dir and no runtime/.build-* leftover",
+  "source_immutability_result": "PASS — Phase 7.3 promoted dir and Phase 7.4 review-state file byte-identical (SHA-256) before/after; no lock/cache/temp/export created inside either source",
+  "runs_tracking_result": "runs/ gitignored and untracked (git check-ignore runs/T2/phase7/7.5 -> ignored; git ls-files runs/ -> empty); no owner data committed",
+  "prohibited_integration_search": "PASS — no functional requests/httpx/aiohttp/socket/urllib.request/http.client/boto3/selenium/playwright/webdriver/os.system/os.popen/subprocess-call/eval/exec/float/.amazonaws/sellercentral/advertising.amazon; SP-API/Ads API/upload/browser/credential/cookie/token appear only in safety disclaimers and constant zero counters",
+  "amazon_boundary": {
+    "amazon_connections": 0,
+    "amazon_sp_api_calls": 0,
+    "amazon_ads_api_calls": 0,
+    "amazon_mutations": 0,
+    "amazon_report_downloads": 0,
+    "amazon_bulk_uploads": 0,
+    "amazon_api_payloads": 0,
+    "browser_automation_attempts": 0,
+    "credential_store_count": 0,
+    "cookie_store_count": 0,
+    "token_store_count": 0,
+    "session_store_count": 0,
+    "external_network_calls": 0,
+    "subprocess_executions_from_data": 0
+  },
+  "known_limitations": [
+    "Only the three Phase 7.3 actionable recommendation labels are manual-actionable; other labels and aggregate entities are surfaced as UNSUPPORTED_RECOMMENDATION_TYPE in exclusions",
+    "Real local T2 review state has no approved record, so the populated checklist path is covered by synthetic fixtures only (no owner data committed)",
+    "Package directory uses a content-addressed name (pkg-<hash16>); the illustrative decision-package-<id> layout is honored in spirit"
+  ],
+  "exact_cli": "python -m production.phase7_owner_decision_package --base-dir \"runs/T2/phase7/7.5\" --phase7-3-dir \"runs/T2/phase7/7.3\" --phase7-4-dir \"runs/T2/phase7/7.4\" --reference-date \"2026-07-21\"",
+  "acceptance_status": "NOT_ACCEPTED — implementation complete, independent acceptance audit recommended",
+  "recommended_next_session": "Independent Phase 7.5 acceptance audit; do not merge to main, do not create accepted tag, do not begin Phase 7.6"
+}

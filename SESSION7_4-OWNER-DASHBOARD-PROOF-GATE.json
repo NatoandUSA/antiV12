@@ -1,0 +1,141 @@
+{
+  "phase": "7.4",
+  "title": "Offline Owner Review Dashboard",
+  "branch": "phase7-4-owner-review-dashboard",
+  "baseline_commit": "9ea8579",
+  "checkpoint_tag": "phase7-4-dashboard-checkpoint-9ea8579",
+  "accepted_phase7_2_tag": "phase7-2-cumulative-accepted-d5ad841",
+  "accepted_phase7_3_tag": "phase7-3-accepted-7005275",
+  "implementation_commit": "c6b0dcc",
+  "proof_commit": "the docs commit that adds this file (see final response)",
+  "files_created": [
+    "production/phase7_owner_dashboard.py",
+    "production/phase7_dashboard_static/index.html",
+    "production/phase7_dashboard_static/dashboard.css",
+    "production/phase7_dashboard_static/dashboard.js",
+    "tests/test_phase7_4_owner_dashboard.py",
+    "SESSION7_4-OWNER-DASHBOARD-IMPLEMENTATION-REPORT.md",
+    "SESSION7_4-OWNER-DASHBOARD-PROOF-GATE.json"
+  ],
+  "files_modified": [],
+  "source_adapter_design": {
+    "canonical_source_dir": "runs/T2/phase7/7.3/promoted",
+    "note": "Prompt referenced final/; the real Phase 7.3 promotion directory is promoted/. Adapter resolves the manifest under the workspace root, promoted/, or final/.",
+    "manifest_schema": "phase7-3-analysis-manifest-v1",
+    "analysis_schema": "phase7-3-analysis-v1",
+    "integrity": "producer-exact hash math (AA._VOLATILE + product_workspace.content_sha256): manifest deterministic hash + every output_hashes artifact + required-artifact presence",
+    "derived_read_only_views": {
+      "targets": "phase7_ads_analysis.aggregate() authority — no invented classification",
+      "observations": "frequency rollup of existing reason_codes",
+      "blocked": "NEEDS_OWNER_REVIEW or REQUIRED_METRIC_UNUSABLE/INVALID_NUMERIC_VALUE rows",
+      "manual_review": "decision-queue rows (priority order) then blocked rows",
+      "policy_requirements": "derived from thresholds (target_acos_source, date rule)"
+    },
+    "rejects": [
+      "malformed JSON", "NaN", "Infinity", "null bytes", "oversize artifacts",
+      "wrong root types", "wrong schema versions", "duplicate stable IDs (lineage_hash)",
+      "count inconsistency (source != analyzed+skipped+blocked)", "manifest/analysis count mismatch",
+      "unsafe artifact names / path traversal", "integrity hash mismatch / missing artifact"
+    ]
+  },
+  "review_state_schema": {
+    "schema_version": "phase7-4-review-state-v1",
+    "path": "runs/T2/phase7/7.4/review_state/review-state.json",
+    "keyed_by": "stable Phase 7.3 entity id (type-prefixed lineage_hash / identity-tuple hash) — never row/sort/frontend position",
+    "record_fields": ["entity_id", "entity_type", "review_status", "owner_note", "source_manifest_sha256", "content_sha256", "revision", "created_at", "updated_at"],
+    "allowed_statuses": ["UNREVIEWED", "APPROVED_FOR_MANUAL_ACTION", "REJECTED", "DEFERRED", "NEEDS_MORE_DATA", "NEEDS_POLICY", "ALREADY_HANDLED", "NOT_APPLICABLE"],
+    "source_change_behavior": "content_sha256 mismatch -> SOURCE_CHANGED; material commitment (APPROVED_FOR_MANUAL_ACTION/ALREADY_HANDLED) requires re-review (effective_status downgraded, readiness -> SESSION7_4_SOURCE_CHANGED_REVIEW_REQUIRED); unchanged content preserves status"
+  },
+  "export_schema": {
+    "schema_version": "phase7-4-export-v1",
+    "formats": ["tsv", "json", "markdown"],
+    "scopes": ["all", "filtered", "approved_only"],
+    "path": "runs/T2/phase7/7.4/exports/owner-review-export-NNNN.ext",
+    "server_generated_filename": true,
+    "user_supplied_path_accepted": false,
+    "includes": ["export_schema_version", "source_phase7_3_manifest_sha256", "export_generated_at", "filter_summary", "item_count", "review_status", "recommendation_id", "entity_identifiers", "evidence", "reason", "owner_note", "disclaimer"],
+    "disclaimer_present_all_formats": true,
+    "tsv_formula_injection_safe": true,
+    "amazon_upload_template_generated": false,
+    "api_payload_generated": false
+  },
+  "security_headers": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cache-Control": "no-store"
+  },
+  "http_security": {
+    "default_host": "127.0.0.1",
+    "non_loopback_bind": "refused unless --allow-nonlocal-bind",
+    "methods_allowed": ["GET", "POST", "HEAD"],
+    "unsupported_method": "405",
+    "static_allowlist": ["index.html", "dashboard.css", "dashboard.js"],
+    "directory_listing": "disabled (404)",
+    "request_body_limit_bytes": 1048576,
+    "json_content_type_required": true,
+    "cors_wildcard": false,
+    "shell_or_eval_or_dynamic_execution": false,
+    "arbitrary_file_read_or_write": false
+  },
+  "readiness_states": [
+    "SESSION7_4_DASHBOARD_READY",
+    "SESSION7_4_SOURCE_REQUIRED",
+    "SESSION7_4_SOURCE_BLOCKED",
+    "SESSION7_4_SOURCE_CHANGED_REVIEW_REQUIRED",
+    "SESSION7_4_REVIEW_STATE_READY",
+    "SESSION7_4_EXPORT_READY",
+    "SESSION7_4_EXPORT_BLOCKED"
+  ],
+  "tests": {
+    "baseline_full_suite": "2595 passed, 2 skipped (at 9ea8579)",
+    "phase7_4_focused": "94 passed",
+    "phase7_2_focused": "377 passed, 1 skipped",
+    "phase7_3_focused": "117 passed",
+    "full_suite_after": "2689 passed, 2 skipped",
+    "compileall": "exit 0"
+  },
+  "synthetic_validation": "PASS — all endpoints 200; empty + populated + blocked fixtures; sort/filter/review/export exercised; offline banner + disclaimer present",
+  "manual_browser_validation": "HTTP/asset-layer PASS (headless env): HTML shell served with OFFLINE REVIEW MODE, css/js served, zero external references, strict CSP; interactive local browser pass recommended before acceptance",
+  "real_t2_validation": {
+    "dashboard_readiness": "SESSION7_4_DASHBOARD_READY",
+    "source_readiness": "SESSION7_3_ANALYSIS_READY_FOR_OWNER_REVIEW",
+    "source_rows": 114,
+    "analyzed_rows": 114,
+    "decision_queue_rows": 0,
+    "blocked_rows": 0,
+    "campaigns": 61,
+    "ad_groups": 61,
+    "targets": 74,
+    "search_terms": 114,
+    "observations": 10,
+    "policy_requirements": 2,
+    "phase7_3_source_byte_identical_after_run": true
+  },
+  "determinism_result": "PASS — deterministic model, API JSON ordering, and export content/ordering",
+  "source_immutability_result": "PASS — Phase 7.3 promoted directory byte-identical (SHA-256) before/after; dashboard never writes into promoted/",
+  "git_cleanliness": "clean except intended new files (production/phase7_owner_dashboard.py, production/phase7_dashboard_static/, tests/test_phase7_4_owner_dashboard.py, proof docs)",
+  "fresh_worktree_result": "PASS — detached worktree at c6b0dcc: runs/ absent, compileall clean, 94 Phase 7.4 tests pass with synthetic fixtures only (no real T2 data)",
+  "runs_tracking_result": "runs/ untracked (gitignored); no owner report data committed",
+  "prohibited_integration_search": "PASS — no requests/socket/urllib.request/http.client/boto3/selenium/playwright/webdriver/sp-api client/sellingpartner/advertising-api/amazonaws/smtp/analytics/telemetry/0.0.0.0; only boundary DISCLAIMERS present",
+  "amazon_boundary": {
+    "amazon_connections": 0,
+    "amazon_api_calls": 0,
+    "browser_automation_attempts": 0,
+    "amazon_mutations": 0,
+    "credential_storage_count": 0,
+    "network_calls": 0
+  },
+  "known_limitations": [
+    "Targets/Observations views are derived read-only from analysis.json (Phase 7.3 publishes no such artifacts); no new classification is introduced",
+    "Campaign ID and confidence are not emitted by Phase 7.3 -> render as em dash",
+    "Browser validation performed at HTTP/asset layer in a headless environment",
+    "Real T2 decision queue is empty; populated/blocked paths covered by synthetic fixtures"
+  ],
+  "exact_cli": "python -m production.phase7_owner_dashboard --base-dir \"runs/T2/phase7/7.4\" --phase7-3-dir \"runs/T2/phase7/7.3\" --host \"127.0.0.1\" --port 8740",
+  "dashboard_url": "http://127.0.0.1:8740",
+  "acceptance_status": "NOT_ACCEPTED — implementation complete, independent acceptance audit recommended",
+  "recommended_next_session": "Independent Phase 7.4 acceptance audit; do not merge to main, do not create accepted tag, do not begin Phase 7.5"
+}

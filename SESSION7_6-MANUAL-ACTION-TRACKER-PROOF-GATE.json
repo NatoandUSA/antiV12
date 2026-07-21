@@ -1,0 +1,214 @@
+{
+  "session": "7.6",
+  "title": "Offline Manual Action Tracker",
+  "acceptance_status": "IMPLEMENTED_PENDING_INDEPENDENT_AUDIT",
+  "not_accepted": true,
+  "not_merged": true,
+  "no_accepted_tag_created": true,
+  "phase_7_7_not_started": true,
+  "git": {
+    "branch": "phase7-6-manual-action-tracker",
+    "baseline": "9767ec2dc8ff628254184236cfc16f531ffb285d",
+    "checkpoint_tag": "phase7-6-manual-action-tracker-checkpoint-9767ec2",
+    "implementation_commit": "ce9ad4246e6fb97f7eb1a1935f73f8b92b1407a3",
+    "proof_commit": "self (this docs commit is the proof commit; its hash is reported in the session summary)",
+    "main_head": "9767ec2dc8ff628254184236cfc16f531ffb285d",
+    "prior_accepted_tags": [
+      "phase7-2-cumulative-accepted-d5ad841",
+      "phase7-3-accepted-7005275",
+      "phase7-4-owner-dashboard-accepted-eebecc5",
+      "phase7-5-owner-decision-package-accepted-66d972d"
+    ]
+  },
+  "files_created": [
+    "production/phase7_manual_action_tracker.py",
+    "tests/test_phase7_6_manual_action_tracker.py",
+    "SESSION7_6-MANUAL-ACTION-TRACKER-IMPLEMENTATION-REPORT.md",
+    "SESSION7_6-MANUAL-ACTION-TRACKER-PROOF-GATE.json"
+  ],
+  "files_modified": [],
+  "phase7_5_authority": {
+    "module": "production/phase7_owner_decision_package.py",
+    "manifest_schema": "phase7-5-package-manifest-v1",
+    "checklist_schema": "phase7-5-manual-action-checklist-v1",
+    "package_location": "runs/T2/phase7/7.5/packages/<dir>/",
+    "item_identity_field": "package_item_id",
+    "integrity_source": "package_manifest.json artifact_sha256",
+    "real_t2_package_id": "pkg-3cf372628abc6082",
+    "real_t2_package_readiness": "SESSION7_5_PACKAGE_READY_EMPTY",
+    "lineage_enforced": true,
+    "arbitrary_owner_action_without_lineage": "REFUSED (NO_PACKAGE_LINEAGE)"
+  },
+  "workspace": "runs/T2/phase7/7.6",
+  "workspace_subdirs": ["action_state", "exports", "validation", "runtime", "logs"],
+  "state_files": {
+    "current": "action_state/current.json",
+    "history": "action_state/history.jsonl (append-only, hash-chained)"
+  },
+  "owner_statuses": [
+    "PENDING_MANUAL_CHECK",
+    "MANUALLY_COMPLETED",
+    "MANUALLY_SKIPPED",
+    "NO_LONGER_RELEVANT",
+    "NEEDS_REVIEW",
+    "BLOCKED_BY_CURRENT_STATE",
+    "UNABLE_TO_VERIFY",
+    "REVERTED_MANUALLY"
+  ],
+  "default_status": "PENDING_MANUAL_CHECK",
+  "no_automatic_completion": true,
+  "manually_completed_confirmation_gate": {
+    "requires_confirmed_manual_seller_central_check": true,
+    "requires_confirmed_owner_performed_action": true,
+    "requires_owner_checked_date": true,
+    "requires_owner_completed_date": true,
+    "requires_note_or_after_value": true,
+    "requires_current_package_binding": true,
+    "block_readiness_missing_confirmation": "SESSION7_6_CONFIRMATION_REQUIRED",
+    "block_readiness_stale_package": "SESSION7_6_PACKAGE_CHANGED_REVIEW_REQUIRED",
+    "generated_text": "Owner recorded this action as manually completed.",
+    "never_says": [
+      "Amazon confirmed completion.",
+      "Action was automatically applied.",
+      "The system changed Seller Central.",
+      "Amazon action succeeded."
+    ]
+  },
+  "stable_identity": "trk- + SHA256(canonical({package_id, package_item_id}))[:32]",
+  "identity_independent_of": ["row_number", "timestamp", "random_uuid", "display_order", "filename"],
+  "runtime_timestamps_excluded_from_identity": true,
+  "append_only_history_detections": [
+    "HISTORY_CHAIN_BROKEN",
+    "HISTORY_MISSING_ENTRY",
+    "HISTORY_SEQ_GAP",
+    "HISTORY_DUP_REVISION",
+    "HISTORY_REVISION_ROLLBACK",
+    "HISTORY_REWRITTEN",
+    "STATE_MALFORMED",
+    "STATE_HASH_MISMATCH",
+    "CURRENT_HISTORY_MISMATCH"
+  ],
+  "package_change_detections": [
+    "PACKAGE_CHANGED",
+    "PACKAGE_ITEM_CHANGED",
+    "PACKAGE_ITEM_ABSENT",
+    "PACKAGE_MANIFEST_MISMATCH",
+    "PACKAGE_INTEGRITY_BLOCKED"
+  ],
+  "old_completed_record_preserved_and_marked_stale": true,
+  "no_last_write_wins": true,
+  "atomic_writes": {
+    "temp_then_replace": true,
+    "fsync_before_replace": true,
+    "failure_preserves_current_and_history": true
+  },
+  "concurrency": {
+    "model": "compare-and-swap on state_content_sha256 (atomic os.replace + pre-commit re-read)",
+    "explicit_guards": ["--expected-state-sha256", "--expected-record-hash"],
+    "detection_readiness": "SESSION7_6_CONCURRENT_MODIFICATION"
+  },
+  "before_after_values": {
+    "preserved_verbatim": true,
+    "currency_required_for_monetary": true,
+    "nan_infinity_rejected": true,
+    "no_float": true,
+    "no_bid_or_budget_computed": true,
+    "no_recommendation_issued": true
+  },
+  "determinism": {
+    "canonical_json_sorted_keys_utf8": true,
+    "sha256": true,
+    "decimal_or_exact_strings": true,
+    "exports_byte_identical_across_two_clocks": true
+  },
+  "exports": {
+    "files": [
+      "exports/manual_action_status.tsv",
+      "exports/manual_action_status.json",
+      "exports/manual_action_history.md"
+    ],
+    "disclaimer_present": true,
+    "not_amazon_upload_format": true,
+    "formula_injection_safe": true,
+    "negative_decimal_preserved": true,
+    "vietnamese_unicode_preserved": true,
+    "equal_tsv_columns": true
+  },
+  "readiness_states": [
+    "SESSION7_6_TRACKER_READY",
+    "SESSION7_6_TRACKER_READY_EMPTY",
+    "SESSION7_6_PACKAGE_REQUIRED",
+    "SESSION7_6_PACKAGE_BLOCKED",
+    "SESSION7_6_STATE_REQUIRED",
+    "SESSION7_6_STATE_BLOCKED",
+    "SESSION7_6_HISTORY_BLOCKED",
+    "SESSION7_6_PACKAGE_CHANGED_REVIEW_REQUIRED",
+    "SESSION7_6_CONFIRMATION_REQUIRED",
+    "SESSION7_6_VALIDATION_READY",
+    "SESSION7_6_UPDATE_REJECTED",
+    "SESSION7_6_CONCURRENT_MODIFICATION"
+  ],
+  "zero_exit_readiness": [
+    "SESSION7_6_TRACKER_READY",
+    "SESSION7_6_TRACKER_READY_EMPTY",
+    "SESSION7_6_VALIDATION_READY"
+  ],
+  "cli_subcommands": ["list", "show", "initialize", "update", "history", "validate", "export"],
+  "real_t2_empty_result": {
+    "initialize_readiness": "SESSION7_6_TRACKER_READY_EMPTY",
+    "record_count": 0,
+    "initialize_exit_code": 0,
+    "validate_readiness": "SESSION7_6_VALIDATION_READY",
+    "export_exit_code": 0,
+    "no_fake_records": true,
+    "no_owner_action_inferred": true,
+    "phase7_5_package_immutable": true
+  },
+  "tests": {
+    "phase7_6_focused": {"ran": 100, "result": "OK"},
+    "phase7_5_focused": {"ran": 109, "result": "OK"},
+    "phase7_4_focused": {"ran": 94, "result": "OK"},
+    "phase7_3_focused": {"ran": 117, "result": "OK"},
+    "phase7_2_focused": {"ran": 377, "result": "OK", "skipped": 1},
+    "full_suite": {"ran": 2898, "result": "OK", "skipped": 2},
+    "baseline_full_suite": {"ran": 2798, "result": "OK"},
+    "fresh_worktree_phase7_6": {"ran": 100, "result": "OK", "skipped": 2, "note": "real-T2 tests skip: runs/ is gitignored, absent in a fresh worktree"}
+  },
+  "compile": {"compileall_production_core_tests": "exit 0"},
+  "prohibited_integrations": {
+    "imported_modules": ["__future__", "argparse", "datetime", "hashlib", "json", "os", "re", "sys", "core", "production"],
+    "forbidden_imports_found": "NONE",
+    "dangerous_calls_found": "NONE",
+    "no_requests_httpx_aiohttp_urllib_socket": true,
+    "no_boto3_botocore_amazon_clients": true,
+    "no_selenium_playwright_webdriver": true,
+    "no_subprocess_os_system_eval_exec_pickle_marshal": true
+  },
+  "amazon_counters": {
+    "amazon_connections": 0,
+    "amazon_sp_api_calls": 0,
+    "amazon_ads_api_calls": 0,
+    "amazon_mutations": 0,
+    "amazon_report_downloads": 0,
+    "amazon_bulk_uploads": 0,
+    "amazon_api_payloads": 0,
+    "browser_automation_attempts": 0,
+    "credential_store_count": 0,
+    "cookie_store_count": 0,
+    "token_store_count": 0,
+    "session_store_count": 0,
+    "external_network_calls": 0,
+    "subprocess_executions_from_data": 0
+  },
+  "source_immutability": {
+    "phase7_5_package_tree_before_after": "IDENTICAL",
+    "runs_untracked": true
+  },
+  "known_limitations": [
+    "history<->current commit uses two os.replace calls; a crash in the sub-ms window between them is DETECTED on next load (mismatch -> blocked), never silently accepted; manual reconcile, no data loss.",
+    "concurrency is compare-and-swap (no OS advisory lock) to avoid stale-lock deadlock for a solo operator.",
+    "PACKAGE_MANIFEST_MISMATCH is the weakest drift signal (manifest bytes differ, content/items match); reported for review, not treated as corruption.",
+    "browser/visual confirmation of exports remains an owner step."
+  ],
+  "next_action": "Recommend an independent acceptance audit of branch phase7-6-manual-action-tracker. Do not merge to main, do not create an accepted tag, do not begin Phase 7.7 until the audit passes."
+}

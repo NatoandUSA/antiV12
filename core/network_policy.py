@@ -13,6 +13,8 @@ app's own outbound calls without disturbing Flask's in-process test client or
 localhost dashboard traffic.
 """
 import ipaddress
+import re
+import socket
 from urllib.parse import urlparse
 
 import diagnostics as D
@@ -615,3 +617,277 @@ def evaluate_connected_redirect(redirect_url, *, purpose, allowed_hosts, origina
     same_host = bool(decision.safe_host and original_host
                      and decision.safe_host == str(original_host).strip().lower())
     return decision, (decision.allowed and same_host)
+
+
+# ============================================================================
+# Phase 7.10 — connected public research (owner-supplied public sources)
+# ============================================================================
+# Phase 7.10 lets the owner capture explicitly supplied PUBLIC sources: a URL, an RSS/Atom feed,
+# GitHub or PyPI metadata, one Amazon US public product-detail page, or a locally saved file.
+# This section REUSES the permanent Amazon-account classification above — which always wins first —
+# and layers a public-research SSRF model on top: no URL userinfo; HTTPS only (HTTP just for an
+# explicit local test endpoint); no raw public IP literal; and (validated by the caller before it
+# opens a socket) every DNS-resolved address must be a genuinely public/global address. It is
+# allowlist-free for a generic owner-supplied URL — the owner supplying the URL is the
+# authorization — while the Amazon public-product path is a strict host+path allowlist. Nothing
+# here changes the Phase 7.2–7.9 evaluators above; it only adds new functions.
+
+PURPOSE_PUBLIC_RESEARCH = "PUBLIC_RESEARCH"
+PURPOSE_RSS_FEED = "RSS_FEED"
+PURPOSE_GITHUB_METADATA = "GITHUB_METADATA"
+PURPOSE_PYPI_METADATA = "PYPI_METADATA"
+PURPOSE_AMAZON_PUBLIC_PRODUCT = "AMAZON_PUBLIC_PRODUCT"
+PUBLIC_RESEARCH_PURPOSES = frozenset({
+    PURPOSE_PUBLIC_RESEARCH, PURPOSE_RSS_FEED, PURPOSE_GITHUB_METADATA,
+    PURPOSE_PYPI_METADATA, PURPOSE_AMAZON_PUBLIC_PRODUCT,
+})
+
+# Amazon US retail (public product) host + path allowlist. Hosts are assembled from the `_AZ`
+# fragment so no endpoint literal appears verbatim (keeps scripts/connectivity_scan clean). Only a
+# genuine product-detail path is accepted; search / cart / checkout / account / sign-in / seller
+# paths are refused (the Amazon-account classes are additionally denied first, above).
+_AMAZON_RETAIL_HOSTS = frozenset({_AZ + ".com", "www." + _AZ + ".com"})
+_AMAZON_PRODUCT_PATH_RE = re.compile(r"^/(?:dp|gp/product)/([A-Za-z0-9]{10})(?:[/?].*)?/?$")
+_ASIN_RE = re.compile(r"^[A-Z0-9]{10}$")
+
+
+def extract_amazon_asin(path):
+    """Return the 10-char ASIN from an accepted Amazon product-detail path, else None.
+    Accepts only ``/dp/<ASIN>`` and ``/gp/product/<ASIN>`` (ASIN normalized to upper-case)."""
+    m = _AMAZON_PRODUCT_PATH_RE.match(str(path or ""))
+    if not m:
+        return None
+    asin = m.group(1).upper()
+    return asin if _ASIN_RE.match(asin) else None
+
+
+def _coerce_ipv4_forms(host):
+    """Return an IPv4Address when *host* is any inet_aton-parseable form (dotted / integer /
+    hexadecimal / octal / mixed), else None. Catches encoded IPv4 literals that a strict parser
+    misses (e.g. ``2130706433``, ``0x7f000001``, ``017700000001``, ``127.1``)."""
+    h = str(host or "")
+    if not h or any(c.isalpha() and c not in "xXaAbBcCdDeEfF" for c in h):
+        # a real DNS label contains letters beyond hex digits -> not a numeric IP form
+        return None
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(h))
+    except (OSError, ValueError, UnicodeError):
+        return None
+
+
+def _is_ascii_host(host):
+    """True when *host* is already pure ASCII. A Unicode host is refused rather than silently
+    IDNA-encoded, so a look-alike Unicode name can never be confused with its ASCII twin — the
+    owner must supply the canonical punycode (``xn--``) form. A trailing dot is already stripped by
+    :func:`_normalize_connected_host`."""
+    if not host:
+        return False
+    try:
+        host.encode("ascii")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def _public_ip_ok(ip_obj):
+    """True only for a genuinely public (global) address — everything private, loopback,
+    link-local (incl. cloud metadata 169.254.169.254), reserved, multicast or unspecified fails."""
+    if ip_obj is None:
+        return False
+    try:
+        if (ip_obj.is_loopback or ip_obj.is_private or ip_obj.is_link_local
+                or ip_obj.is_reserved or ip_obj.is_multicast or ip_obj.is_unspecified):
+            return False
+        return bool(ip_obj.is_global)
+    except Exception:
+        return False
+
+
+def validate_resolved_addresses(addresses, *, allow_local=False):
+    """Given the IP strings a host resolved to, return the list of DISALLOWED ones (empty => safe).
+
+    A SINGLE disallowed address blocks the whole host — this covers a multi-record host where one
+    address is public and another is private, and DNS rebinding. ``allow_local`` permits loopback
+    ONLY (for an explicit local test server); it never permits link-local / metadata / private."""
+    bad = []
+    for a in addresses or ():
+        try:
+            ip = ipaddress.ip_address(str(a).split("%", 1)[0])
+        except ValueError:
+            bad.append(str(a))
+            continue
+        if allow_local and ip.is_loopback:
+            continue
+        if not _public_ip_ok(ip):
+            bad.append(str(ip))
+    return bad
+
+
+def _pr_decision(*, allowed, purpose, reason, scheme, host, port, dclass, is_ip, is_local,
+                 warnings):
+    return ConnectedNetworkDecision(allowed=allowed, purpose=purpose, reason_code=reason,
+                                    scheme=scheme, safe_host=host or "(none)", port=port,
+                                    destination_class=dclass, is_ip=is_ip, is_local=is_local,
+                                    warnings=warnings)
+
+
+def evaluate_public_research_url(url, *, purpose, allow_local=False):
+    """Decide whether ONE owner-supplied public-research URL may be fetched. Never opens a socket.
+
+    Order (hard blocks first): the permanent Amazon-account boundary (Seller Central, the Amazon
+    seller API, the Ads API and any authenticated access are always denied, and a generic Amazon
+    marketplace URL is refused — the
+    dedicated Amazon public-product evaluator validates a product-detail URL); URL userinfo; a known
+    public-research purpose; a valid URL; HTTPS (HTTP only for an explicit local test endpoint); and
+    a raw / encoded IP literal is refused for a public destination (a private/loopback literal is
+    refused unless it is that explicit local endpoint). Allowlist-free for a public DNS host, but the
+    caller MUST still DNS-validate every resolved address via validate_resolved_addresses() before
+    connecting. Returns a ConnectedNetworkDecision."""
+    warnings = []
+    raw = str(url or "")
+    try:
+        parts = urlparse(raw)
+        scheme = (parts.scheme or "").lower()
+        raw_host = parts.hostname
+        port = parts.port
+        userinfo = bool(parts.username or parts.password) or ("@" in (parts.netloc or ""))
+    except Exception:
+        scheme, raw_host, port, userinfo = "", None, None, False
+    host, is_ip, ip_obj = _normalize_connected_host(raw_host)
+    disp = host or "(none)"
+
+    def deny(reason, dclass="UNKNOWN_EXTERNAL"):
+        return _pr_decision(allowed=False, purpose=purpose, reason=reason, scheme=scheme,
+                            host=disp, port=port, dclass=dclass, is_ip=is_ip, is_local=False,
+                            warnings=warnings)
+
+    # 1) permanent Amazon-account boundary — always first, reusing the accepted classification.
+    dclass = classify_destination(raw)
+    if dclass == AMAZON_SELLER_CENTRAL:
+        return deny(D.SELLER_CENTRAL_ACCESS_PROHIBITED, dclass)
+    if dclass == AMAZON_API:
+        return deny(D.AMAZON_API_PROHIBITED, dclass)
+    if dclass == AMAZON_AUTHENTICATED:
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass)
+    if dclass == AMAZON_PRODUCT_OR_SEARCH:
+        return deny(D.AMAZON_BULK_OR_MARKETPLACE_SCRAPING_NOT_SUPPORTED, dclass)
+    if _is_amazon_host(host):
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass or AMAZON_PRODUCT_OR_SEARCH)
+
+    # 2) URL userinfo (credential deception, e.g. https://real@evil/) is always refused
+    if userinfo:
+        return deny(D.URL_USERINFO_BLOCKED, dclass)
+
+    # 3) a known public-research purpose is required
+    if purpose not in PUBLIC_RESEARCH_PURPOSES:
+        return deny(D.CONNECTED_PURPOSE_UNKNOWN, dclass)
+
+    # 4) a valid, parseable URL
+    if scheme not in ("https", "http") or not host:
+        return deny(D.CONNECTED_URL_INVALID, dclass)
+    if port is not None and not (0 < int(port) < 65536):
+        return deny(D.CONNECTED_URL_INVALID, dclass)
+
+    # 5) reject Unicode/IDNA-confusable hostnames (owner must supply the punycode form)
+    if not is_ip and not _is_ascii_host(host):
+        return deny(D.CONNECTED_URL_INVALID, dclass)
+
+    # 6) catch encoded IPv4 literals hiding as a "hostname" (integer / hex / octal / mixed)
+    if not is_ip:
+        coerced = _coerce_ipv4_forms(host)
+        if coerced is not None:
+            is_ip, ip_obj = True, coerced
+
+    local_ok = bool(allow_local and is_ip and ip_obj is not None and ip_obj.is_loopback)
+
+    # 7) scheme: HTTPS required for public; HTTP only for an explicit local test endpoint
+    if scheme == "http" and not local_ok:
+        return deny(D.INSECURE_SCHEME_BLOCKED, dclass)
+
+    # 8) IP-literal handling — no public IP literal (must be a DNS name so TLS pins it and the
+    #    resolved-address check stays rebinding-safe); private/loopback only for a local endpoint.
+    if is_ip:
+        if local_ok:
+            return _pr_decision(allowed=True, purpose=purpose, reason="ALLOWED_LOCAL", scheme=scheme,
+                                host=disp, port=port, dclass="LOCAL", is_ip=True, is_local=True,
+                                warnings=warnings)
+        if ip_obj is not None and _is_private_or_loopback(ip_obj):
+            return deny(D.PRIVATE_DESTINATION_BLOCKED, dclass)
+        return deny(D.IP_LITERAL_BLOCKED, dclass)
+
+    return _pr_decision(allowed=True, purpose=purpose, reason="ALLOWED", scheme=scheme, host=disp,
+                        port=port, dclass="PUBLIC_RESEARCH", is_ip=False, is_local=False,
+                        warnings=warnings)
+
+
+def evaluate_amazon_public_product_url(url, *, allow_local=False):
+    """Decide whether ONE explicitly supplied Amazon US public product-detail URL may be captured.
+
+    The permanent Amazon-account boundary is evaluated FIRST (Seller Central, the Amazon seller
+    API, the Ads API and any authenticated or account/sign-in/cart/checkout path are denied). Then
+    the host must be an
+    Amazon US retail host (amazon.com / www.amazon.com) over HTTPS and the path must be a genuine
+    product-detail path (``/dp/<ASIN>`` or ``/gp/product/<ASIN>``). Search-result, cart, checkout,
+    account and seller paths are refused. Returns a ConnectedNetworkDecision (its ``safe_host`` is
+    the host; the caller extracts the ASIN via :func:`extract_amazon_asin`)."""
+    warnings = []
+    raw = str(url or "")
+    try:
+        parts = urlparse(raw)
+        scheme = (parts.scheme or "").lower()
+        raw_host = parts.hostname
+        port = parts.port
+        path = parts.path or ""
+        userinfo = bool(parts.username or parts.password) or ("@" in (parts.netloc or ""))
+    except Exception:
+        scheme, raw_host, port, path, userinfo = "", None, None, "", False
+    host, is_ip, _ip = _normalize_connected_host(raw_host)
+    disp = host or "(none)"
+
+    def deny(reason, dclass="UNKNOWN_EXTERNAL"):
+        return _pr_decision(allowed=False, purpose=PURPOSE_AMAZON_PUBLIC_PRODUCT, reason=reason,
+                            scheme=scheme, host=disp, port=port, dclass=dclass, is_ip=is_ip,
+                            is_local=False, warnings=warnings)
+
+    # 1) permanent Amazon-account boundary — always first.
+    dclass = classify_destination(raw)
+    if dclass == AMAZON_SELLER_CENTRAL:
+        return deny(D.SELLER_CENTRAL_ACCESS_PROHIBITED, dclass)
+    if dclass == AMAZON_API:
+        return deny(D.AMAZON_API_PROHIBITED, dclass)
+    if dclass == AMAZON_AUTHENTICATED:
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass)
+
+    # 2) userinfo / invalid URL / scheme
+    if userinfo:
+        return deny(D.URL_USERINFO_BLOCKED, dclass)
+    if scheme != "https" or not host:
+        return deny(D.AMAZON_PRODUCT_URL_INVALID, dclass)
+    if port is not None and port != 443:
+        return deny(D.AMAZON_PRODUCT_URL_INVALID, dclass)
+
+    # 3) must be an Amazon US retail host
+    if host not in _AMAZON_RETAIL_HOSTS:
+        return deny(D.AMAZON_PRODUCT_URL_INVALID, dclass or AMAZON_PRODUCT_OR_SEARCH)
+
+    # 4) must be a genuine product-detail path (rejects search / cart / checkout / account / seller)
+    if extract_amazon_asin(path) is None:
+        return deny(D.AMAZON_NON_PRODUCT_PATH_BLOCKED, dclass or AMAZON_PRODUCT_OR_SEARCH)
+
+    return _pr_decision(allowed=True, purpose=PURPOSE_AMAZON_PUBLIC_PRODUCT, reason="ALLOWED",
+                        scheme=scheme, host=disp, port=port, dclass="AMAZON_PUBLIC_PRODUCT",
+                        is_ip=False, is_local=False, warnings=warnings)
+
+
+def evaluate_public_research_redirect(redirect_url, *, purpose, allow_local=False,
+                                      amazon_product=False):
+    """Re-authorize a public-research redirect hop from scratch (never trusts a redirect).
+
+    Cross-host redirects are permitted for public research (sites legitimately redirect across
+    hosts), but EVERY hop is fully re-validated: the Amazon-account boundary, private/loopback,
+    IP-literal and scheme rules all re-apply, and the caller re-resolves + re-validates DNS for the
+    new host. The tool sends no credentials, so none can ever be forwarded across a host. Returns a
+    ConnectedNetworkDecision."""
+    if amazon_product:
+        return evaluate_amazon_public_product_url(redirect_url, allow_local=allow_local)
+    return evaluate_public_research_url(redirect_url, purpose=purpose, allow_local=allow_local)

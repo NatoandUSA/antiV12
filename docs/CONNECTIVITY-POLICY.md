@@ -55,3 +55,51 @@ third-party data and official public docs instead.
 This policy supersedes any "offline / never connects to the internet" wording elsewhere in the toolkit.
 The correct phrasing everywhere is: *"never operates inside your Amazon account; free to use the open
 web and public research."*
+
+---
+
+## v2 amendment — Phase 7.9 connected backup, update & recovery (2026-07-22)
+
+Beginning with **Phase 7.9** the application is **no longer globally offline-only**. Online
+connectivity is permitted for legitimate **non–Seller-Central** purposes. The one hard line above is
+unchanged and permanent.
+
+### Newly permitted (non-Amazon) online purposes
+- Encrypted remote backups (Cloudflare R2, S3-compatible object storage — Backblaze B2 S3, AWS S3,
+  MinIO — or a local/LAN filesystem mirror);
+- GitHub update checks and release/tag metadata;
+- PyPI (package-index) dependency information;
+- update / upgrade **staging** (never auto-apply);
+- health checks for configured non-Amazon services;
+- public websites, public APIs, and documentation retrieval (for future public-research features).
+
+### Still permanently prohibited (unchanged, no exceptions)
+Seller Central; Seller Central login; SP-API; Ads API; seller-account OAuth; seller credentials,
+cookies, sessions or access tokens; automatic seller-report downloads; any change to campaigns, bids,
+budgets, targets, keywords or negatives; Amazon bulk-file uploads; browser automation against seller
+pages; **any** automated mutation of an Amazon seller account.
+
+### How Phase 7.9 enforces this
+- **One canonical validator.** Every Phase 7.9 network operation is checked by
+  `core.network_policy.evaluate_connected_operation(...)` **before** a socket is opened. The permanent
+  Amazon-account classification (`core.network_policy.classify_destination`) always runs **first** and
+  cannot be overridden by any allowlist, flag, mode, or config. A Seller-Central / SP-API / Ads-API /
+  seller-OAuth destination fails closed with a typed reason code.
+- **Explicit allowlist.** A public destination must be an exact or dotted-subdomain match of a
+  configured host (the backup provider endpoint, `github.com`/`api.github.com`/`codeload.github.com`,
+  or `pypi.org`). Lookalike hosts (`evil-github.com`, `github.com.evil.example`) and deceptive Amazon
+  suffixes (`sellercentral.amazon.com.evil.example`) are refused.
+- **HTTPS required** for public hosts; a raw public IP literal is never allowlisted; plain HTTP is
+  allowed only for an explicitly enabled **local** endpoint (loopback / private IP, e.g. local MinIO).
+- **TLS verification always on**; no certificate-bypass; redirects are re-validated hop-by-hop and
+  credentials are never forwarded across hosts; redirects and retries are bounded.
+- **No silent mutation.** Update checks and dependency checks are read-only. Update staging runs in an
+  isolated detached git worktree and never touches the primary working tree; nothing is merged,
+  reset, pulled, installed, upgraded, or restored without an explicit command (and, for a live
+  restore, an exact confirmation token plus a successful recovery drill).
+- **Secrets never leave.** The backup passphrase and cloud credentials come from the environment or a
+  secure prompt, are centrally redacted, and are never logged, committed, placed in a snapshot
+  manifest, or included in an exception. Runtime data is uploaded **only** as AES-256-GCM ciphertext.
+
+The permanent Amazon-account boundary and the accepted Phase 7.2–7.8 offline behavior are unchanged;
+Phase 7.9 only adds the connected, non-Amazon backup/update surface described here.

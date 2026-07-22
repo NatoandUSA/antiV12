@@ -23,7 +23,14 @@ dependencies = [
     "openpyxl>=3.0",
     "pillow>=9.0",
     "requests>=2.28",
+    "cryptography>=42.0",   # Phase 7.9 encrypted backups (AES-256-GCM + scrypt); lazily imported
 ]
+
+# Optional extras. boto3 is only needed for the Phase 7.9 S3-compatible remote provider
+# (Cloudflare R2 / Backblaze B2 S3 / AWS S3 / MinIO). Local snapshot/verify/encrypt and the
+# filesystem remote provider work without it. Install with: pip install "amz-fbm-toolkit[s3]".
+[project.optional-dependencies]
+s3 = ["boto3>=1.28"]
 
 [project.scripts]
 amz-fbm = "amz_fbm.cli:main"

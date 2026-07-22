@@ -5,3 +5,7 @@ pyyaml>=6.0
 pillow>=9.0
 requests>=2.28   # used by research/kw_expand.py (optional keyword expansion; outside the alpha critical path)
 flask>=3.0   # local dashboard cockpit (dashboard/app.py)
+cryptography>=42.0   # Phase 7.9 encrypted backups: AES-256-GCM + scrypt (lazy import; local snapshot/verify work without it)
+# boto3 is OPTIONAL — only the Phase 7.9 S3-compatible remote provider (R2/B2/S3/MinIO) needs it.
+# Install it only if you use a cloud remote:  pip install boto3
+# boto3>=1.28

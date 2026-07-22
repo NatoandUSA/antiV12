@@ -12,6 +12,7 @@ This is deliberately NOT a global monkeypatch of Python networking: it guards th
 app's own outbound calls without disturbing Flask's in-process test client or
 localhost dashboard traffic.
 """
+import ipaddress
 from urllib.parse import urlparse
 
 import diagnostics as D
@@ -399,3 +400,218 @@ def evaluate_external_ai_request(operation, *, provider=None, data_classificatio
     return evaluate_network_request(
         operation, destination, method="POST", capability="EXTERNAL_AI_CONNECTION",
         data_classification=data_classification, owner_approved=owner_approved, policy=policy)
+
+
+# ============================================================================
+# Phase 7.9 — connected backup / update network validation (explicit allowlist)
+# ============================================================================
+# Beginning with Phase 7.9 the application is no longer globally offline-only. Encrypted
+# remote backups, GitHub update checks and package-index metadata are permitted — but ONLY
+# to explicitly configured, allowlisted hosts, ONLY over HTTPS (a local dev endpoint may
+# use HTTP), and NEVER to the owner's Amazon seller account. This validator reuses the
+# permanent Amazon-account classification above (which always wins first) and layers a
+# strict allowlist + scheme + host-normalization model on top. It does NOT depend on the
+# legacy connectivity mode, so it never weakens — and is never weakened by — the accepted
+# Phase 7.2–7.8 offline behavior.
+
+PURPOSE_BACKUP_PROVIDER = "BACKUP_PROVIDER"
+PURPOSE_GITHUB_UPDATE = "GITHUB_UPDATE"
+PURPOSE_PACKAGE_INDEX = "PACKAGE_INDEX"
+CONNECTED_PURPOSES = frozenset({PURPOSE_BACKUP_PROVIDER, PURPOSE_GITHUB_UPDATE,
+                                PURPOSE_PACKAGE_INDEX})
+
+# Amazon destination classes are ALWAYS denied here too (defense in depth on top of the
+# allowlist). Reuses the classification/host hints already defined above.
+_CONNECTED_AMAZON_DENY = {
+    AMAZON_SELLER_CENTRAL: D.SELLER_CENTRAL_ACCESS_PROHIBITED,
+    AMAZON_API: D.AMAZON_API_PROHIBITED,
+    AMAZON_AUTHENTICATED: D.AMAZON_ACCOUNT_ACCESS_PROHIBITED,
+    AMAZON_PRODUCT_OR_SEARCH: D.AMAZON_BULK_OR_MARKETPLACE_SCRAPING_NOT_SUPPORTED,
+}
+
+
+class ConnectedNetworkDenied(RuntimeError):
+    """Raised when a Phase 7.9 connected operation is not permitted. Carries a stable
+    ``reason_code`` and never contains a secret, a full URL, a path, or a query string."""
+
+    def __init__(self, decision):
+        self.decision = decision
+        self.reason_code = decision.reason_code
+        self.error_code = decision.reason_code
+        self.safe_host = decision.safe_host
+        super().__init__(f"connected operation denied ({decision.reason_code}) for "
+                         f"{decision.safe_host} [{decision.purpose}]")
+
+
+class ConnectedNetworkDecision:
+    """Result of evaluating one Phase 7.9 connected request. Secret-free + serializable."""
+
+    __slots__ = ("allowed", "purpose", "reason_code", "scheme", "safe_host", "port",
+                 "destination_class", "is_ip", "is_local", "warnings")
+
+    def __init__(self, *, allowed, purpose, reason_code, scheme, safe_host, port,
+                 destination_class, is_ip, is_local, warnings):
+        self.allowed = bool(allowed)
+        self.purpose = purpose
+        self.reason_code = reason_code
+        self.scheme = scheme
+        self.safe_host = safe_host
+        self.port = port
+        self.destination_class = destination_class
+        self.is_ip = is_ip
+        self.is_local = is_local
+        self.warnings = list(warnings)
+
+    # a NetworkRequestDenied-style alias so callers may log a single field name
+    @property
+    def safe_destination_display(self):
+        return self.safe_host
+
+    def to_dict(self):
+        return {"allowed": self.allowed, "purpose": self.purpose,
+                "reason_code": self.reason_code, "scheme": self.scheme,
+                "safe_host": self.safe_host, "port": self.port,
+                "destination_class": self.destination_class, "is_ip": self.is_ip,
+                "is_local": self.is_local, "warnings": list(self.warnings)}
+
+    def __repr__(self):
+        return (f"ConnectedNetworkDecision(allowed={self.allowed}, "
+                f"reason={self.reason_code}, host={self.safe_host})")
+
+
+def _normalize_connected_host(raw_host):
+    """Normalize a URL hostname. Returns (normalized_host, is_ip, ip_obj|None).
+
+    IPv6 is unwrapped from brackets and normalized (compressed) form; IPv4 (including
+    packed/decimal forms) is normalized to dotted-quad; a DNS name is lower-cased with a
+    trailing dot stripped. Returns (None, False, None) for an empty/invalid host."""
+    if not raw_host:
+        return None, False, None
+    h = str(raw_host).strip().lower()
+    if h.startswith("[") and h.endswith("]"):
+        h = h[1:-1]
+    h = h.split("%", 1)[0]            # drop any IPv6 zone id
+    if not h:
+        return None, False, None
+    try:
+        ip = ipaddress.ip_address(h)
+        return str(ip), True, ip
+    except ValueError:
+        pass
+    return h.rstrip("."), False, None
+
+
+def _host_allowlisted(host, allowed_hosts):
+    """True when *host* equals an allowed host or is a dotted subdomain of one. Never a
+    bare substring match (so 'evil-github.com' does not match 'github.com')."""
+    if not host or not allowed_hosts:
+        return False
+    for a in allowed_hosts:
+        a = str(a).strip().lower().rstrip(".")
+        if not a:
+            continue
+        if host == a or host.endswith("." + a):
+            return True
+    return False
+
+
+def _is_private_or_loopback(ip_obj):
+    return bool(ip_obj is not None and (ip_obj.is_loopback or ip_obj.is_private
+                                        or ip_obj.is_link_local))
+
+
+def evaluate_connected_operation(url, *, purpose, allowed_hosts, allow_local=False,
+                                 method="GET"):
+    """Decide whether one Phase 7.9 connected request may proceed. Never opens a socket.
+
+    Order (hard blocks first): the permanent Amazon-account boundary; a valid parseable URL;
+    HTTPS is required for a public host (HTTP only for an explicitly enabled local endpoint);
+    then the host MUST be on the caller's explicit allowlist (a DNS name for a public host,
+    or a loopback/private IP when ``allow_local`` is set). A public request may never target a
+    raw IP literal (DNS-rebinding safe: the allowlist is by name and TLS pins that name)."""
+    warnings = []
+    raw = str(url or "")
+    try:
+        parts = urlparse(raw)
+        scheme = (parts.scheme or "").lower()
+        raw_host = parts.hostname
+        port = parts.port
+    except Exception:
+        scheme, raw_host, port = "", None, None
+    host, is_ip, ip_obj = _normalize_connected_host(raw_host)
+    disp = host or "(none)"
+
+    def deny(reason, dclass="UNKNOWN_EXTERNAL", is_local=False):
+        return ConnectedNetworkDecision(allowed=False, purpose=purpose, reason_code=reason,
+                                        scheme=scheme, safe_host=disp, port=port,
+                                        destination_class=dclass, is_ip=is_ip,
+                                        is_local=is_local, warnings=warnings)
+
+    # 1) permanent Amazon-account boundary — reuse the accepted classification, always first.
+    dclass = classify_destination(raw)
+    if dclass in _CONNECTED_AMAZON_DENY:
+        return deny(_CONNECTED_AMAZON_DENY[dclass], dclass)
+    if _is_amazon_host(host):
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass or AMAZON_PRODUCT_OR_SEARCH)
+
+    # 2) a known purpose is required
+    if purpose not in CONNECTED_PURPOSES:
+        return deny(D.CONNECTED_PURPOSE_UNKNOWN)
+
+    # 3) a valid, parseable URL with a scheme and host
+    if scheme not in ("https", "http") or not host:
+        return deny(D.CONNECTED_URL_INVALID)
+    if port is not None and not (0 < int(port) < 65536):
+        return deny(D.CONNECTED_URL_INVALID)
+
+    local_ok = bool(allow_local and is_ip and _is_private_or_loopback(ip_obj))
+
+    # 4) scheme: HTTPS required for public; HTTP only for an explicitly enabled local endpoint
+    if scheme == "http" and not local_ok:
+        return deny(D.INSECURE_SCHEME_BLOCKED, dclass)
+
+    # 5) allowlist. A public request may never target a raw IP literal.
+    if is_ip:
+        if local_ok:
+            return ConnectedNetworkDecision(
+                allowed=True, purpose=purpose, reason_code="ALLOWED_LOCAL", scheme=scheme,
+                safe_host=disp, port=port, destination_class="LOCAL", is_ip=True,
+                is_local=True, warnings=warnings)
+        if allow_local:
+            # allow_local set but the IP is public — refuse (not a local endpoint)
+            return deny(D.LOCAL_ENDPOINT_NOT_ENABLED, dclass)
+        return deny(D.HOST_NOT_ALLOWLISTED, dclass)
+
+    if not _host_allowlisted(host, allowed_hosts):
+        return deny(D.HOST_NOT_ALLOWLISTED, dclass)
+
+    return ConnectedNetworkDecision(
+        allowed=True, purpose=purpose, reason_code="ALLOWED", scheme=scheme, safe_host=disp,
+        port=port, destination_class="ALLOWLISTED", is_ip=False, is_local=False,
+        warnings=warnings)
+
+
+def assert_connected_operation_allowed(url, *, purpose, allowed_hosts, allow_local=False,
+                                       method="GET"):
+    """Evaluate and raise ConnectedNetworkDenied (before any connection) if not allowed."""
+    decision = evaluate_connected_operation(url, purpose=purpose, allowed_hosts=allowed_hosts,
+                                            allow_local=allow_local, method=method)
+    if not decision.allowed:
+        D.record_event(D.NETWORK_REQUEST_DENIED,
+                       f"denied connected operation ({purpose}): {decision.reason_code}",
+                       {"purpose": str(purpose), "destination": decision.safe_host,
+                        "reason_code": decision.reason_code})
+        raise ConnectedNetworkDenied(decision)
+    return decision
+
+
+def evaluate_connected_redirect(redirect_url, *, purpose, allowed_hosts, original_host,
+                                allow_local=False):
+    """Re-authorize a redirect hop. Returns (decision, forward_credentials). The redirect
+    target is re-validated from scratch; credentials may be forwarded ONLY when the target
+    host is identical to the original request host (never across hosts)."""
+    decision = evaluate_connected_operation(redirect_url, purpose=purpose,
+                                            allowed_hosts=allowed_hosts, allow_local=allow_local)
+    same_host = bool(decision.safe_host and original_host
+                     and decision.safe_host == str(original_host).strip().lower())
+    return decision, (decision.allowed and same_host)

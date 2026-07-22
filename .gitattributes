@@ -1,0 +1,5 @@
+# Pin the connectivity policy doc + its manifest to LF so their SHA-256 integrity record
+# (docs/CONNECTIVITY-POLICY-MANIFEST.json policy_sha256, verified by the Phase 6C/6F tests) is
+# stable in every checkout regardless of core.autocrlf. Everything else keeps the default behavior.
+docs/CONNECTIVITY-POLICY.md text eol=lf
+docs/CONNECTIVITY-POLICY-MANIFEST.json text eol=lf

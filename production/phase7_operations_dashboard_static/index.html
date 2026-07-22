@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Owner Operations Dashboard — Phase 7.8 (Offline)</title>
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to main content</a>
+
+  <div id="offline-banner" role="alert">
+    <strong>OFFLINE OWNER OPERATIONS DASHBOARD</strong>
+    <span>No Amazon connection. No Amazon action has been performed by this dashboard. Read-only over
+      the accepted Phase&nbsp;7.3–7.7 authorities. Observational outcomes never establish causation.</span>
+  </div>
+
+  <header id="statusbar">
+    <div class="status-left">
+      <span class="app-title">Owner Operations Dashboard</span>
+      <span class="app-sub">Phase 7.8 · read-only · localhost</span>
+    </div>
+    <div class="status-right" id="status-metrics" aria-live="polite"></div>
+  </header>
+
+  <div id="shell">
+    <nav id="sidebar" aria-label="Dashboard views">
+      <ul id="nav-list"></ul>
+    </nav>
+
+    <main id="content" tabindex="-1">
+      <noscript>
+        <section class="panel">
+          <h1>JavaScript is required for the interactive views</h1>
+          <p>This dashboard renders tables from local read-only API endpoints. With JavaScript
+             disabled you can still fetch the raw data directly, for example:</p>
+          <ul>
+            <li><a href="/api/overview">/api/overview</a></li>
+            <li><a href="/api/analysis">/api/analysis</a></li>
+            <li><a href="/api/reviews">/api/reviews</a></li>
+            <li><a href="/api/decision-packages">/api/decision-packages</a></li>
+            <li><a href="/api/manual-actions">/api/manual-actions</a></li>
+            <li><a href="/api/outcomes">/api/outcomes</a></li>
+            <li><a href="/api/attention">/api/attention</a></li>
+            <li><a href="/api/lineage">/api/lineage</a></li>
+            <li><a href="/api/export/operations.json">operations_snapshot.json</a></li>
+          </ul>
+          <p>No Amazon connection is made and no Amazon action is performed by this software.</p>
+        </section>
+      </noscript>
+      <section id="view-root" aria-live="polite">
+        <p class="loading">Loading offline operations data…</p>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden aria-live="polite"></div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

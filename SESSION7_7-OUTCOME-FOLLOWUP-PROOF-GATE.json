@@ -1,0 +1,264 @@
+{
+  "session": "7.7",
+  "title": "Offline Outcome Follow-up",
+  "acceptance_status": "IMPLEMENTED_PENDING_INDEPENDENT_AUDIT",
+  "not_accepted": true,
+  "not_merged": true,
+  "no_accepted_tag_created": true,
+  "phase_7_8_not_started": true,
+  "git": {
+    "branch": "phase7-7-offline-outcome-followup",
+    "baseline": "c728f128dd693e923103c5b92a31dd17d2a1ffe0",
+    "checkpoint_tag": "phase7-7-outcome-followup-checkpoint-c728f12",
+    "implementation_commit": "e663b6238453ea548740033349c8e42a572129d4",
+    "proof_commit": "self (this docs commit is the proof commit; its hash is reported in the session summary)",
+    "main_head": "c728f128dd693e923103c5b92a31dd17d2a1ffe0",
+    "prior_accepted_tags": [
+      "phase7-2-cumulative-accepted-d5ad841",
+      "phase7-3-accepted-7005275",
+      "phase7-4-owner-dashboard-accepted-eebecc5",
+      "phase7-5-owner-decision-package-accepted-66d972d",
+      "phase7-6-manual-action-tracker-accepted-f1d11d8"
+    ]
+  },
+  "files_created": [
+    "production/phase7_outcome_followup.py",
+    "tests/test_phase7_7_outcome_followup.py",
+    "SESSION7_7-OUTCOME-FOLLOWUP-IMPLEMENTATION-REPORT.md",
+    "SESSION7_7-OUTCOME-FOLLOWUP-PROOF-GATE.json"
+  ],
+  "files_modified": [],
+  "committed_blob_sha1": {
+    "production/phase7_outcome_followup.py": "672856461f7afad799e1c115852ae228b9287274",
+    "tests/test_phase7_7_outcome_followup.py": "8448294632e38c79d9926798355cb0b477990d64"
+  },
+  "input_authorities": {
+    "phase7_3": {
+      "module": "production/phase7_ads_analysis.py",
+      "read_path": "runs/T2/phase7/7.3/promoted/",
+      "read_files": ["analysis.json", "analysis-manifest.json"],
+      "rows_section": "search_term_analysis",
+      "manifest_schema": "phase7-3-analysis-manifest-v1",
+      "integrity": "output_hashes verified for every declared artifact; deterministic_content_sha256 recorded as source identity",
+      "real_t2_source_rows": 114,
+      "real_t2_analyzed_rows": 114
+    },
+    "phase7_5": {
+      "module": "production/phase7_owner_decision_package.py",
+      "manifest_schema": "phase7-5-package-manifest-v1",
+      "checklist_schema": "phase7-5-manual-action-checklist-v1",
+      "used_for": "package-binding re-verification (PACKAGE_CHANGED) and pinned-source lineage",
+      "real_t2_package_id": "pkg-3cf372628abc6082",
+      "real_t2_package_readiness": "SESSION7_5_PACKAGE_READY_EMPTY"
+    },
+    "phase7_6": {
+      "module": "production/phase7_manual_action_tracker.py",
+      "state_file": "runs/T2/phase7/7.6/action_state/current.json",
+      "history_file": "runs/T2/phase7/7.6/action_state/history.jsonl",
+      "reused_functions": ["load_state", "binding_state", "load_package", "tracker_record_id", "state_paths"],
+      "eligible_status": "MANUALLY_COMPLETED",
+      "reverted_status_handled_separately": "REVERTED_MANUALLY",
+      "real_t2_tracker_readiness": "SESSION7_6_TRACKER_READY_EMPTY",
+      "real_t2_record_count": 0,
+      "action_inferred_without_record": "NEVER"
+    }
+  },
+  "workspace": "runs/T2/phase7/7.7",
+  "workspace_subdirs": ["followups", "manifests", "exports", "validation", "runtime", "logs"],
+  "does_not_write_into": [
+    "runs/T2/phase7/7.3/",
+    "runs/T2/phase7/7.5/",
+    "runs/T2/phase7/7.6/"
+  ],
+  "model": {
+    "description": "symmetric window-slice over ONE cumulative Phase 7.3 promoted analysis (Phase 7.2 ingestion is cumulative, so before + after live in one source)",
+    "before_metrics": "aggregate of matched entity rows whose date is in the before window",
+    "after_metrics": "aggregate of matched entity rows whose date is in the after window",
+    "reference_date_defaulted_to_now": false
+  },
+  "entity_matching": {
+    "match_key": ["campaign", "ad_group", "targeting", "customer_search_term", "match_type"],
+    "validated_on_matched_set_not_in_key": ["currency", "attribution_window", "marketplace"],
+    "never_uses": ["row_number", "sort_order", "temporary_id", "random_uuid", "timestamp", "display_name_only"],
+    "ambiguous_match": "EXCLUDED (no best-guess)"
+  },
+  "window_model": {
+    "explicit_fields": ["reference_date", "before_period_start", "before_period_end", "after_period_start", "after_period_end", "minimum_followup_days", "attribution_window", "currency"],
+    "overlap": "before must end strictly before after (else WINDOW_OVERLAP)",
+    "reversed": "rejected (WINDOW_REVERSED)",
+    "future": "after_period_end later than reference_date rejected (WINDOW_END_AFTER_REFERENCE)",
+    "minimum_followup_days_default": 0
+  },
+  "metric_model": {
+    "decimal_only_no_float": true,
+    "missing_stays_missing_never_zero": true,
+    "zero_denominator": "missing (never fabricated, never infinity)",
+    "ratios_recomputed_from_summed_bases": true,
+    "no_aggregation_across_currency_or_attribution_window": true,
+    "serialization": {"currency_dp": 2, "rate_dp": 6, "counts": "integer"}
+  },
+  "outcome_classifications": {
+    "documented": ["OBSERVED_IMPROVEMENT", "OBSERVED_DECLINE", "OBSERVED_MIXED", "OBSERVED_NO_MATERIAL_CHANGE", "INSUFFICIENT_DATA"],
+    "exclusions": ["ENTITY_NOT_FOUND", "AMBIGUOUS_ENTITY_MATCH", "WINDOW_NOT_READY", "SOURCE_CHANGED", "PACKAGE_CHANGED", "TRACKER_STATE_CHANGED", "CURRENCY_MISMATCH", "ATTRIBUTION_WINDOW_MISMATCH", "FOLLOWUP_CONFLICT", "NOT_ELIGIBLE_STATUS", "REVERTED_SEPARATE", "MISSING_IDENTITY"],
+    "causation_asserted": false,
+    "confidence_labels_data_sufficiency_only": ["SUFFICIENT_OBSERVATION", "LIMITED_OBSERVATION", "INSUFFICIENT_OBSERVATION"],
+    "no_causal_confidence_score": true,
+    "policy": {
+      "default_policy_id": "phase7-7-outcome-policy-v1",
+      "default_source": "NEUTRAL_DEFAULT_OWNER_CONFIGURABLE",
+      "default_material_change_ratio": "0.10",
+      "null_threshold_result": "SESSION7_7_POLICY_REQUIRED (never an invented number)"
+    }
+  },
+  "causation_disclaimer": {
+    "present_in_every_relevant_output": true,
+    "header": "OFFLINE OBSERVATIONAL FOLLOW-UP.",
+    "states_no_amazon_connection": true,
+    "states_no_amazon_action_by_software": true,
+    "states_change_is_observational_not_causal": true,
+    "other_factors": ["seasonality", "pricing", "competition", "inventory", "listing changes", "advertising changes made outside the tracker", "reporting delays", "attribution timing", "marketplace conditions"],
+    "banned_causal_wording_absent": ["this action caused the improvement", "the system optimized the campaign", "amazon confirmed the result", "the software changed seller central"]
+  },
+  "stable_identity": {
+    "followup_record_id": "fu- + SHA256(canonical({tracker_record_id, tracker_record_content_sha256, entity_identity, before_period, after_period, currency, attribution_window, source_identity_sha256}))[:32]",
+    "followup_package_id": "followup- + SHA256(canonical({windows, reference_date, minimum_followup_days, policy, source identity, tracker state hash, sorted follow-up content hashes + ids, sorted exclusion/reverted ids}))[:16]",
+    "canonical_json_and_sha256": true,
+    "no_timestamps_random_ids_or_paths": true
+  },
+  "duplicate_handling": {
+    "canonical_identity": ["entity_identity", "before_period", "after_period", "currency", "attribution_window", "marketplace"],
+    "identical": "deduplicated deterministically; lineage preserved; duplicate_identical_count incremented",
+    "conflicting": "all members excluded (FOLLOWUP_CONFLICT); duplicate_conflict_count incremented; no last-write-wins",
+    "never_collapsed_across": ["currency", "attribution_window", "campaign", "ad_group", "target", "before/after periods"]
+  },
+  "atomic_writes": {
+    "sequence": ["validate sources", "validate tracker chain", "build in-memory model", "render artifacts", "hash artifacts", "write to temp dir", "read-back verify", "fsync files and dir", "os.replace temp dir to final"],
+    "on_failure": "temp dir removed; previous valid output preserved; exact failure reason emitted",
+    "no_partial_successful_package": true
+  },
+  "idempotency": {
+    "content_addressed_ids": true,
+    "identical_rerun": "IDEMPOTENT_REUSE (no rewrite)",
+    "same_id_different_bytes": "SESSION7_7_FOLLOWUP_BLOCKED (never overwritten)"
+  },
+  "determinism": {
+    "byte_identical_authoritative_outputs": true,
+    "verified_two_runs": true,
+    "verified_across_upstream_clock": true,
+    "verified_lf_and_crlf_checkout": true,
+    "uses": ["sorted records", "canonical JSON", "UTF-8", "explicit newline", "Decimal", "SHA-256"]
+  },
+  "tsv_safety": {
+    "neutralized_leading": ["=", "+", "-", "@", "\\t", "\\r", "\\n", "|"],
+    "genuine_negative_decimal_preserved": "-2.50",
+    "vietnamese_unicode_preserved": true,
+    "equal_column_counts": true,
+    "rule_reused_from": "phase7_owner_dashboard._tsv_cell"
+  },
+  "readiness_states": [
+    "SESSION7_7_FOLLOWUP_READY",
+    "SESSION7_7_FOLLOWUP_READY_EMPTY",
+    "SESSION7_7_TRACKER_REQUIRED",
+    "SESSION7_7_TRACKER_BLOCKED",
+    "SESSION7_7_SOURCE_REQUIRED",
+    "SESSION7_7_SOURCE_BLOCKED",
+    "SESSION7_7_WINDOW_NOT_READY",
+    "SESSION7_7_POLICY_REQUIRED",
+    "SESSION7_7_ENTITY_MATCH_REQUIRED",
+    "SESSION7_7_FOLLOWUP_CONFLICT",
+    "SESSION7_7_FOLLOWUP_BLOCKED"
+  ],
+  "exit_code_zero_only_for": ["SESSION7_7_FOLLOWUP_READY", "SESSION7_7_FOLLOWUP_READY_EMPTY"],
+  "cli": {
+    "required": ["--reference-date", "--before-start", "--before-end", "--after-start", "--after-end"],
+    "options": ["--base-dir", "--phase7-3-dir", "--phase7-6-dir", "--phase7-5-dir", "--minimum-followup-days", "--policy-file", "--require-source-lineage-match", "--followup-id", "--validate-only", "--format"],
+    "validate_only_creates_no_package": true,
+    "default_behavior_safe": true
+  },
+  "core_outputs": [
+    "OWNER_READ_FIRST.md",
+    "executive_summary.md",
+    "outcome_details.md",
+    "outcome_status.tsv",
+    "outcome_status.json",
+    "excluded_followups.tsv",
+    "excluded_followups.json",
+    "source_lineage.json",
+    "followup_manifest.json"
+  ],
+  "not_generated": ["amazon bulk-upload files", "Ads API payloads", "SP-API payloads", "browser automation", "mutation scripts", "seller-central execute links"],
+  "tests": {
+    "phase7_7_focused": {"ran": 93, "result": "OK"},
+    "prior_focused_7_2_to_7_6": {"ran": 797, "result": "OK", "skipped": 1},
+    "baseline_full_suite_at_c728f12": {"ran": 2898, "result": "OK", "skipped": 2},
+    "full_suite_with_7_7": {"ran": 2991, "result": "OK", "skipped": 2, "failed": 0},
+    "compileall": "exit 0",
+    "fresh_worktree": {"line_ending": "CRLF", "phase7_7_focused": {"ran": 93, "result": "OK"}, "compileall": "exit 0"}
+  },
+  "synthetic_validations": {
+    "empty": "FOLLOWUP_READY_EMPTY",
+    "populated": "FOLLOWUP_READY with OBSERVED_* classification",
+    "ambiguous_entity": "AMBIGUOUS_ENTITY_MATCH excluded",
+    "currency_mismatch": "CURRENCY_MISMATCH excluded",
+    "attribution_mismatch": "ATTRIBUTION_WINDOW_MISMATCH excluded",
+    "duplicate_conflict": "FOLLOWUP_CONFLICT, both excluded",
+    "insufficient_data": "INSUFFICIENT_DATA documented",
+    "formula_injection": "neutralized; negative decimal + Vietnamese unicode preserved",
+    "determinism": "byte-identical over two runs and across upstream clock",
+    "idempotency": "IDEMPOTENT_REUSE",
+    "validate_only": "no package written"
+  },
+  "real_t2": {
+    "readiness": "SESSION7_7_FOLLOWUP_READY_EMPTY",
+    "exit_code": 0,
+    "followup_package_id": "followup-ae48aea7a80654ca",
+    "eligible_followup_count": 0,
+    "excluded_count": 0,
+    "duplicate_identical_count": 0,
+    "duplicate_conflict_count": 0,
+    "reverted_count": 0,
+    "fake_actions": 0,
+    "inferred_completions": 0,
+    "deterministic_two_runs": true,
+    "inputs_immutable": {
+      "phase7_3_promoted": "UNCHANGED",
+      "phase7_5_packages": "UNCHANGED",
+      "phase7_6_action_state": "UNCHANGED"
+    }
+  },
+  "source_immutability_verified": true,
+  "runs_untracked": true,
+  "prohibited_integrations": {
+    "top_level_imports": ["__future__", "argparse", "core", "datetime", "hashlib", "json", "os", "production", "re", "shutil", "sys"],
+    "banned_imports_present": "NONE",
+    "no_float": true,
+    "no_os_system_eval_exec_import": true,
+    "credential_cookie_token_session_subprocess_strings": "boundary counters only (prove zero)"
+  },
+  "amazon_counters": {
+    "amazon_connections": 0,
+    "amazon_sp_api_calls": 0,
+    "amazon_ads_api_calls": 0,
+    "amazon_mutations": 0,
+    "amazon_report_downloads": 0,
+    "amazon_bulk_uploads": 0,
+    "amazon_api_payloads": 0,
+    "browser_automation_attempts": 0,
+    "credential_store_count": 0,
+    "cookie_store_count": 0,
+    "token_store_count": 0,
+    "session_store_count": 0,
+    "external_network_calls": 0,
+    "subprocess_executions_from_data": 0
+  },
+  "external_network_count": 0,
+  "amazon_action_performed": false,
+  "causation_asserted": false,
+  "known_limitations": [
+    "before and after metrics are drawn from the single cumulative Phase 7.3 promoted analysis, sliced by explicit windows (accepted repository convention)",
+    "SOURCE_CHANGED fires only under --require-source-lineage-match (off by default), since a cumulative source is expected to advance",
+    "attribution window / marketplace are derived from Phase 7.3 fields; absent fields are treated as null",
+    "the observed classification is intentionally conservative and observational, never a causal claim"
+  ],
+  "next_step": "Recommend an independent acceptance audit of commit e663b6238453ea548740033349c8e42a572129d4. Do NOT merge into main, do NOT create an acceptance tag, and do NOT begin Phase 7.8."
+}

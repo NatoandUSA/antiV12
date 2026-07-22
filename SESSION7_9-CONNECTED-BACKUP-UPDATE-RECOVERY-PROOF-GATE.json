@@ -1,0 +1,266 @@
+{
+  "session": "7.9",
+  "title": "Connected Backup, Update & Recovery Manager",
+  "acceptance_status": "IMPLEMENTED_PENDING_INDEPENDENT_AUDIT",
+  "not_accepted": true,
+  "not_merged": true,
+  "no_accepted_tag_created": true,
+  "phase_7_10_not_started": true,
+  "git": {
+    "branch": "phase7-9-connected-backup-update-recovery",
+    "baseline": "0ef64106c2012b95de4bf2b6fb55dd5685dcee6b",
+    "checkpoint_tag": "phase7-9-connected-backup-update-recovery-checkpoint-0ef6410",
+    "implementation_commit": "8cf1449ae322c09b1f604d161f5ebde869c2d296",
+    "proof_commit": "self (this docs commit is the proof commit; its hash is reported in the session summary)",
+    "main_head": "0ef64106c2012b95de4bf2b6fb55dd5685dcee6b",
+    "prior_accepted_tags": [
+      "phase7-2-cumulative-accepted-d5ad841",
+      "phase7-3-accepted-7005275",
+      "phase7-4-owner-dashboard-accepted-eebecc5",
+      "phase7-5-owner-decision-package-accepted-66d972d",
+      "phase7-6-manual-action-tracker-accepted-f1d11d8",
+      "phase7-7-outcome-followup-accepted-581ae49",
+      "phase7-8-owner-operations-dashboard-accepted-80333ec"
+    ]
+  },
+  "files_created": [
+    "production/phase7_connected_backup_recovery.py",
+    "tests/test_phase7_9_connected_backup_recovery.py",
+    ".gitattributes",
+    "SESSION7_9-CONNECTED-BACKUP-UPDATE-RECOVERY-IMPLEMENTATION-REPORT.md",
+    "SESSION7_9-CONNECTED-BACKUP-UPDATE-RECOVERY-PROOF-GATE.json"
+  ],
+  "files_modified": [
+    "core/network_policy.py",
+    "core/diagnostics.py",
+    "docs/CONNECTIVITY-POLICY.md",
+    "docs/CONNECTIVITY-POLICY-MANIFEST.json",
+    "requirements.txt",
+    "pyproject.toml"
+  ],
+  "committed_blob_sha1": {
+    "production/phase7_connected_backup_recovery.py": "5ff7cac079ff29f2f0c8ed69c4acbc6845e85db1",
+    "tests/test_phase7_9_connected_backup_recovery.py": "4e9b0c44baadb3e796923194eaa0e00fcb742601",
+    "core/network_policy.py": "5c11faa44eefc927be22e6e8148d7e9d1de2a377",
+    "core/diagnostics.py": "6eca4cef19fa0730b6ef8c0748650a019179230f",
+    "docs/CONNECTIVITY-POLICY.md": "f3592049045b1ceb4e648c2a1490fd71ae8677b2",
+    "docs/CONNECTIVITY-POLICY-MANIFEST.json": "e64db93ee5e530a07a18701938ac0fec6711fbee",
+    "requirements.txt": "993f4d6290c1517a87f540d088a56b0f3b76602b",
+    "pyproject.toml": "18df7bfaea79539e0a8d71be7fe5ad46f2e1639b",
+    ".gitattributes": "a59602adfc209afa66fd8d1407a362b5aa44374c"
+  },
+  "role": "the one Phase 7.9 authority: deterministic integrity snapshots, encrypted backups (AES-256-GCM + scrypt), remote upload/verify/download (filesystem mirror or S3-compatible R2/B2/S3/MinIO via lazy/optional boto3), read-only restore plan, isolated recovery drill, explicit-confirmation restore, GitHub update-check, isolated update-stage, and read-only dependency-check",
+  "new_connectivity_policy": {
+    "globally_offline_only": false,
+    "permitted_non_amazon_purposes": [
+      "encrypted remote backups (Cloudflare R2 / S3-compatible / filesystem mirror)",
+      "GitHub update checks and release/tag metadata",
+      "PyPI package-index dependency metadata",
+      "update/upgrade staging (never auto-apply)",
+      "public web/API/documentation retrieval",
+      "health checks for configured non-Amazon services"
+    ],
+    "canonical_document": "docs/CONNECTIVITY-POLICY.md (v2 amendment; single canonical doc, updated in place)",
+    "no_competing_policy_document_created": true,
+    "canonical_network_policy_module_reused": "core/network_policy.py (suitable accepted module existed; extended additively, not duplicated)"
+  },
+  "permanent_seller_central_boundary": {
+    "enforced_first_before_allowlist": true,
+    "prohibited": [
+      "Seller Central", "Seller Central login", "SP-API", "Ads API", "seller-account OAuth",
+      "seller credentials/cookies/sessions/tokens", "automatic report downloads",
+      "campaign/bid/budget/target/keyword/negative changes", "bulk-file uploads",
+      "browser automation against seller pages", "any seller-account mutation"
+    ]
+  },
+  "dependencies_added": {
+    "cryptography": {"role": "AES-256-GCM + scrypt encryption", "required": true, "lazy_import": true, "installed_version": "49.0.0", "local_ops_work_without_it": true},
+    "boto3": {"role": "S3-compatible remote provider (R2/B2/S3/MinIO)", "required": false, "lazy_import": true, "installed": false, "extra": "s3", "missing_dependency_is_typed_and_non_blocking": true},
+    "parallel_dependency_system_introduced": false
+  },
+  "snapshot": {
+    "schema": "phase7-9-snapshot-manifest-v1",
+    "snapshot_id": "snap-fce4cd41ed14913604a7b99d",
+    "file_count": 32,
+    "total_bytes": 613639,
+    "source_tree_sha256": "fce4cd41ed14913604a7b99da7661decf1f238dd1e9c4b84c5b45f6884c845f0",
+    "identity_independent_of": ["runtime_timestamp", "file_mtime", "enumeration_order", "process_id", "random_uuid", "temp_path", "path_separator"],
+    "canonical_json": "sort_keys + ensure_ascii=false + indent=2 + allow_nan=false (no NaN/Infinity/float in manifest)",
+    "idempotent_reuse": true,
+    "source_scope": ["7.3", "7.4", "7.5", "7.6", "7.7", "7.8"]
+  },
+  "archive_format": {
+    "type": "deterministic uncompressed GNU tar",
+    "sorted": true, "normalized_relative_posix_paths": true, "no_absolute_paths": true,
+    "no_traversal": true, "no_symlink_escape": true, "no_device_files": true,
+    "fixed_metadata": "mtime=0, mode=0644, uid/gid=0, no owner names",
+    "read_back_verified": true, "exact_source_hash_verified": true,
+    "plaintext_not_retained_after_encryption_unless_keep_plaintext": true
+  },
+  "encryption": {
+    "algorithm": "AES-256-GCM",
+    "kdf": "scrypt (n=32768, r=8, p=1, length=32)",
+    "fresh_salt_and_nonce_per_encryption": true,
+    "aad_binds_snapshot_and_tree_and_archive_hash": true,
+    "metadata_schema": "phase7-9-encryption-metadata-v1",
+    "key_or_passphrase_never_stored": true,
+    "existing_valid_encrypted_artifact_reused": true,
+    "real_t2_ciphertext_bytes": 645136
+  },
+  "secret_handling": {
+    "passphrase_source": "PHASE7_9_BACKUP_PASSPHRASE env or secure prompt (never a normal CLI argument)",
+    "centralized_redaction": true,
+    "no_secret_in": ["logs", "manifest", "snapshot", "exceptions", "stdout", "stderr", "command_display"],
+    "env_credentials_not_persisted": true
+  },
+  "remote_providers": {
+    "filesystem_mirror": true,
+    "s3_compatible": "Cloudflare R2 / Backblaze B2 S3 / AWS S3 / MinIO / configured endpoint",
+    "content_addressed_object_keys": true,
+    "no_silent_overwrite_of_different_object": true,
+    "s3_boto3_lazy_import": true,
+    "s3_missing_dependency_typed_error": "REMOTE_DEPENDENCY_MISSING",
+    "s3_config_from_env_only_never_persisted": true,
+    "s3_endpoint_validated_by_network_policy": true,
+    "s3_describe_redacts_access_and_secret_keys": true,
+    "no_plaintext_uploaded": true
+  },
+  "network_policy_results": {
+    "validator": "core.network_policy.evaluate_connected_operation (checked before any socket)",
+    "seller_central_hostname_blocked": "SELLER_CENTRAL_ACCESS_PROHIBITED",
+    "seller_central_subdomain_blocked": "SELLER_CENTRAL_ACCESS_PROHIBITED",
+    "deceptive_seller_central_suffix_blocked": true,
+    "sp_api_blocked": "AMAZON_API_PROHIBITED",
+    "ads_api_blocked": "AMAZON_API_PROHIBITED",
+    "amazon_seller_oauth_blocked": "AMAZON_ACCOUNT_ACCESS_PROHIBITED",
+    "redirect_into_blocked_host_blocked": true,
+    "configured_github_allowed": true,
+    "configured_r2_s3_allowed": true,
+    "unrelated_unconfigured_host_blocked": "HOST_NOT_ALLOWLISTED",
+    "lookalike_host_not_substring_matched": true,
+    "https_required": "INSECURE_SCHEME_BLOCKED",
+    "tls_verification_enabled": "CERT_REQUIRED + check_hostname=True; no CERT_NONE",
+    "credentials_not_forwarded_across_redirects": true,
+    "ipv4_normalization": true,
+    "ipv6_normalization": true,
+    "dns_rebinding_safe_public_ip_refused": true,
+    "no_unbounded_redirects": true,
+    "no_unbounded_retries": true
+  },
+  "restore_model": {
+    "restore_plan_changes_nothing": true,
+    "recovery_drill_isolated": true,
+    "recovery_drill_verifies_every_file": true,
+    "recovery_drill_validates_7_6_history_chain_and_7_5_7_7_integrity_via_accepted_authorities": true,
+    "recovery_drill_detects_corruption": true,
+    "restore_requires_exact_confirmation_token": "RESTORE:<snapshot-id>",
+    "restore_requires_successful_recovery_drill": true,
+    "restore_creates_pre_restore_backup": true,
+    "restore_atomic_rollback_safe": true,
+    "restore_never_touches_tracked_code_or_git": true,
+    "restore_only_approved_runtime_roots": ["7.3", "7.4", "7.5", "7.6", "7.7", "7.8"]
+  },
+  "update_check_behavior": "read-only; blocks an Amazon-account target (SESSION7_9_SELLER_CENTRAL_POLICY_BLOCKED); git ls-remote metadata; compares local HEAD to upstream branch; never merges/resets/rebases/checks-out/installs/pushes/rewrites-tags/changes-branches",
+  "update_stage_behavior": "requires clean tree; pre-update snapshot; fetch configured remote only; isolated detached worktree; compileall + focused tests (+ optional full suite); staging report; primary tree unchanged; worktree removed; never auto-applies/merges/installs",
+  "dependency_check_behavior": "read-only PyPI metadata; states COMPATIBLE_UPDATE_AVAILABLE / MAJOR_UPDATE_REVIEW_REQUIRED / CURRENT / UNKNOWN / NETWORK_UNAVAILABLE / POLICY_BLOCKED; never installs; newer is not assumed safe",
+  "subprocess_restrictions": {
+    "shell_true_used": false,
+    "static_executable_allowlist": ["git", "current Python interpreter"],
+    "fixed_argument_templates": true,
+    "no_command_text_from_report_data": true,
+    "bounded_timeout": true,
+    "captured_and_redacted_output": true
+  },
+  "atomicity": {
+    "temp_sibling_fsync_atomic_replace": true,
+    "failed_write_preserves_last_valid": true,
+    "no_temp_left_behind": true
+  },
+  "idempotency": {
+    "identical_source_same_snapshot_id": true,
+    "repeated_snapshot_reports_IDEMPOTENT_REUSE": true,
+    "existing_valid_encrypted_artifact_reused": true
+  },
+  "tests": {
+    "runner": "python -m unittest",
+    "baseline_full_suite_at_0ef6410": {"ran": 3143, "result": "OK", "skipped": 2, "failed": 0, "errors": 0, "exit": 0},
+    "phase_7_9_focused": {"ran": 139, "result": "OK", "passed": 138, "skipped": 1, "failed": 0, "errors": 0, "exit": 0, "skip_reason": "symlink test needs OS symlink privilege"},
+    "prior_focused": {
+      "7.2": {"ran": 377, "result": "OK", "skipped": 1, "exit": 0},
+      "7.3": {"ran": 117, "result": "OK", "exit": 0},
+      "7.4": {"ran": 94, "result": "OK", "exit": 0},
+      "7.5": {"ran": 109, "result": "OK", "exit": 0},
+      "7.6": {"ran": 100, "result": "OK", "exit": 0},
+      "7.7": {"ran": 93, "result": "OK", "exit": 0},
+      "7.8": {"ran": 152, "result": "OK", "exit": 0}
+    },
+    "full_suite_with_7_9": {"ran": 3282, "result": "OK", "skipped": 3, "failed": 0, "errors": 0, "exit": 0},
+    "compileall": {"target": "core production", "exit": 0},
+    "true_exit_codes_captured": true,
+    "no_real_internet_calls": true,
+    "synthetic_remote_and_local_transports_only": true
+  },
+  "real_t2_validation": {
+    "source_root": "runs/T2/phase7 (7.3-7.8; local only, never committed)",
+    "snapshot_id": "snap-fce4cd41ed14913604a7b99d",
+    "file_count": 32,
+    "total_bytes": 613639,
+    "source_tree_sha256": "fce4cd41ed14913604a7b99da7661decf1f238dd1e9c4b84c5b45f6884c845f0",
+    "cli_exit_snapshot": 0, "cli_exit_verify": 0, "cli_exit_encrypt": 0, "cli_exit_decrypt_verify": 0, "cli_exit_recovery_drill": 0,
+    "verify_ok": true,
+    "encrypt_algorithm": "AES-256-GCM",
+    "ciphertext_bytes": 645136,
+    "decrypt_verify_ok": true,
+    "recovery_drill_readiness": "SESSION7_9_RECOVERY_DRILL_READY",
+    "source_tree_before_digest": "813b42b282ab72652a25f2a41be345a40d8336dbec2dba1371301681a683e977",
+    "source_tree_after_digest": "813b42b282ab72652a25f2a41be345a40d8336dbec2dba1371301681a683e977",
+    "before_after_byte_identical": true,
+    "runs_git_ignored": true,
+    "no_secret_file_included": true
+  },
+  "source_immutability": {
+    "phase_7_3_through_7_8_byte_identical_before_and_after_all_operations": true,
+    "backup_metadata_never_written_into_source_dirs": true,
+    "workspace": "runs/T2/phase7/7.9 (git-ignored)"
+  },
+  "runs_tracking": {
+    "runs_tracked_by_git": [],
+    "runs_remains_untracked": true
+  },
+  "seller_central_prohibited_scan": {
+    "scanner": "scripts/connectivity_scan.py",
+    "no_active_amazon_account_path": true,
+    "active_amazon_path_findings": 0,
+    "prohibited_findings_from_new_module": 0,
+    "source_names_amazon_endpoints_only_as_fragment_assembled_denylist": true
+  },
+  "seller_central_counters": {
+    "seller_central_connections": 0,
+    "amazon_sp_api_calls": 0,
+    "amazon_ads_api_calls": 0,
+    "amazon_seller_auth_calls": 0,
+    "amazon_seller_mutations": 0,
+    "amazon_report_downloads": 0,
+    "amazon_bulk_uploads": 0,
+    "browser_automation_actions": 0,
+    "amazon_credential_store_count": 0
+  },
+  "secret_redaction_result": "PASS (redaction verified in logs, manifest, stdout/stderr; env credentials not persisted; passphrase never serialized; S3 access/secret keys redacted in describe())",
+  "fresh_worktree_result": {
+    "commit": "8cf1449ae322c09b1f604d161f5ebde869c2d296",
+    "connectivity_doc_checkout_line_ending": "LF (pinned via .gitattributes eol=lf)",
+    "connectivity_doc_sha256": "da5f950ff403d27552dce9968cdb45b10604e29043f61eec9aef1d9c01600fb9",
+    "phase6c_connectivity_manifest_test": "PASS",
+    "phase6f_connectivity_manifest_test": "SKIP (needs runs/ Phase 6E workspace absent in a fresh checkout)",
+    "compileall_exit": 0,
+    "phase_7_9_focused": {"ran": 139, "skipped": 3, "failed": 0, "note": "symlink + 2 RealT2 skip when runs/ is absent"},
+    "clean": true
+  },
+  "known_limitations": [
+    "boto3 not installed: live S3/R2 upload exercised only via the filesystem provider + lazy-import/missing-dependency/config-validation/redaction paths; a real cloud round-trip is an owner step (pip install boto3 + PHASE7_9_S3_*)",
+    "no real internet calls in tests (update-check/stage use local git repos; dependency-check uses injected fake transports)",
+    "update-stage full-suite run is opt-in (--full-suite); default stages compileall + focused tests",
+    "one focused test (test_symlink_rejection) skips without OS symlink privilege"
+  ],
+  "recommended_next_action": "Independent acceptance audit of branch phase7-9-connected-backup-update-recovery. Do NOT merge into main, do NOT create an acceptance tag, and do NOT begin Phase 7.10 until the audit completes."
+}

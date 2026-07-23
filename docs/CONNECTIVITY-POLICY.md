@@ -103,3 +103,52 @@ pages; **any** automated mutation of an Amazon seller account.
 
 The permanent Amazon-account boundary and the accepted Phase 7.2–7.8 offline behavior are unchanged;
 Phase 7.9 only adds the connected, non-Amazon backup/update surface described here.
+
+---
+
+## v3 amendment — Phase 7.12 owner-approved notification delivery (2026-07-23)
+
+Phase 7.12 adds one new **outbound** purpose: delivering the owner's **own** LOCAL alerts (the
+accepted Phase 7.11 owner alerts) to a destination the owner has explicitly approved. The one hard
+line above is unchanged and permanent. This is the first surface that *pushes* data outward, so it is
+gated more tightly than any inbound research surface.
+
+### Newly permitted (non-Amazon) outbound purpose
+- **Owner-approved notification delivery** to an owner-controlled HTTPS webhook — a Slack/Discord/
+  Microsoft-Teams-compatible incoming webhook, an automation endpoint (Make, Zapier, n8n), or the
+  owner's own HTTPS endpoint. The payload contains only the owner's own alert summaries.
+
+### Still permanently prohibited (unchanged, no exceptions)
+Everything in the one hard line above. In addition, notification delivery must **never** send a
+customer message, review request, marketing campaign, buyer communication, Amazon message, purchase/
+checkout request, or Seller-Central notification. It is only for the owner's own approved destinations.
+
+### How Phase 7.12 enforces this
+- **One canonical endpoint validator.** Every webhook endpoint is checked by
+  `core.network_policy.evaluate_notification_delivery_url(...)` **before** a socket is opened. The
+  permanent Amazon-account classification (`core.network_policy.classify_destination`) always runs
+  **first** and cannot be overridden by any allowlist, flag, mode, or config: a Seller-Central /
+  SP-API / Ads-API / seller-OAuth / Amazon-marketplace destination fails closed with a typed reason
+  code, evaluated **before** any notification-endpoint allowlist.
+- **HTTPS only + explicit allowlist.** No plain-HTTP public endpoint, no URL userinfo/password, no
+  raw or encoded IP literal, no private/loopback/link-local/metadata destination; every DNS-resolved
+  address is validated (a single unsafe address blocks the host, defeating DNS rebinding); and the
+  host must be an exact or dotted-subdomain match of the owner-approved allowlist.
+- **Explicit owner approval + a hard live gate.** Live delivery requires an append-only, hash-chained
+  owner **approval bound to the exact route content hash**, the environment permission
+  `PHASE7_12_ALLOW_LIVE_DELIVERY=1`, an approved endpoint host, and an exact per-batch confirmation
+  token. Local preview and the local outbox work without any of this and never touch the network.
+- **One bounded transport, POST only.** Only HTTP `POST` is ever performed, with a fixed header set;
+  arbitrary methods/headers are impossible. TLS verification is always on; redirects are never
+  followed (any 3xx is recorded blocked); environment proxies, cookies and credential persistence are
+  disabled; request and response bodies are bounded.
+- **Secrets never leave the environment.** The webhook URL, bearer token and HMAC secret come from
+  named environment variables (the route stores only the NAMES), are centrally redacted, and are
+  never logged, stored in a route/approval/batch/delivery record, or placed in a report.
+- **No new authority.** Phase 7.12 reuses the accepted Phase 7.11 module as the sole authority for
+  alert identity, status, history and integrity; it never acknowledges, dismisses, reopens or mutates
+  a Phase 7.11 alert, and it registers no OS scheduler (the scheduler plan is read-only; the owner
+  registers it).
+
+The permanent Amazon-account boundary and the accepted Phase 7.2–7.11 behavior are unchanged; Phase
+7.12 only adds the owner-approved outbound notification-delivery surface described here.

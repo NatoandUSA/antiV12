@@ -268,9 +268,18 @@ is a constant zero in captures, manifests and exports.
   honest `ROBOT_CHALLENGE_OR_BLOCKED` / `NETWORK_UNAVAILABLE` state; this is expected and not a
   defect.
 - The real transport validates DNS immediately before connecting but does not pin the resolved
-  IP for the actual socket (residual TOCTOU window is not practically exploitable for a local
-  single-operator tool; all resolved addresses are validated and any private address blocks the
-  host). "Connected peer validated where practical."
+  IP for the actual socket, so a DNS-rebinding time-of-check/time-of-use window exists in
+  principle (urllib re-resolves the host when it opens the socket). It is neutralized by
+  transport-layer peer-identity validation rather than IP pinning, **not** merely by the tool
+  being local: every public host is HTTPS-only (raw and encoded IP literals are refused, so every
+  rebindable request goes over TLS), and TLS certificate + hostname verification is hardcoded on
+  with no disable path anywhere in the module. A host that rebinds to a private/loopback address
+  after validation therefore cannot present a CA-trusted certificate matching the requested public
+  hostname; the handshake fails and no response body is ever trusted or captured (independently
+  reproduced — the socket reaches a rebound loopback endpoint yet the capture is
+  `NETWORK_UNAVAILABLE` with an empty body). Defense in depth: all resolved addresses are
+  validated pre-connect and a single private / loopback / link-local / reserved / multicast /
+  metadata address blocks the whole host.
 - Windows symlink-escape test skips without Developer Mode / admin (honestly reported).
 - HTML price/visible-text extraction targets JSON-LD `Product` + explicit `#productTitle` /
   `.a-offscreen`; arbitrary page layouts may yield fewer fields (recorded as absent, never zero).

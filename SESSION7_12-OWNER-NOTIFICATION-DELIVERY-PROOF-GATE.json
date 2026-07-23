@@ -1,0 +1,218 @@
+{
+  "session": "7.12",
+  "title": "Connected Owner Notification Delivery, Digest Queue & Audit Trail",
+  "branch": "phase7-12-owner-notification-delivery",
+  "baseline_commit": "e293f4e807c68b7da9f8f276d8bae9024626ec48",
+  "origin_main": "e293f4e807c68b7da9f8f276d8bae9024626ec48",
+  "checkpoint_tag": "phase7-12-owner-notification-delivery-checkpoint-e293f4e",
+  "implementation_commit": "a750306936f6c0775ef3c830ebbf8d6669ef5750",
+  "proof_commit": "(the docs commit that adds this file — see git log on branch phase7-12-owner-notification-delivery)",
+  "acceptance_tag": "NONE (implementation only)",
+  "accepted_prior_tags_verified": [
+    "phase7-2-cumulative-accepted-d5ad841",
+    "phase7-3-accepted-7005275",
+    "phase7-4-owner-dashboard-accepted-eebecc5",
+    "phase7-5-owner-decision-package-accepted-66d972d",
+    "phase7-6-manual-action-tracker-accepted-f1d11d8",
+    "phase7-7-outcome-followup-accepted-581ae49",
+    "phase7-8-owner-operations-dashboard-accepted-80333ec",
+    "phase7-9-connected-backup-update-recovery-accepted-383569e",
+    "phase7-10-connected-public-research-accepted-9888e69",
+    "phase7-11-connected-research-watchlists-accepted-c024367"
+  ],
+  "files_created": [
+    "production/phase7_owner_notification_delivery.py",
+    "tests/test_phase7_12_owner_notification_delivery.py",
+    "docs/PHASE7_12-OWNER-NOTIFICATION-DELIVERY-POLICY.md",
+    "SESSION7_12-OWNER-NOTIFICATION-DELIVERY-IMPLEMENTATION-REPORT.md",
+    "SESSION7_12-OWNER-NOTIFICATION-DELIVERY-PROOF-GATE.json"
+  ],
+  "files_modified": {
+    "core/network_policy.py": "purely additive (0 deletions, 119 insertions): PURPOSE_OWNER_NOTIFICATION + evaluate_notification_delivery_url + assert_notification_delivery_allowed",
+    "docs/CONNECTIVITY-POLICY.md": "purely additive v3 amendment (49 insertions, 0 deletions; LF preserved)",
+    "docs/CONNECTIVITY-POLICY-MANIFEST.json": "bumped to connectivity-policy-v3; policy_sha256 rolled; prior v2 hash preserved as history"
+  },
+  "connectivity_policy": {
+    "document_version": "connectivity-policy-v3",
+    "policy_sha256": "16695ae2afa71d27096b69f7b79caf0490c62749d2a729774486adaebf3ef9d6",
+    "policy_sha256_v2_history": "da5f950ff403d27552dce9968cdb45b10604e29043f61eec9aef1d9c01600fb9",
+    "doc_hash_matches_manifest": true,
+    "phase6c_phase6f_doc_hash_tests": "PASS"
+  },
+  "dependencies_added": "none (stdlib only)",
+  "phase7_11_authority_reuse": "sole authority for watchlist/alert identity, status, history, severity, lineage, integrity, constant-zero counters; read-only; no alert state modified",
+  "route_schema_result": {
+    "schema": "phase7-12-route-v1",
+    "sample_route_id": "route-818de108682f2ae63994c2b3",
+    "route_content_hash": "fbf442f98d959479d2292e9d7e08320975da0783ec8709ee9301f0ca91d39b08",
+    "route_id_reordered_equal": true,
+    "amazon_allowlist_host_rejected": "ENDPOINT_ALLOWLIST_REJECTED / SESSION7_12_SELLER_CENTRAL_POLICY_BLOCKED"
+  },
+  "approval_chain_hash": "d2bca473bc3d0b713481f3988aa50b51f443c761c65ea52d5d9001caecdd91da",
+  "sample_batch_ids": {
+    "manual": "batch-386e8f93566b6bf89ea77021",
+    "immediate": "batch-a85322c1031c1fc69cdcdfc4",
+    "hourly": "batch-35f137381a1863e4569a2b81",
+    "daily": "batch-8a1caf1e6deab7a9d7c8b44c",
+    "weekly": "batch-43dc160d67e8eba1e03017f6"
+  },
+  "batch_id_deterministic": true,
+  "sample_delivery_ids": {
+    "sent": "dlv-66a6198d259d0d085a4f49b7",
+    "unknown": "dlv-5ebca0270903a736e3fa7008"
+  },
+  "delivery_id_excludes_secret_url": true,
+  "webhook_matrix_results": {
+    "200": "SENT",
+    "302": "BLOCKED (DELIVERY_BLOCKED_REDIRECT, never followed)",
+    "400": "FAILED (no auto-retry)",
+    "401": "FAILED (no auto-retry)",
+    "403": "FAILED (no auto-retry)",
+    "404": "FAILED (no auto-retry)",
+    "408": "FAILED (retryable)",
+    "429": "FAILED (retryable)",
+    "500": "FAILED (retryable)",
+    "503": "FAILED (retryable)",
+    "pre_send_connection_failure": "PROVIDER_UNAVAILABLE (retryable)",
+    "post_send_timeout": "UNKNOWN (never auto-retried; owner confirmation required)"
+  },
+  "redirect_block_result": {
+    "delivery_state": "BLOCKED",
+    "reason": "DELIVERY_BLOCKED_REDIRECT",
+    "followed": false
+  },
+  "seller_central_endpoint_block_result": {
+    "allowlist_reject": {"code": "ENDPOINT_ALLOWLIST_REJECTED", "readiness": "SESSION7_12_SELLER_CENTRAL_POLICY_BLOCKED"},
+    "sp_api_endpoint": {"allowed": false, "reason_code": "AMAZON_API_PROHIBITED"},
+    "dns_rebinding_to_private": "SESSION7_12_DELIVERY_BLOCKED"
+  },
+  "retry_results": {
+    "503_then_200": {"first_state": "FAILED", "retryable": true, "retry_state": "SENT"},
+    "terminal_4xx_no_retry": true,
+    "bounds": "max_attempts<=5, initial_delay>=1s, maximum_delay<=3600s"
+  },
+  "unknown_delivery_result": {
+    "state": "UNKNOWN",
+    "readiness": "SESSION7_12_DELIVERY_UNKNOWN",
+    "auto_retried": false,
+    "owner_confirmation_token": "RETRY-UNKNOWN:<delivery-id>"
+  },
+  "rate_limit_results": {
+    "readiness": "SESSION7_12_RATE_LIMITED",
+    "reason": "ROUTE_HOURLY_LIMIT",
+    "batch_preserved": true,
+    "alerts_discarded": false
+  },
+  "digest_hashes": {
+    "immediate": "immediate",
+    "hourly": "hourly:2026-07-23T10",
+    "daily": "daily:2026-07-23",
+    "weekly": "weekly:2026-W30",
+    "manual": "manual"
+  },
+  "quiet_hours_results": {
+    "same_day": "PASS",
+    "overnight": "PASS",
+    "exact_start_inclusive": "PASS",
+    "exact_end_exclusive": "PASS",
+    "dst_forward": "PASS",
+    "dst_backward": "PASS",
+    "explicit_critical_bypass": "PASS",
+    "no_implicit_bypass": "PASS",
+    "send_time_block": {"readiness": "SESSION7_12_QUIET_HOURS", "state": "QUIET_HOURS"}
+  },
+  "delivery_history_hash": "01962d03a2fa3fe04dee92148a5e50ed21dfa6f23438fac9a69577adbd072a54",
+  "delivery_history_corruption": "tamper/delete/reorder/truncate all detected; corrupt chain blocks further updates (SESSION7_12_DELIVERY_STATE_BLOCKED)",
+  "lock_validation": {
+    "same_lock_held": "LOCK_HELD",
+    "different_route_independent": true,
+    "stale_reported_not_auto_removed": true,
+    "explicit_break_only": true,
+    "owner_only_release": true
+  },
+  "atomic_failure_results": {
+    "no_temp_file_leftover": true,
+    "previous_valid_state_preserved": true,
+    "no_false_sent": true
+  },
+  "idempotency": {
+    "sent_not_resent": true,
+    "idempotent_reuse_detail": "IDEMPOTENT_REUSE",
+    "same_delivery_id_on_resend": true,
+    "idempotency_key": "= delivery_id"
+  },
+  "export_hashes": {
+    "delivery_report.json": "b77386b051c19e51d3f9bbf37082a2c60ef343e8a59e9a8ca9de042754ecae4c",
+    "delivery_report.tsv": "99e035592079cf87bf8a33c49a22a6a55e3bdaab88a27dd18633f752482930ee",
+    "delivery_report.md": "6836f1e5a112c43db6c0c2c00e65b2f2c1cf7dbd723597e41d942029a3774ef4",
+    "deterministic": true,
+    "tsv_formula_injection_safe": true,
+    "vietnamese_unicode_preserved": true
+  },
+  "scheduler_plan": {
+    "owner_action_required": "OWNER_ACTION_REQUIRED",
+    "registers_nothing": true,
+    "references_env_names_only": true
+  },
+  "upstream_source_hashes": {
+    "phase7_11_before": "d5bb5dc32a0bffa6e8b59b753ced8e3c9ac0d1ce14300617ff244231a8f43191",
+    "phase7_11_after": "d5bb5dc32a0bffa6e8b59b753ced8e3c9ac0d1ce14300617ff244231a8f43191",
+    "immutable": true
+  },
+  "optional_live_delivery_state": "NOT_RUN",
+  "prohibited_integration_scan": {
+    "connectivity_scan_active_amazon_paths": 0,
+    "no_active_amazon_account_path": true,
+    "ast_scan": "no subprocess/smtplib/selenium/playwright/webdriver/webbrowser import; no eval/exec/compile/os.system/os.popen call; no shell=True; no scheduler-API call",
+    "only_outbound_primitive": "one bounded HTTPS POST transport"
+  },
+  "seller_central_counters_constant_zero": true,
+  "amazon_counters": {
+    "seller_central_connections": 0,
+    "amazon_seller_api_calls": 0,
+    "amazon_ads_api_calls": 0,
+    "amazon_seller_auth_calls": 0,
+    "amazon_seller_mutations": 0,
+    "amazon_report_downloads": 0,
+    "amazon_bulk_uploads": 0,
+    "browser_automation_actions": 0,
+    "amazon_credential_store_count": 0
+  },
+  "test_totals": {
+    "phase7_12_focused": {"ran": 234, "failures": 0, "errors": 0, "skipped": 0, "exit_code": 0},
+    "phase7_11_focused": {"ran": 189, "exit_code": 0},
+    "phase7_10_focused": {"ran": 191, "skipped": 1, "exit_code": 0},
+    "phase7_9_focused": {"ran": 139, "skipped": 1, "exit_code": 0},
+    "phase7_8_focused": {"ran": 152, "exit_code": 0},
+    "phase7_7_focused": {"ran": 93, "exit_code": 0},
+    "phase7_6_focused": {"ran": 100, "exit_code": 0},
+    "phase7_5_focused": {"ran": 109, "exit_code": 0},
+    "phase7_4_focused": {"ran": 94, "exit_code": 0},
+    "phase7_3_focused": {"ran": 117, "exit_code": 0},
+    "phase7_2_focused": {"ran": 377, "skipped": 1, "exit_code": 0},
+    "full_baseline": {"ran": 3662, "skipped": 4, "failures": 0, "exit_code": 0},
+    "full_with_phase7_12": {"ran": 3896, "skipped": 4, "failures": 0, "exit_code": 0},
+    "compileall": {"exit_code": 0}
+  },
+  "true_exit_codes_captured": true,
+  "fresh_worktree_results": {
+    "runs_absent_confirmed": true,
+    "connectivity_doc_hash_matches_manifest_in_worktree": true,
+    "compileall_exit": 0,
+    "connectivity_scan_active_amazon_paths": 0,
+    "focused_7_12": "234 passed",
+    "focused_7_11": "189 passed",
+    "focused_7_10": "191 passed, 1 skipped",
+    "feat_full_suite": {"ran": 3894, "failures": 1, "errors": 14, "skipped": 329},
+    "baseline_full_suite_e293f4e": {"ran": 3660, "failures": 1, "errors": 14, "skipped": 329},
+    "delta_vs_baseline": "+234 passing tests (the Phase 7.12 suite); failures/errors/skips byte-identical",
+    "pre_existing_failures_identical_to_baseline": true,
+    "pre_existing_failures_are_phase5_6_T2_data_dependent": true,
+    "no_failure_in_any_phase7_12_or_network_policy_or_connectivity_file": true,
+    "conclusion": "Phase 7.12 adds +234 passing tests and 0 fresh-worktree regressions; depends on no untracked T2 data",
+    "worktrees_removed_afterward": true
+  },
+  "runs_tracking": "runs/ remains gitignored; no runs/ content committed",
+  "acceptance_status": "NOT ACCEPTED — implementation only; independent acceptance audit recommended",
+  "next_action": "independent acceptance audit; do not merge, do not tag accepted, do not begin Phase 7.13"
+}

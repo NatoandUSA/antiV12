@@ -1,12 +1,14 @@
 {
   "document": "docs/CONNECTIVITY-POLICY.md",
-  "document_version": "connectivity-policy-v2",
-  "policy_sha256": "da5f950ff403d27552dce9968cdb45b10604e29043f61eec9aef1d9c01600fb9",
+  "document_version": "connectivity-policy-v3",
+  "policy_sha256": "16695ae2afa71d27096b69f7b79caf0490c62749d2a729774486adaebf3ef9d6",
   "policy_sha256_v1_history": "df6d61b26abc9b5818f33af85dcf4aba17d5d5bff40472a8b77f18edc2be53bb",
+  "policy_sha256_v2_history": "da5f950ff403d27552dce9968cdb45b10604e29043f61eec9aef1d9c01600fb9",
   "approval_state": "OWNER_APPROVED",
   "adopted_session": "6A.1",
-  "amended_session": "7.9",
+  "amended_session": "7.12",
   "phase7_9_amendment": "Added the Phase 7.9 connected backup/update surface (encrypted remote backups, GitHub update checks, PyPI dependency metadata) for non-Amazon purposes. The permanent Amazon-account boundary below is unchanged; the prior v1 hash is preserved above as history.",
+  "phase7_12_amendment": "Added the Phase 7.12 owner-approved outbound notification-delivery surface: delivering the owner's own accepted Phase 7.11 alerts to an owner-controlled HTTPS webhook, validated by core.network_policy.evaluate_notification_delivery_url (Amazon-account boundary always first), gated by an exact-route-hash owner approval + PHASE7_12_ALLOW_LIVE_DELIVERY + a per-batch confirmation token, POST-only with no redirects and no arbitrary headers, and never customer/marketing/Amazon/Seller-Central communication. The permanent Amazon-account boundary below is unchanged; the prior v2 hash is preserved above as history.",
   "superseded_offline_wording": "The prior \"offline-only / never connects to the internet\" identity is superseded. The toolkit is connected to the open world and isolated from the owner's Amazon account.",
   "correct_phrasing": "The toolkit never operates inside your Amazon account. It may use approved open-web and third-party research services.",
   "permanent_amazon_boundary": {

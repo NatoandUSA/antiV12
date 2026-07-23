@@ -891,3 +891,122 @@ def evaluate_public_research_redirect(redirect_url, *, purpose, allow_local=Fals
     if amazon_product:
         return evaluate_amazon_public_product_url(redirect_url, allow_local=allow_local)
     return evaluate_public_research_url(redirect_url, purpose=purpose, allow_local=allow_local)
+
+
+# ============================================================================
+# Phase 7.12 — owner-approved outbound notification delivery (webhook endpoint)
+# ============================================================================
+# Phase 7.12 delivers LOCAL owner alerts (from the accepted Phase 7.11 authority) to an
+# owner-approved HTTPS webhook. This section REUSES the permanent Amazon-account classification
+# above — which always wins first, in every path — and layers a strict SSRF + explicit-allowlist
+# model on top: no URL userinfo; HTTPS only (HTTP just for an explicit local test endpoint); no raw
+# / encoded IP literal for a public host; no private/loopback/link-local/metadata destination; and
+# the host MUST be an exact or dotted-subdomain match of the owner-approved allowlist. The caller
+# still DNS-resolves + validates EVERY resolved address via validate_resolved_addresses() before it
+# opens a socket, and never follows a redirect. Nothing here changes the Phase 7.2–7.11 evaluators
+# above; it only adds new functions. This endpoint is ONLY for owner-approved destinations — never a
+# customer, marketing, buyer, Amazon-message or Seller-Central destination.
+
+PURPOSE_OWNER_NOTIFICATION = "OWNER_NOTIFICATION"
+
+
+def evaluate_notification_delivery_url(url, *, allowed_hosts, allow_local=False):
+    """Decide whether ONE owner-approved notification webhook URL may be POSTed to. Never opens a
+    socket. Returns a ConnectedNetworkDecision.
+
+    Order (hard blocks first): the permanent Amazon-account boundary (Seller Central, the Amazon
+    seller API, the Ads API, any authenticated/account path and any generic Amazon marketplace host
+    are all denied); URL userinfo; a valid URL; HTTPS (HTTP only for an explicit local test
+    endpoint); a Unicode/IDNA-confusable host is refused (owner supplies punycode); an encoded IPv4
+    literal is unmasked; a raw/encoded IP literal is refused for a public host (private/loopback only
+    for the local endpoint); and finally the host MUST be on the owner-approved allowlist (exact or
+    dotted-subdomain match — never a bare substring). The caller re-resolves + validates DNS."""
+    warnings = []
+    raw = str(url or "")
+    try:
+        parts = urlparse(raw)
+        scheme = (parts.scheme or "").lower()
+        raw_host = parts.hostname
+        port = parts.port
+        userinfo = bool(parts.username or parts.password) or ("@" in (parts.netloc or ""))
+    except Exception:
+        scheme, raw_host, port, userinfo = "", None, None, False
+    host, is_ip, ip_obj = _normalize_connected_host(raw_host)
+    disp = host or "(none)"
+
+    def deny(reason, dclass="UNKNOWN_EXTERNAL"):
+        return _pr_decision(allowed=False, purpose=PURPOSE_OWNER_NOTIFICATION, reason=reason,
+                            scheme=scheme, host=disp, port=port, dclass=dclass, is_ip=is_ip,
+                            is_local=False, warnings=warnings)
+
+    # 1) permanent Amazon-account boundary — always first, reusing the accepted classification.
+    dclass = classify_destination(raw)
+    if dclass == AMAZON_SELLER_CENTRAL:
+        return deny(D.SELLER_CENTRAL_ACCESS_PROHIBITED, dclass)
+    if dclass == AMAZON_API:
+        return deny(D.AMAZON_API_PROHIBITED, dclass)
+    if dclass == AMAZON_AUTHENTICATED:
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass)
+    if dclass == AMAZON_PRODUCT_OR_SEARCH:
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass)
+    if _is_amazon_host(host):
+        return deny(D.AMAZON_ACCOUNT_ACCESS_PROHIBITED, dclass or AMAZON_PRODUCT_OR_SEARCH)
+
+    # 2) URL userinfo (credential deception / embedded password) is always refused
+    if userinfo:
+        return deny(D.URL_USERINFO_BLOCKED, dclass)
+
+    # 3) a valid, parseable URL
+    if scheme not in ("https", "http") or not host:
+        return deny(D.CONNECTED_URL_INVALID, dclass)
+    if port is not None and not (0 < int(port) < 65536):
+        return deny(D.CONNECTED_URL_INVALID, dclass)
+
+    # 4) reject Unicode/IDNA-confusable hostnames (owner must supply the punycode form)
+    if not is_ip and not _is_ascii_host(host):
+        return deny(D.CONNECTED_URL_INVALID, dclass)
+
+    # 5) unmask an encoded IPv4 literal hiding as a "hostname" (integer / hex / octal / mixed)
+    if not is_ip:
+        coerced = _coerce_ipv4_forms(host)
+        if coerced is not None:
+            is_ip, ip_obj = True, coerced
+
+    local_ok = bool(allow_local and is_ip and ip_obj is not None and ip_obj.is_loopback)
+
+    # 6) scheme: HTTPS required for public; HTTP only for an explicit local test endpoint
+    if scheme == "http" and not local_ok:
+        return deny(D.INSECURE_SCHEME_BLOCKED, dclass)
+
+    # 7) IP-literal handling — no public IP literal (must be a DNS name so TLS pins it and the
+    #    resolved-address check stays rebinding-safe); private/loopback only for the local endpoint.
+    if is_ip:
+        if local_ok:
+            return _pr_decision(allowed=True, purpose=PURPOSE_OWNER_NOTIFICATION,
+                                reason="ALLOWED_LOCAL", scheme=scheme, host=disp, port=port,
+                                dclass="LOCAL", is_ip=True, is_local=True, warnings=warnings)
+        if ip_obj is not None and _is_private_or_loopback(ip_obj):
+            return deny(D.PRIVATE_DESTINATION_BLOCKED, dclass)
+        return deny(D.IP_LITERAL_BLOCKED, dclass)
+
+    # 8) the host MUST be on the owner-approved allowlist (exact or dotted-subdomain match)
+    if not _host_allowlisted(host, allowed_hosts):
+        return deny(D.HOST_NOT_ALLOWLISTED, dclass)
+
+    return _pr_decision(allowed=True, purpose=PURPOSE_OWNER_NOTIFICATION, reason="ALLOWED",
+                        scheme=scheme, host=disp, port=port, dclass="OWNER_NOTIFICATION",
+                        is_ip=False, is_local=False, warnings=warnings)
+
+
+def assert_notification_delivery_allowed(url, *, allowed_hosts, allow_local=False):
+    """Evaluate and raise ConnectedNetworkDenied (before any connection) if the notification webhook
+    endpoint is not permitted. Records a secret-free diagnostic on denial."""
+    decision = evaluate_notification_delivery_url(url, allowed_hosts=allowed_hosts,
+                                                  allow_local=allow_local)
+    if not decision.allowed:
+        D.record_event(D.NETWORK_REQUEST_DENIED,
+                       f"denied notification delivery: {decision.reason_code}",
+                       {"purpose": PURPOSE_OWNER_NOTIFICATION, "destination": decision.safe_host,
+                        "reason_code": decision.reason_code})
+        raise ConnectedNetworkDenied(decision)
+    return decision

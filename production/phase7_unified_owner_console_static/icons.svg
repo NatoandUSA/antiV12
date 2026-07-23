@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="display:none">
+  <symbol id="icon-ok" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M6.5 11.2 3.3 8l1.1-1.1 2.1 2.1 4.9-4.9L12.6 5z"/>
+  </symbol>
+  <symbol id="icon-warn" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M8 1.5 15 14H1zM7.2 6v4h1.6V6zm0 5v1.6h1.6V11z"/>
+  </symbol>
+  <symbol id="icon-bad" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm3 9.1L9.9 11 8 9.1 6.1 11 5 10.1 6.9 8 5 6.1 6.1 5 8 6.9 9.9 5 11 6.1 9.1 8z"/>
+  </symbol>
+  <symbol id="icon-overview" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/>
+  </symbol>
+  <symbol id="icon-shield" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M8 1 2 3v5c0 3.5 2.6 6.2 6 7 3.4-.8 6-3.5 6-7V3z"/>
+  </symbol>
+  <symbol id="icon-activity" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M1 8h3l2-5 3 10 2-5h4v1.4H12l-3 6-3-10-1.2 2.6H1z"/>
+  </symbol>
+</svg>

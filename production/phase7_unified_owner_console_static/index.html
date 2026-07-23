@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Unified Owner Console — Phase 7.13 (Local)</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to main content</a>
+
+  <div id="boundary-banner" role="note">
+    <strong>UNIFIED OWNER CONSOLE — LOCAL, LOOPBACK-ONLY</strong>
+    <span>No connection to Amazon Seller Central. No seller-account action is ever performed by this
+      console. Every business status is shown verbatim from its accepted upstream authority. All
+      allowed public-Internet work runs only inside the accepted backend authorities.</span>
+  </div>
+
+  <header id="statusbar" role="banner">
+    <div class="status-left">
+      <span class="app-title">Unified Owner Console</span>
+      <span class="app-sub">Phase 7.13 · localhost · read-first</span>
+    </div>
+    <div class="status-right" id="status-metrics" aria-live="polite"></div>
+  </header>
+
+  <div id="shell">
+    <nav id="sidebar" aria-label="Console sections">
+      <ul id="nav-list"></ul>
+    </nav>
+
+    <main id="content" tabindex="-1" role="main">
+      <nav id="breadcrumbs" aria-label="Breadcrumb"></nav>
+      <noscript>
+        <section class="panel">
+          <h1>JavaScript is required for the interactive console</h1>
+          <p>This console renders tables from local read-only API endpoints. With JavaScript disabled
+             you can still read the raw data directly, for example
+             <a href="/api/v1/overview">/api/v1/overview</a>,
+             <a href="/api/v1/system">/api/v1/system</a>,
+             <a href="/api/v1/activity">/api/v1/activity</a>.</p>
+          <p>No connection to Amazon Seller Central is made and no seller-account action is performed.</p>
+        </section>
+      </noscript>
+      <section id="view-root" aria-live="polite" aria-busy="false">
+        <p class="loading">Loading console…</p>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden aria-live="polite"></div>
+
+  <div id="modal-backdrop" hidden>
+    <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+         aria-describedby="modal-desc">
+      <h2 id="modal-title">Confirm action</h2>
+      <div id="modal-desc"></div>
+      <div id="modal-confirm-wrap" hidden>
+        <label for="modal-phrase">Type the confirmation phrase exactly to proceed</label>
+        <input id="modal-phrase" type="text" autocomplete="off" spellcheck="false"
+               aria-describedby="modal-phrase-hint">
+        <p id="modal-phrase-hint" class="em"></p>
+      </div>
+      <div id="modal-result" role="alert" aria-live="assertive"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn" type="button">Cancel</button>
+        <button id="modal-execute" class="btn primary" type="button">Confirm &amp; run</button>
+      </div>
+    </div>
+  </div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <use href="/icons.svg#icon-ok"></use>
+  </svg>
+
+  <script src="/app.js"></script>
+</body>
+</html>

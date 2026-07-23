@@ -1,0 +1,156 @@
+{
+  "acknowledgement_history_head_hash": "f2b25427a3a5b5f1eae3193c42a30e1bf2b3146020d98e4cc14f9a242b3cf669",
+  "alert_ids": [
+    "alt-54942e9f931567cf4dede0b2",
+    "alt-e1790ba604a26341814f8f11"
+  ],
+  "atomic_failure_results": {
+    "corrupt_state_blocked": true,
+    "corrupt_state_readiness": "SESSION7_11_INTEGRITY_BLOCKED",
+    "prior_execution_preserved": true
+  },
+  "baseline_commit": "9d9a4528f04af90640019eb872d2561879bfa253",
+  "branch": "phase7-11-connected-research-watchlists",
+  "change_ids": [
+    "chg-4f2860ffde2f65a13f26fbb1",
+    "chg-5c00d28fef9a783e8212b98d",
+    "chg-b2b14a1d964ed9d8246c05ad",
+    "chg-cb3c419d9212300652a6d823",
+    "chg-ea8e0aa0cf59b68613197234"
+  ],
+  "checkpoint_tag": "phase7-11-connected-research-watchlists-checkpoint-9d9a452",
+  "comparison_ids": [
+    "cmp-12b767f7ee2d24f1199c54a3",
+    "cmp-1c3af1eb200f2b7fcaad45f3"
+  ],
+  "compileall_exit_code": 0,
+  "constant_zero_seller_central_counters": {
+    "all_zero": true,
+    "amazon_ads_api_calls": 0,
+    "amazon_bulk_uploads": 0,
+    "amazon_credential_store_count": 0,
+    "amazon_report_downloads": 0,
+    "amazon_seller_api_calls": 0,
+    "amazon_seller_auth_calls": 0,
+    "amazon_seller_mutations": 0,
+    "browser_automation_actions": 0,
+    "seller_central_connections": 0
+  },
+  "deterministic_comparison": {
+    "watchlist_id": "wl-42e8ffbafbb9fdb74a04338e",
+    "run1_execution_id": "exec-80b3b45b8b99ef8ddd312b7e",
+    "run2_execution_id": "exec-3b00d571402bf72e85052bc7",
+    "run2_readiness": "SESSION7_11_WATCHLIST_READY",
+    "run2_change_counts": {
+      "CHANGED": 3,
+      "UNCHANGED": 2
+    }
+  },
+  "export_deterministic": true,
+  "export_hashes": {
+    "watchlist_alerts.json": "74b05d3198df7d01d0175f3bd4179c0bcddd0d3efe766af69abc6f92e98f65ed",
+    "watchlist_changes.tsv": "91a820cca9587bdd23eba7069b49ee25460e95b9e87587656b868aec11b2fd75",
+    "watchlist_report.md": "2e94349f35bdd1c52345ef1f89670d8059322d1bf20a8cbd4f9a6d7cc5e51af0",
+    "watchlist_snapshot.json": "4081a83adaecb4322bae056ae23cf2ddac59eec6d483ddc2f523c6d737104f94"
+  },
+  "fresh_worktree_results": {
+    "compileall_exit_code": 0,
+    "phase7_10_focused": "191 passed, 1 skipped",
+    "phase7_11_focused": "189 passed",
+    "phase7_9_focused": "139 total (2 skipped when runs/ absent)",
+    "prohibited_scan": "clean",
+    "runs_dir_absent": true
+  },
+  "implementation_commit": "fa6da8b7923a5c1f8efa493f735d0fc37661d149",
+  "lock_validation": {
+    "second_acquire_blocked": true,
+    "second_acquire_code": "LOCK_HELD",
+    "release_ok": true,
+    "stale_never_auto_removed": true,
+    "explicit_break_stale_lock_recovers": true
+  },
+  "optional_live_network_state": "NOT_RUN",
+  "prior_acceptance_tags": [
+    "phase7-2-cumulative-accepted-d5ad841",
+    "phase7-3-accepted-7005275",
+    "phase7-4-owner-dashboard-accepted-eebecc5",
+    "phase7-5-owner-decision-package-accepted-66d972d",
+    "phase7-6-manual-action-tracker-accepted-f1d11d8",
+    "phase7-7-outcome-followup-accepted-581ae49",
+    "phase7-8-owner-operations-dashboard-accepted-80333ec",
+    "phase7-9-connected-backup-update-recovery-accepted-383569e",
+    "phase7-10-connected-public-research-accepted-9888e69"
+  ],
+  "prohibited_integration_scan": {
+    "amazon_account_literals_present": false,
+    "banned_code_tokens_found": [],
+    "imports": [
+      "argparse",
+      "datetime",
+      "decimal",
+      "diagnostics",
+      "money",
+      "network_policy",
+      "os",
+      "phase7_connected_public_research",
+      "re",
+      "sys",
+      "time",
+      "unicodedata",
+      "zoneinfo"
+    ],
+    "result": "clean"
+  },
+  "runs_tracking": "runs/ remains git-ignored; nothing under runs/ committed",
+  "synthetic_fixture_hashes": {
+    "html_v1_sha256": "d5b2f2001505fce9492f0af81d14570db22dc60180b21de8c66fc3f3cc267380",
+    "html_v2_sha256": "38b0389a1f1534fcacc24639e04308d8b98f534573c56c31535c717c0a3b11e4"
+  },
+  "scheduler_plan_template_hash": "0335640e44e40d753b5718a5d3dd27fa0e5a894e7c189a01e30d07d0b59ea250",
+  "test_totals": {
+    "baseline_full_suite": {
+      "passed": 3473,
+      "skipped": 4,
+      "failures": 0,
+      "errors": 0,
+      "exit_code": 0
+    },
+    "full_suite_with_7_11": {
+      "passed": 3662,
+      "skipped": 4,
+      "failures": 0,
+      "errors": 0,
+      "exit_code": 0
+    },
+    "phase7_11_focused": {
+      "passed": 189,
+      "exit_code": 0
+    },
+    "prior_focused_suites": {
+      "phase7_2": "377 passed, 1 skipped",
+      "phase7_3": "117 passed",
+      "phase7_4": "94 passed",
+      "phase7_5": "109 passed",
+      "phase7_6": "100 passed",
+      "phase7_7": "93 passed",
+      "phase7_8": "152 passed",
+      "phase7_9": "139 total, 1 skipped",
+      "phase7_10": "191 passed, 1 skipped"
+    }
+  },
+  "upstream_source_hashes_after": {
+    "core/diagnostics.py": "ec3d7e87dac04cc5bade1c14b9afe044d01d4848c9c8d98173e68796e649ab8d",
+    "core/money.py": "31abd239fc2984b1761f05405451d1a4e5661789ff2ad693ef89a2e8fbbb098a",
+    "core/network_policy.py": "d39b05bc61b672c81701c89564805a9da2741c5ed32ef368fbd27963b01a6bb5",
+    "production/phase7_connected_public_research.py": "a261b74205ca10c7f34b49601fb289bbcb68a0053df2ae68c88db3255c47ea43"
+  },
+  "upstream_source_hashes_before": {
+    "core/diagnostics.py": "ec3d7e87dac04cc5bade1c14b9afe044d01d4848c9c8d98173e68796e649ab8d",
+    "core/money.py": "31abd239fc2984b1761f05405451d1a4e5661789ff2ad693ef89a2e8fbbb098a",
+    "core/network_policy.py": "d39b05bc61b672c81701c89564805a9da2741c5ed32ef368fbd27963b01a6bb5",
+    "production/phase7_connected_public_research.py": "a261b74205ca10c7f34b49601fb289bbcb68a0053df2ae68c88db3255c47ea43"
+  },
+  "upstream_immutable": true,
+  "accepted_files_modified": [],
+  "acceptance_status": "NOT_ACCEPTED_PENDING_INDEPENDENT_AUDIT"
+}

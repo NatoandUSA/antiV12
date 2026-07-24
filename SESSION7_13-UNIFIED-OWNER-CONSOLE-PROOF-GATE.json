@@ -1,0 +1,246 @@
+{
+  "acceptance_status": "IMPLEMENTED_NOT_ACCEPTED",
+  "amazon_boundary": {
+    "advertising_api": "REFUSED_BY_NETWORK_POLICY",
+    "connectivity_scan_no_active_amazon_account_path": true,
+    "seller_api": "REFUSED_BY_NETWORK_POLICY",
+    "seller_central": "REFUSED_BY_NETWORK_POLICY",
+    "seller_central_counters_all_zero": true
+  },
+  "api": {
+    "read_endpoints": [
+      "activity", "alerts", "analysis", "backups", "health", "modules", "notifications",
+      "overview", "research", "system", "watchlists"
+    ],
+    "post_endpoints": ["/api/v1/actions/prepare", "/api/v1/actions/execute"],
+    "schema": "phase7-13-console-api-v1",
+    "schema_hash": "ec439ea1864a12203828ef7b142a16431adad8ae4138c6970eb21550d75c3487",
+    "versioned": "v1"
+  },
+  "audit_chain": {
+    "corruption_detected": {
+      "deletion": true,
+      "reorder": true,
+      "tamper": true,
+      "truncation_prefix_valid_head_mismatch": true
+    },
+    "corrupt_blocks_mutations": true,
+    "corrupt_leaves_reads_available": true,
+    "excludes_timestamp_from_identity": true,
+    "fixed_two_event_aggregate_hash": "abc7bdd8c6e30ee12d95971216dafebbd524df08b52caa2b21453fddb62ad62e",
+    "schema": "phase7-13-console-audit-event-v1"
+  },
+  "authority_reuse": {
+    "core_diagnostics": true,
+    "core_money": true,
+    "core_network_policy": true,
+    "no_duplicate_authority_created": true,
+    "phase7_10_connected_public_research": true,
+    "phase7_11_connected_research_watchlists": true,
+    "phase7_12_owner_notification_delivery": true,
+    "phase7_3_to_7_7_via_phase7_8_operations_dashboard": true,
+    "phase7_9_connected_backup_recovery": true
+  },
+  "baseline": "a5df2b1237553a2699740cef98b2ba056d440fd4",
+  "branch": "phase7-13-unified-owner-console",
+  "checkpoint_tag": "phase7-13-unified-owner-console-checkpoint-a5df2b1",
+  "commits": {
+    "feat": "5eb13ed85f09fbfa4555f9bbe7681c2658a8af9e",
+    "proof_docs": "THIS_COMMIT_SEE_SESSION_HANDOFF"
+  },
+  "confirmation_tokens": {
+    "bound_to_action_params_targets_session": true,
+    "excluded_from_logs_and_exports": true,
+    "in_memory_only_not_persisted": true,
+    "phrases": {
+      "acknowledge-alert": "ACKNOWLEDGE:<alert-id>",
+      "build-notification-batch": "BUILD:<route-id>",
+      "check-for-update": "CHECK-UPDATE:<branch>",
+      "create-backup-snapshot": "BACKUP:<snapshot-id>",
+      "create-recovery-plan": "PLAN:<snapshot-id>",
+      "dismiss-alert": "DISMISS:<alert-id>",
+      "reopen-alert": "REOPEN:<alert-id>",
+      "run-watchlist": "RUN:<watchlist-id>",
+      "send-notification-batch": "SEND:<batch-id>",
+      "stage-update": "STAGE-UPDATE:<release-id>"
+    },
+    "phrase_wrong_does_not_burn_token": true,
+    "phase7_12_live_gate_preserved_env_and_send_token": true,
+    "short_lived_ttl_seconds": 300,
+    "single_use": true,
+    "wrong_expired_reused_all_blocked": true
+  },
+  "console_actions": {
+    "count": 15,
+    "excluded": [
+      "arbitrary-call", "arbitrary-http", "arbitrary-import", "arbitrary-url", "buyer-message",
+      "campaign-mutation", "destructive-restore", "register-scheduler", "review-request",
+      "seller-central-login", "service-install", "shell-command"
+    ],
+    "fixed_allowlist": true,
+    "implemented": [
+      "acknowledge-alert", "build-notification-batch", "check-for-update", "create-backup-snapshot",
+      "create-recovery-plan", "dismiss-alert", "export-overview", "preview-notification",
+      "refresh-overview", "reopen-alert", "run-watchlist", "send-notification-batch", "stage-update",
+      "verify-backup", "verify-system-state"
+    ],
+    "unknown_action_blocked": true
+  },
+  "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+  "csp_no_unsafe_eval_or_inline": true,
+  "csrf": {
+    "excluded_from_logs_and_exports": true,
+    "required_on_every_post": true,
+    "session_bound": true,
+    "wrong_or_missing_blocked": true
+  },
+  "exports": {
+    "deterministic": true,
+    "fixed_model_json_sha256": "e2e02dc0674f1f058a1473e797b63ab6887630e10a7e5c1102c697db315f5b49",
+    "fixed_model_md_sha256": "45f70a60074242960280f7ebf1039671dc2e57220da35e4a241706d2d9e002a4",
+    "fixed_model_tsv_sha256": "e6273f31617770e5982dcc3c368be65c890cee5440d6caec20c09354bc6d27b7",
+    "no_secret_no_absolute_path": true,
+    "tsv_formula_injection_safe_negatives_and_unicode_preserved": true
+  },
+  "fresh_worktree_differential": {
+    "baseline": {
+      "commit": "a5df2b1237553a2699740cef98b2ba056d440fd4",
+      "compileall_exit": 0,
+      "errors": 14,
+      "failures": 1,
+      "full_exit": 1,
+      "ran": 3894,
+      "runs_present": false,
+      "skipped": 329
+    },
+    "conclusion": "BASELINE_EQUIVALENT_NONZERO",
+    "failset_identical": true,
+    "feature": {
+      "commit": "5eb13ed85f09fbfa4555f9bbe7681c2658a8af9e",
+      "compileall_exit": 0,
+      "errors": 14,
+      "failures": 1,
+      "full_exit": 1,
+      "phase7_13_focused_exit": 0,
+      "phase7_13_focused_passed": 266,
+      "ran": 4160,
+      "runs_present": false,
+      "skipped": 329
+    },
+    "lost_passes": 0,
+    "new_failures": 0,
+    "phase7_13_tests_in_failset": 0,
+    "pre_existing_failures_are_runs_t2_data_dependent": [
+      "test_backend_phrase_integrity", "test_backend_semantic_quality", "test_session5d_certification"
+    ]
+  },
+  "http_security": {
+    "bounded_body_bytes": 262144,
+    "duplicate_json_key_rejected": true,
+    "get_reads_only_post_mutations": true,
+    "host_header_denial_foreign_and_missing": true,
+    "loopback_bind_only": true,
+    "nan_infinity_rejected": true,
+    "no_cors": true,
+    "no_open_redirect": true,
+    "no_query_string_mutation": true,
+    "non_loopback_bind_refused": ["0.0.0.0", "::", "LAN", "public", "arbitrary-host"],
+    "traversal_and_null_byte_blocked": true
+  },
+  "prohibited_integration_scan": {
+    "no_advertising_api_literal": true,
+    "no_browser_automation_imports": true,
+    "no_eval_exec_compile": true,
+    "no_os_system_or_popen": true,
+    "no_scheduler_or_service_registration": true,
+    "no_seller_central_literal": true,
+    "no_shell_true": true,
+    "no_sp_api_literal": true,
+    "no_subprocess_import": true,
+    "no_webbrowser_or_smtp_or_provider_sdk": true
+  },
+  "seller_central_counters": {
+    "advertising_api_calls": 0,
+    "buyer_messages_sent": 0,
+    "review_requests_sent": 0,
+    "seller_account_mutations": 0,
+    "seller_api_calls": 0,
+    "seller_browser_automation_actions": 0,
+    "seller_bulk_uploads": 0,
+    "seller_central_connections": 0,
+    "seller_credential_store_count": 0,
+    "seller_report_downloads": 0
+  },
+  "session": {
+    "cookie_httponly": true,
+    "cookie_samesite_strict": true,
+    "expires": true,
+    "in_memory_only": true,
+    "invalid_after_restart": true,
+    "secret_not_persisted": true,
+    "server_secret_random_32_bytes": true,
+    "session_fingerprint_contains_no_secret": true
+  },
+  "source_hashes": {
+    "accepted_phase7_3_to_7_12_production_tree_sha256_after": "254882a1e8b707cc036edeed708b55b834300ce43eb9f143dee746fa85e2ca2c",
+    "accepted_phase7_3_to_7_12_production_tree_sha256_before": "254882a1e8b707cc036edeed708b55b834300ce43eb9f143dee746fa85e2ca2c",
+    "accepted_source_unchanged": true,
+    "new_files_sha256_lf": {
+      "docs/PHASE7_13-UNIFIED-OWNER-CONSOLE-POLICY.md": "15c3cd334edafa635c15b486b278323065880c0b456b81cef85e58bdf7b6d84a",
+      "production/phase7_unified_owner_console.py": "b2b68171a2a82bc775a996bce5738be1516efb0f292828cafc3c1a98ab255454",
+      "production/phase7_unified_owner_console_static/app.js": "a4a38cc985622c6c71a3302539e1bfb913a0598ac8b098f7e155e36c48b83259",
+      "production/phase7_unified_owner_console_static/icons.svg": "33acf93abab53ef1e0f61a0ed5779df69443fc455f807667bfdb74db1dfb4340",
+      "production/phase7_unified_owner_console_static/index.html": "aa992006794f339b33971f716fc5a4cb918a4a754c4e8019af4b9c7cf706aecd",
+      "production/phase7_unified_owner_console_static/styles.css": "04baa675716c246bbd28c538293bce6d6ad6552276020b903250281dcdfd3797",
+      "tests/test_phase7_13_unified_owner_console.py": "9004f5646c7d57dc5d0eb9718261e8e26ad3e5dff9e66f1588307552299b29d1"
+    }
+  },
+  "stage_id": "7.13",
+  "static_assets": {
+    "no_external_cdn_font_script_style_analytics": true,
+    "present": ["app.js", "icons.svg", "index.html", "styles.css"],
+    "present_in_fresh_worktree": true
+  },
+  "synthetic_module_snapshot_hash": "e2e02dc0674f1f058a1473e797b63ab6887630e10a7e5c1102c697db315f5b49",
+  "tests": {
+    "baseline_focused_in_place": {
+      "connectivity_policy": 16,
+      "connectivity_surface": 19,
+      "network_policy": 5,
+      "phase7_10": "191 (1 skip)",
+      "phase7_11": 189,
+      "phase7_12": 234,
+      "phase7_2": "377 (1 skip)",
+      "phase7_3": 117,
+      "phase7_4": 94,
+      "phase7_5": 109,
+      "phase7_6": 100,
+      "phase7_7": 93,
+      "phase7_8": 152,
+      "phase7_9": "139 (1 skip)"
+    },
+    "compileall_exit": 0,
+    "full_in_place": {
+      "exit": 0,
+      "failures": 0,
+      "ran": 4162,
+      "skipped": 4
+    },
+    "phase7_13_focused_in_place": {
+      "exit": 0,
+      "failures": 0,
+      "passed": 266
+    }
+  },
+  "validate_only": {
+    "no_action": true,
+    "no_directory_create": true,
+    "no_dns": true,
+    "no_file_write": true,
+    "no_http": true,
+    "no_secret_read": true,
+    "no_session": true,
+    "no_subprocess": true,
+    "no_upstream_mutation": true
+  }
+}

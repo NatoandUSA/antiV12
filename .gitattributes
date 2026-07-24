@@ -3,3 +3,14 @@
 # stable in every checkout regardless of core.autocrlf. Everything else keeps the default behavior.
 docs/CONNECTIVITY-POLICY.md text eol=lf
 docs/CONNECTIVITY-POLICY-MANIFEST.json text eol=lf
+
+# Pin the Phase 7.13 Unified Owner Console source + static assets to LF so their SHA-256 hashes
+# (recorded in SESSION7_13-UNIFIED-OWNER-CONSOLE-PROOF-GATE.json) reproduce identically in every
+# checkout regardless of core.autocrlf. This is repo config only; no accepted authority is changed.
+production/phase7_unified_owner_console.py text eol=lf
+production/phase7_unified_owner_console_static/index.html text eol=lf
+production/phase7_unified_owner_console_static/app.js text eol=lf
+production/phase7_unified_owner_console_static/styles.css text eol=lf
+production/phase7_unified_owner_console_static/icons.svg text eol=lf
+tests/test_phase7_13_unified_owner_console.py text eol=lf
+docs/PHASE7_13-UNIFIED-OWNER-CONSOLE-POLICY.md text eol=lf

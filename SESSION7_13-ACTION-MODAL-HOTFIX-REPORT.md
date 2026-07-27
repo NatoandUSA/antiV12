@@ -95,7 +95,7 @@ triggering button label. `production/phase7_unified_owner_console.py` is byte-id
 | Failed / BLOCKED / SESSION / CSRF prepare | transient toast, **no modal** | bounded readiness + owner reason panel; no Confirm; no stale token; no stack trace |
 | Confirm & run | always enabled | disabled until typed phrase matches **exactly** (no trim/case-fold/normalize) |
 | Enter key | n/a | submits only when the gate would enable Confirm |
-| Wrong phrase | server rejects after submit | local message, **token not consumed**, Confirm stays disabled |
+| Wrong phrase | server rejects after submit | Confirm stays disabled, required phrase stays visible, **token not consumed**, **no network call** |
 | Execution | text "Running…", auto-close after 900 ms | Cancel+Confirm disabled, "Working…", single-use token, no double-run, result stays visible until owner closes |
 | Export result | "Result id: <hash>" only | safe relative filenames + download links (browser download); no absolute path |
 | Focus / keyboard | Escape only | focus trap, initial focus, focus returns to trigger, Escape/Cancel close before execution, deliberate no-dismiss backdrop |
@@ -127,21 +127,29 @@ modal; no external request; no unsafe `innerHTML`; deliberate no-dismiss backdro
 
 ## 8. Fresh-worktree comparison
 
-Clean `git worktree` at baseline `1145a18` vs the feature commit `7f10274`, full `unittest discover`:
+Clean `git worktree` at baseline `1145a18` vs the feature commit `7f10274`, full `unittest discover`.
 
-| | Tests | Skipped | Failures/Errors |
-|---|---|---|---|
-| Baseline `1145a18` | 4162 | 4 | 0 |
-| Feature `7f10274` | 4165 | 4 | 0 |
-| **Delta** | **+3 (the new modal tests)** | **0** | **0** |
+**A fresh worktree does not contain `runs/T2`** (it is git-ignored), so the T2-regeneration and
+Session 5D certification suites cannot run there. Both trees are therefore **non-zero**, and the correct
+verdict is a *differential* one:
 
-The feature adds **no new baseline failure, error, or skip**. The delta is exactly the three added modal
-tests, all passing. Counts were confirmed with `TestLoader.discover(...).countTestCases()` in each tree
-(baseline **4162**, feature **4165**); the baseline worktree full run completed exit 0 with no FAIL/ERROR
-lines, and every one of the 4162 baseline tests also passes inside the feature full run (which reported
-`OK` for all 4165), so all baseline tests are green. (Baseline-equivalent wording: the pre-existing suite
-is byte-identical between the two trees — only `test_phase7_13_...py`, the new harness, and
-`.gitattributes` differ — so every non-7.13 result is baseline-equivalent-nonzero and unchanged.)
+**`FRESH_WORKTREE_FULL_SUITE_BASELINE_EQUIVALENT_NONZERO`**
+
+| | Collected | Ran | Passed | Skipped | Failures | Errors | Exit |
+|---|---|---|---|---|---|---|---|
+| Baseline `1145a18` | 4162 | 4160 | 3806 | 329 | 1 | 14 | 1 |
+| Feature `7f10274` | 4165 | 4163 | 3809 | 329 | 1 | 14 | 1 |
+| **Delta** | **+3** | **+3** | **+3** | **0** | **0** | **0** | **same** |
+
+Node-level differential across all 4149 shared test nodes: **0 lost baseline passes, 0 verdict changes,
+0 new failures, 0 new errors, 0 broadened skips, 0 changed skip reasons.** The only new nodes are the
+three added modal tests, all `ok` (the Node DOM-harness test did **not** skip). The 1 failure + 14 errors
+are identical in both trees and are entirely `test_backend_semantic_quality`, `test_backend_phrase_integrity`
+and `test_session5d_certification` T2 cases that require the absent `runs/T2` dataset — unrelated to
+Phase 7.13 and to this hotfix.
+
+The **in-place** suite (where `runs/T2` is present) is fully green in both: see §7 — `Ran 4165, OK
+(skipped=4)`.
 
 ## 9. Security regression results
 

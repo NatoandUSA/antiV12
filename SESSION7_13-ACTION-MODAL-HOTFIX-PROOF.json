@@ -115,13 +115,18 @@
   },
 
   "fresh_worktree_comparison": {
-    "method": "git worktree at baseline vs feature commit; unittest discover -s tests -p test_*.py (full run) plus TestLoader.countTestCases() to confirm the exact count delta",
+    "verdict": "FRESH_WORKTREE_FULL_SUITE_BASELINE_EQUIVALENT_NONZERO",
+    "method": "git worktree at baseline vs feature commit; unittest discover -s tests -p test_*.py -v (full run) plus TestLoader.countTestCases() for the collection delta; node-level verdict differential over both verbose logs",
+    "runs_dir_present": false,
+    "why_nonzero": "A fresh worktree does not contain the git-ignored runs/T2 dataset, so the T2-regeneration and Session 5D certification suites cannot run. Both trees are non-zero for this reason; the meaningful comparison is differential.",
     "baseline_commit": "1145a186b6ee7eb4da01b5021d27d9344b1b5bd0",
-    "baseline_result": "4162 test cases (loader count); baseline worktree full run completed exit 0 with 0 FAIL/ERROR; every one of the 4162 baseline tests also passes inside the feature full run (which reported OK for all 4165), so baseline = 4162 tests, 4 skipped, 0 failures, 0 errors",
+    "baseline_result": "collected 4162; Ran 4160; passed 3806; skipped 329; failures 1; errors 14; exit 1",
     "feature_commit": "7f102742c45d8aeaef26702b319e50e4ceecd911",
-    "feature_result": "Ran 4165, OK (skipped=4), 0 failures, 0 errors",
-    "delta": "+3 tests (the new modal tests, all passing); 0 new failure, 0 new error, 0 new skip",
-    "wording": "The pre-existing suite is byte-identical between the two trees (only test_phase7_13_...py, the new harness, and .gitattributes differ), so every non-7.13 result is baseline-equivalent-nonzero and unchanged. countTestCases: baseline=4162, feature=4165 (delta +3)."
+    "feature_result": "collected 4165; Ran 4163; passed 3809; skipped 329; failures 1; errors 14; exit 1",
+    "delta": "+3 collected / +3 ran / +3 passed; 0 new failures, 0 new errors, 0 new or broadened skips",
+    "node_level_differential": "4149 shared test nodes: 0 lost baseline passes, 0 verdict changes, 0 changed skip reasons; failure set identical; error set identical; skip set identical. Only new nodes are the 3 added modal tests, all ok (the Node DOM-harness test did not skip).",
+    "nonzero_nodes_are_unrelated": "The 1 failure + 14 errors are identical in both trees and belong to test_backend_semantic_quality, test_backend_phrase_integrity and test_session5d_certification T2 cases requiring the absent runs/T2 dataset.",
+    "in_place_suite": "Fully green in both directions where runs/T2 IS present: Ran 4165, OK (skipped=4)."
   },
 
   "security_regressions_preserved": {

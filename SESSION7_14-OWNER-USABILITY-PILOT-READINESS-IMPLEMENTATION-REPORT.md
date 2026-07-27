@@ -52,12 +52,21 @@ implies an automatic Amazon-side action.
 
 | File | Change | Size of change |
 |------|--------|----------------|
-| `production/phase7_unified_owner_console.py` | import the guidance read model; attach `next_action` to the model; add `/api/v1/next-action`; publish `module_labels`; serve `favicon.svg` and alias `/favicon.ico`; print the next action in the CLI summary | 41 lines |
+| `production/phase7_unified_owner_console.py` | import the guidance read model; attach `next_action` to the model; add `/api/v1/next-action`; publish `module_labels`; serve `favicon.svg` and alias `/favicon.ico`; print the next action in the CLI summary | +40 / −5 lines |
 | `.../static/index.html` | inline icon sprite, grouped nav shell, favicon link, global feedback region, sidebar toggle; **removed the inline `style=` attribute** | rebuilt |
 | `.../static/app.js` | owner-facing surface rebuilt; the accepted prepare→confirm→execute machinery preserved verbatim | rebuilt |
 | `.../static/styles.css` | calm high-contrast visual system, type scale, disclosure, empty states | rebuilt |
 | `.../static/icons.svg` | nav + status icon set | extended |
 | `.gitattributes` | LF pins for the new hashed artifacts; **CRLF pins for the three `.bat` files** | +25 lines |
+
+> **Corrected during the independent acceptance audit.** The three `.bat` SHA-256 values recorded in
+> the proof gate were computed from LF-normalized bytes, but `.gitattributes` pins those files to
+> `eol=crlf`, so a fresh checkout necessarily produces different bytes and a different hash. The
+> audit verified that 21 of the 24 recorded hashes reproduce exactly in a fresh checkout and the
+> three `.bat` entries do not. The delivered files are correct — CRLF is what `cmd.exe` requires, and
+> the CRLF form is the one the audit double-click-tested under Windows PowerShell 5.1 — so only the
+> recorded values, not the artifacts, are affected. The `.gitattributes` comment's "reproduce
+> identically in every checkout" therefore holds for the LF-pinned files only.
 
 **No accepted Phase 7.3–7.12 authority was modified.** Verified by `git diff` against the baseline
 over every 7.3–7.12 production module and all of `core/` — empty.
@@ -94,7 +103,9 @@ Launcher runtime: `runs/T2/phase7/7.14/launcher/` — `console.pid.json`, `launc
 ### Start behaviour
 
 1. resolve the repository root from the module file (never the current directory);
-2. verify the working copy contains the accepted console **and** all five static assets;
+2. verify the working copy contains the accepted console **and** the four static assets the console
+   cannot render without (`index.html`, `app.js`, `styles.css`, `icons.svg`); `favicon.svg` is in the
+   console's five-entry serving allowlist but is not a start-blocking prerequisite;
 3. verify Python ≥ 3.9 and that the required stdlib + console module import;
 4. verify the runtime directory is writable;
 5. take an **exclusive lock** (`O_CREAT|O_EXCL`), reclaiming a lock whose owner is gone or which is
@@ -152,9 +163,15 @@ unchanged) and on a dedicated `/api/v1/next-action` endpoint.
 
 **Destination validation.** Every recommendation resolves to one of exactly five things: an existing
 console page, an existing subsection, an allow-listed local command, owner instructions, or an
-explicitly unavailable item with a stated reason. Unknown pages and unlisted commands raise. All
-four destination kinds are genuinely produced by real rules — there is no fake route and no action
-invented to make a recommendation clickable.
+explicitly unavailable item with a stated reason. Unknown pages and unlisted commands raise. There is
+no fake route and no action invented to make a recommendation clickable.
+
+> **Corrected during the independent acceptance audit.** Three of the four declared destination kinds
+> are produced by a rule: `existing_console_page`, `instructions` and `unavailable`. The
+> `copy_command` kind is **not** emitted by any rule — `_destination_command()` is unreferenced, and
+> the matching branch in `app.js` is unreachable from server guidance. The owner still gets a
+> copyable command, because rule 3's `instructions` destination carries a `command` field. Earlier
+> wording here claimed all four kinds were "produced by real rules"; that was inaccurate.
 
 **Refused wording.** PPC vocabulary, seller-account vocabulary and causal vocabulary are matched on
 word boundaries and refused; the engine raises rather than emit them. The absent-analysis wording is
@@ -297,7 +314,7 @@ first double-click):
 |------|--------|
 | `compileall` (production, core, tests) | exit 0 |
 | Next-action priority cases | 14 / 14 fire at the expected priority, identity stable across repeats |
-| Destination validation | every rule's destination valid; all four destination kinds reachable |
+| Destination validation | every rule's destination valid; 3 of the 4 declared kinds are emitted by a rule (`copy_command` is not — see §6) |
 | Source immutability | `git diff` vs baseline over all 7.3–7.12 authorities and `core/` — **empty** |
 | `runs/` tracking | git-ignored; `git ls-files runs/` — **empty**; no pilot or launcher runtime committed |
 | Prohibited-integration scan | 0 hits across the launcher, guidance, static assets, 6 scripts, 6 docs |

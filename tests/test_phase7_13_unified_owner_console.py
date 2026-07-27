@@ -14,7 +14,9 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -2141,6 +2143,127 @@ class TestSyntheticIntegration(Base):
                     "expected_effect", "network_use", "local_state_changes", "upstream_state_changes",
                     "expires_in_seconds", "confirmation_phrase"):
             self.assertIn(key, prep)
+
+
+# ================================================================ 27b) action modal DOM contract
+# Hotfix (phase7.13 action modal): the confirmation modal was previously covered only by string scans of
+# app.js — no test ever rendered it, so a blank/partial modal or a broken confirm gate could ship
+# undetected. These tests (1) assert the static modal contract in index.html and (2) load the REAL
+# app.js into a dependency-free DOM harness (Node) and drive the full prepare -> confirm -> execute flow
+# with real backend envelopes. fetch is shimmed; no committed test uses the real Internet.
+MODAL_HARNESS = os.path.join(ROOT, "tests", "phase7_13_modal_dom_harness.js")
+NODE_BIN = shutil.which("node")
+CSRF_SENTINEL = "CSRF-SENTINEL-DO-NOT-RENDER"
+SECRET_PROBE = "ENDPOINT-SECRET-SENTINEL-DO-NOT-RENDER"
+
+
+class TestActionModalStatic(Base):
+    def setUp(self):
+        super().setUp()
+        self.html = open(os.path.join(STATIC_DIR, "index.html"), encoding="utf-8").read()
+        self.js = open(os.path.join(STATIC_DIR, "app.js"), encoding="utf-8").read()
+
+    def test_modal_static_contract(self):
+        # every node the modal machinery mutates must exist in the served markup.
+        for anchor in ('id="modal"', 'id="modal-title"', 'id="modal-canonical"', 'id="modal-readiness"',
+                       'id="modal-desc"', 'id="modal-confirm-wrap"', 'id="modal-phrase-required"',
+                       'id="modal-phrase"', 'id="modal-phrase-hint"', 'id="modal-result"',
+                       'id="modal-cancel"', 'id="modal-execute"', 'aria-modal="true"',
+                       'aria-labelledby="modal-title"', 'aria-describedby="modal-desc"'):
+            self.assertIn(anchor, self.html, anchor)
+
+    def test_modal_gates_and_secrecy_in_source(self):
+        # confirm-button gating exists, the token stays out of the DOM, and no innerHTML is used.
+        self.assertIn("refreshExecuteEnabled", self.js)
+        self.assertIn("modal-execute", self.js)
+        self.assertNotIn(".innerHTML", self.js)
+        # the opaque token is only assigned to closure state, never to textContent/innerHTML.
+        self.assertIn("modalState.token = prep.action_token", self.js)
+        self.assertNotIn("textContent = modalState.token", self.js)
+
+
+class TestActionModalDom(Base):
+    """Render the real app.js in a Node DOM harness and assert the full modal contract (40 checks)."""
+
+    def _fixtures(self):
+        ws = self.newroot()
+        self.build_business(ws)
+        snap = self.build_backup(ws)["snapshot_id"]
+        self.build_research(ws)
+        adir, wid, aid = self.build_watch(ws)
+        rid, bid = self.build_notify(ws)
+        cfg = self.cfg(ws)
+        tokens = UC.ActionTokenStore()
+        params_for = {
+            "refresh-overview": {}, "export-overview": {}, "verify-system-state": {},
+            "run-watchlist": {"watchlist_id": wid},
+            "acknowledge-alert": {"alert_id": aid}, "dismiss-alert": {"alert_id": aid},
+            "reopen-alert": {"alert_id": aid},
+            "preview-notification": {"route_id": rid}, "build-notification-batch": {"route_id": rid},
+            "send-notification-batch": {"batch_id": bid},
+            "create-backup-snapshot": {}, "verify-backup": {"snapshot_id": snap},
+            "check-for-update": {"branch": "main"}, "stage-update": {"release_id": "rel-x"},
+            "create-recovery-plan": {"snapshot_id": snap},
+        }
+        prepare = {}
+        for action in UC.ACTIONS:
+            try:
+                data = UC.prepare_action(cfg, "fp-test", action, params_for.get(action, {}),
+                                         now=NOW(), tokens=tokens)
+                prepare[action] = {"status": 200, "body": {"data": data, "readiness": data["readiness"]}}
+            except UC.ConsoleError as e:
+                prepare[action] = {"status": e.status,
+                                   "body": {"error": e.code, "detail": e.detail, "readiness": e.readiness}}
+        prepare["run-watchlist"]["body"]["data"]["_endpoint_secret"] = SECRET_PROBE
+        confirm_phrase = prepare["run-watchlist"]["body"]["data"]["confirmation_phrase"]
+
+        audit, tks = self.actx(cfg)
+        _, ok_res = self.run_action(cfg, "refresh-overview", tokens=tks, audit=audit)
+        _, exp_res = self.run_action(cfg, "export-overview", tokens=tks, audit=audit)
+        model = UC.build_console_model(cfg, now=NOW())
+        return {
+            "app_js": os.path.join(STATIC_DIR, "app.js"),
+            "session": {"status": 200, "body": {"data": {"csrf_token": CSRF_SENTINEL,
+                        "session_active": True}, "readiness": UC.CONSOLE_READY}},
+            "overview": {"status": 200, "body": {"data": {"overview": model["overview"],
+                         "disclaimer": list(UC.DISCLAIMER_LINES), "freshness": model.get("freshness", {}),
+                         "cache": {}}, "readiness": model["readiness"]}},
+            "prepare": prepare, "prepare_default": prepare["refresh-overview"],
+            "prepare_blocked": {
+                "BLOCKED": {"status": 400, "body": {"error": "UNKNOWN_WATCHLIST", "detail": "nope",
+                            "readiness": UC.ACTION_BLOCKED}},
+                "SESSION": {"status": 401, "body": {"error": "SESSION_REQUIRED", "detail": "",
+                            "readiness": UC.SESSION_REQUIRED}},
+                "CSRF": {"status": 403, "body": {"error": "CSRF_TOKEN_INVALID", "detail": "",
+                         "readiness": UC.CSRF_BLOCKED}},
+            },
+            "execute_ok": {"status": 200, "body": {"data": ok_res, "readiness": ok_res["readiness"]}},
+            "execute_export": {"status": 200, "body": {"data": exp_res, "readiness": exp_res["readiness"]}},
+            "execute_fail": {"status": 200, "body": {"data": {
+                "readiness": UC.ACTION_FAILED, "action": "run-watchlist", "authority": "phase7.11",
+                "target_ids": [wid], "upstream_result_id": None, "policy_result": "ALLOWED",
+                "failure_reason": "WATCHLIST_FETCH_FAILED",
+                "upstream_summary": {"error": "WATCHLIST_FETCH_FAILED"}}}},
+            "confirm_action": "run-watchlist", "confirm_phrase": confirm_phrase,
+            "confirm_params": {"watchlist_id": wid},
+            "all_actions": list(UC.ACTIONS.keys()), "params_for": params_for,
+            "secret_probe": SECRET_PROBE, "tmp_marker": self.tmp,
+        }
+
+    @unittest.skipUnless(NODE_BIN, "node runtime not available for the DOM harness")
+    def test_modal_dom_contract_40_checks(self):
+        fx = self._fixtures()
+        fx_path = os.path.join(self.tmp, "modal_fixtures.json")
+        with open(fx_path, "w", encoding="utf-8") as f:
+            json.dump(fx, f, default=str)
+        proc = subprocess.run([NODE_BIN, MODAL_HARNESS, fx_path], capture_output=True, text=True,
+                              timeout=120)
+        out = proc.stdout + proc.stderr
+        fails = [ln for ln in out.splitlines() if ln.startswith("FAIL ") or ln.startswith("HARNESS-ERROR")]
+        passes = [ln for ln in out.splitlines() if ln.startswith("PASS ")]
+        self.assertEqual(proc.returncode, 0, "modal DOM harness failed:\n" + out)
+        self.assertFalse(fails, "modal DOM checks failed:\n" + "\n".join(fails))
+        self.assertGreaterEqual(len(passes), 40, "expected >=40 modal DOM checks, got:\n" + out)
 
 
 # ================================================================ 28) sanity + accuracy

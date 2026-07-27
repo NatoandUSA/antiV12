@@ -13,4 +13,5 @@ production/phase7_unified_owner_console_static/app.js text eol=lf
 production/phase7_unified_owner_console_static/styles.css text eol=lf
 production/phase7_unified_owner_console_static/icons.svg text eol=lf
 tests/test_phase7_13_unified_owner_console.py text eol=lf
+tests/phase7_13_modal_dom_harness.js text eol=lf
 docs/PHASE7_13-UNIFIED-OWNER-CONSOLE-POLICY.md text eol=lf

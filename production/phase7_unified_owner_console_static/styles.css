@@ -135,15 +135,24 @@ dl.kv dd { margin: 0; word-break: break-word; }
 #modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex;
   align-items: center; justify-content: center; z-index: 80; padding: 1rem; }
 #modal { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  padding: 1.1rem 1.2rem; max-width: 560px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
-#modal h2 { margin: 0 0 .6rem; font-size: 1.15rem; }
+  padding: 1.1rem 1.2rem; max-width: 560px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  max-height: 88vh; overflow-y: auto; overflow-x: hidden; }
+#modal h2 { margin: 0 0 .2rem; font-size: 1.15rem; }
 #modal dl.kv { margin-bottom: .6rem; }
+.modal-canonical { color: var(--muted); font-size: .8rem; margin: 0 0 .5rem;
+  font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+.modal-readiness { margin: 0 0 .6rem; }
+.modal-phrase-required { margin: .3rem 0 .35rem; font-weight: 600; word-break: break-all;
+  font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+#modal-confirm-wrap label { display: block; color: var(--muted); font-size: .82rem; margin-bottom: .2rem; }
 #modal-confirm-wrap input { font: inherit; width: 100%; padding: .45rem .55rem;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink);
   font-family: ui-monospace, Consolas, monospace; }
 #modal-result { margin: .6rem 0; font-size: .9rem; }
 #modal-result.ok { color: var(--ok); }
 #modal-result.bad { color: var(--bad); }
+#modal-result p { margin: .3rem 0; }
+.export-list { margin: .3rem 0 .5rem; padding-left: 1.1rem; font-size: .82rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .8rem; }
 
 @media (max-width: 900px) {

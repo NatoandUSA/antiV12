@@ -55,12 +55,15 @@
     <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
          aria-describedby="modal-desc">
       <h2 id="modal-title">Confirm action</h2>
+      <p id="modal-canonical" class="modal-canonical"></p>
+      <div id="modal-readiness" class="modal-readiness"></div>
       <div id="modal-desc"></div>
       <div id="modal-confirm-wrap" hidden>
+        <p id="modal-phrase-required" class="modal-phrase-required"></p>
         <label for="modal-phrase">Type the confirmation phrase exactly to proceed</label>
         <input id="modal-phrase" type="text" autocomplete="off" spellcheck="false"
-               aria-describedby="modal-phrase-hint">
-        <p id="modal-phrase-hint" class="em"></p>
+               autocapitalize="off" autocorrect="off" aria-describedby="modal-phrase-hint">
+        <p id="modal-phrase-hint" class="em" aria-live="polite"></p>
       </div>
       <div id="modal-result" role="alert" aria-live="assertive"></div>
       <div class="modal-actions">

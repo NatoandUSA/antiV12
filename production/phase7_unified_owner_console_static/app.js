@@ -205,7 +205,7 @@
         var td = el("td", {});
         (actCol.actions(row) || []).forEach(function (spec) {
           var b = el("button", { class: "btn action", type: "button", text: spec.label });
-          b.addEventListener("click", function () { startAction(spec.action, spec.params); });
+          b.addEventListener("click", function () { startAction(spec.action, spec.params, spec.label); });
           td.appendChild(b); td.appendChild(document.createTextNode(" "));
         });
         tr.appendChild(td);
@@ -349,7 +349,7 @@
 
   function actBtn(label, action, params) {
     var b = el("button", { class: "btn action", type: "button", text: label });
-    b.addEventListener("click", function () { startAction(action, params); });
+    b.addEventListener("click", function () { startAction(action, params, label); });
     return b;
   }
 
@@ -580,85 +580,248 @@
   }
 
   // ---------------------------------------------------------------- action machinery (prepare/execute)
-  var modalState = { token: null, phrase: null, requires: false, lastFocus: null };
+  // The opaque single-use action token lives ONLY in this closure (never DOM text, storage or log). The
+  // modal renders the human-facing preparation contract with textContent only — it never renders the
+  // action token, CSRF token, session id/fingerprint, cookie or any absolute local path.
+  var modalState = { token: null, phrase: null, requires: false, lastFocus: null,
+                     executing: false, done: false, action: null };
 
-  function startAction(action, params) {
+  // Short, secret-free readiness codes from the accepted server mapped to an owner-facing sentence.
+  var READINESS_MESSAGE = {
+    "SESSION7_13_SESSION_REQUIRED": "Session expired. Reload the console to start a fresh local session.",
+    "SESSION7_13_CSRF_BLOCKED": "Security token rejected. Reload the console to obtain a fresh token.",
+    "SESSION7_13_AUDIT_STATE_BLOCKED": "Audit-chain integrity error — every state-changing action is "
+      + "blocked until it is resolved.",
+    "SESSION7_13_ACTION_BLOCKED": "This action is blocked by its accepted authority."
+  };
+  function humanize(action) {
+    return String(action || "action").replace(/[-_]/g, " ")
+      .replace(/^\w/, function (c) { return c.toUpperCase(); });
+  }
+  function ownerReason(body) {
+    body = body || {};
+    if (body.readiness && READINESS_MESSAGE[body.readiness]) return READINESS_MESSAGE[body.readiness];
+    var code = body.error || (body.data && body.data.failure_reason) || body.readiness || "";
+    return code ? ("The action could not be prepared (" + code + ")."
+      + (body.detail ? " " + body.detail : "")) : "The action could not be prepared.";
+  }
+  function id(x) { return document.getElementById(x); }
+  function setText(x, t) { id(x).textContent = t; }
+  function setReadiness(readiness) {
+    var box = id("modal-readiness"); box.textContent = "";
+    if (readiness) box.appendChild(el("span", { class: "readiness-pill " + readinessClass(readiness),
+                                                text: readiness }));
+  }
+
+  function resetModal() {
+    setText("modal-title", "Confirm action");
+    setText("modal-canonical", "");
+    id("modal-readiness").textContent = "";
+    id("modal-desc").textContent = "";
+    setText("modal-phrase-required", "");
+    setText("modal-phrase-hint", "");
+    id("modal-phrase").value = "";
+    var resEl = id("modal-result"); resEl.textContent = ""; resEl.className = "";
+    id("modal-confirm-wrap").hidden = true;
+    var cancel = id("modal-cancel"); cancel.textContent = "Cancel"; cancel.disabled = false; cancel.hidden = false;
+    var exec = id("modal-execute"); exec.textContent = "Confirm & run"; exec.disabled = false; exec.hidden = false;
+    modalState.executing = false; modalState.done = false;
+  }
+
+  function startAction(action, params, label) {
     postJSON(API + "/actions/prepare", { action: action, params: params || {} }).then(function (res) {
-      if (res.status !== 200) {
-        toast("Cannot prepare: " + (res.body.error || res.status));
-        return;
-      }
-      openModal(res.body.data);
+      var d = res.body && res.body.data;
+      // A successful prepare always carries an action_token; anything else is a preparation block and
+      // must still open a modal that shows the readiness + reason (never a blank confirmation dialog).
+      if (res.status === 200 && d && d.action_token) openModal(d, label);
+      else openModalBlocked(action, label, res);
+    }, function () {
+      openModalBlocked(action, label, { status: 0, body: { error: "NETWORK_ERROR" } });
     });
   }
 
-  function openModal(prep) {
-    modalState.token = prep.action_token;
+  function buildDetails(prep) {
+    var dl = el("dl", { class: "kv" });
+    function kv(k, v) {
+      dl.appendChild(el("dt", { text: k }));
+      dl.appendChild(el("dd", { text: (v === null || v === undefined || v === "") ? "—" : String(v) }));
+    }
+    kv("Accepted authority", prep.expected_authority);
+    kv("Target(s)", (prep.target_ids || []).join(", "));
+    kv("Expected effect", prep.expected_effect);
+    kv("Network access", prep.network_use);
+    kv("Local state changes", prep.local_state_changes);
+    kv("Upstream state changes", prep.upstream_state_changes);
+    kv("Confirmation window", prep.expires_in_seconds != null ? prep.expires_in_seconds + " seconds" : "—");
+    return dl;
+  }
+
+  function openModal(prep, label) {
+    resetModal();
+    modalState.token = prep.action_token;        // memory only — never written to the DOM
     modalState.phrase = prep.confirmation_phrase;
     modalState.requires = !!prep.requires_confirmation;
+    modalState.action = prep.canonical_action;
     modalState.lastFocus = document.activeElement;
-    document.getElementById("modal-title").textContent = "Confirm: " + prep.canonical_action;
-    var desc = document.getElementById("modal-desc");
-    desc.textContent = "";
-    var dl = el("dl", { class: "kv" });
-    function kv(k, v) { dl.appendChild(el("dt", { text: k })); dl.appendChild(el("dd", { text: v == null ? "—" : String(v) })); }
-    kv("Effect", prep.expected_effect);
-    kv("Authority", prep.expected_authority);
-    kv("Targets", (prep.target_ids || []).join(", "));
-    kv("Network use", prep.network_use);
-    kv("Local changes", prep.local_state_changes);
-    kv("Upstream changes", prep.upstream_state_changes);
-    kv("Token expires in", prep.expires_in_seconds + "s");
-    desc.appendChild(dl);
-    var wrap = document.getElementById("modal-confirm-wrap");
-    var input = document.getElementById("modal-phrase");
-    input.value = "";
-    document.getElementById("modal-result").textContent = "";
-    document.getElementById("modal-result").className = "";
+
+    setText("modal-title", label || humanize(prep.canonical_action));       // owner-facing title
+    setText("modal-canonical", "Canonical action: " + prep.canonical_action);
+    setReadiness(prep.readiness);
+    id("modal-desc").appendChild(buildDetails(prep));
+
+    var exec = id("modal-execute");
     if (modalState.requires) {
-      wrap.hidden = false;
-      document.getElementById("modal-phrase-hint").textContent = "Required phrase: " + prep.confirmation_phrase;
-    } else { wrap.hidden = true; }
-    document.getElementById("modal-backdrop").hidden = false;
-    (modalState.requires ? input : document.getElementById("modal-execute")).focus();
+      id("modal-confirm-wrap").hidden = false;
+      setText("modal-phrase-required", "Required confirmation phrase:  " + prep.confirmation_phrase);
+      setText("modal-phrase-hint", "Confirm & run stays disabled until the typed phrase matches exactly.");
+      exec.disabled = true;                       // gated until an exact match
+    } else {
+      id("modal-confirm-wrap").hidden = true;
+      exec.disabled = false;
+    }
+    openBackdrop();
+    (modalState.requires ? id("modal-phrase") : exec).focus();
+  }
+
+  function openModalBlocked(action, label, res) {
+    resetModal();
+    modalState.token = null;                      // never retain a stale preparation token
+    modalState.requires = false;
+    modalState.done = true;                       // nothing to execute from a blocked prepare
+    modalState.action = action;
+    modalState.lastFocus = document.activeElement;
+    var body = (res && res.body) || {};
+    setText("modal-title", label || humanize(action));
+    setText("modal-canonical", "Canonical action: " + action);
+    setReadiness(body.readiness || "SESSION7_13_ACTION_BLOCKED");
+    id("modal-desc").appendChild(el("div", { class: "notice bad", role: "note" }, [
+      el("strong", { text: "This action cannot be prepared right now." }),
+      el("p", { text: ownerReason(body) })
+    ]));
+    id("modal-confirm-wrap").hidden = true;
+    var exec = id("modal-execute"); exec.hidden = true; exec.disabled = true;   // no Confirm on a block
+    var cancel = id("modal-cancel"); cancel.textContent = "Close";
+    openBackdrop();
+    cancel.focus();
+  }
+
+  function openBackdrop() { id("modal-backdrop").hidden = false; }
+
+  function refreshExecuteEnabled() {
+    if (!modalState.requires || modalState.executing || modalState.done) return;
+    // Exact match only — no trim, no case-fold, no punctuation normalization. This is never looser than
+    // the accepted server check, so the button can only enable a phrase the authority would also accept.
+    id("modal-execute").disabled = (id("modal-phrase").value !== modalState.phrase);
   }
 
   function closeModal() {
-    document.getElementById("modal-backdrop").hidden = true;
-    if (modalState.lastFocus && modalState.lastFocus.focus) modalState.lastFocus.focus();
-    modalState.token = null;
+    if (modalState.executing) return;             // never close while an execution is in flight
+    id("modal-backdrop").hidden = true;
+    var f = modalState.lastFocus;
+    modalState.token = null; modalState.phrase = null; modalState.action = null;
+    modalState.requires = false; modalState.done = false;
+    if (f && f.focus) f.focus();                  // focus returns to the triggering control
   }
 
   function executeModal() {
-    if (!modalState.token) return;
+    if (modalState.executing || modalState.done || !modalState.token) return;   // block double-run / reuse
+    if (modalState.requires && id("modal-phrase").value !== modalState.phrase) {
+      setText("modal-phrase-hint", "Phrase does not match yet — Confirm & run stays disabled.");
+      return;                                     // wrong phrase: local only, the token is NOT consumed
+    }
+    modalState.executing = true;
+    id("modal-cancel").disabled = true;
+    var exec = id("modal-execute"); exec.disabled = true; exec.textContent = "Working…";
+    var resEl = id("modal-result"); resEl.className = ""; resEl.textContent = "Contacting the accepted authority…";
     var payload = { action_token: modalState.token };
-    if (modalState.requires) payload.confirmation_phrase = document.getElementById("modal-phrase").value;
-    var resEl = document.getElementById("modal-result");
-    resEl.className = ""; resEl.textContent = "Running…";
-    postJSON(API + "/actions/execute", payload).then(function (res) {
-      if (res.status === 200 && res.body.data && res.body.data.readiness === "SESSION7_13_ACTION_COMPLETED") {
-        resEl.className = "ok";
-        resEl.textContent = "Completed. " + (res.body.data.upstream_result_id
-          ? "Result id: " + res.body.data.upstream_result_id : "");
-        toast("Action completed");
-        window.setTimeout(function () { closeModal(); route(); refreshStatusBar(); }, 900);
-      } else {
-        resEl.className = "bad";
-        var b = res.body || {};
-        resEl.textContent = "Not completed: " + (b.error || (b.data && b.data.readiness) || res.status)
-          + (b.detail ? " (" + b.detail + ")" : "")
-          + (b.data && b.data.failure_reason ? " [" + b.data.failure_reason + "]" : "");
-        refreshStatusBar();
-      }
+    if (modalState.requires) payload.confirmation_phrase = id("modal-phrase").value;
+    postJSON(API + "/actions/execute", payload).then(finishExecute, function () {
+      finishExecute({ status: 0, body: { error: "NETWORK_ERROR" } });
     });
   }
 
-  function wireModal() {
-    document.getElementById("modal-cancel").addEventListener("click", closeModal);
-    document.getElementById("modal-execute").addEventListener("click", executeModal);
-    document.getElementById("modal-backdrop").addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closeModal();
+  function finishExecute(res) {
+    modalState.executing = false;
+    modalState.token = null;                      // single-use: the submitted token is never reused
+    modalState.done = true;
+    var d = (res.body && res.body.data) || {};
+    var resEl = id("modal-result");
+    var exec = id("modal-execute"); exec.hidden = true;    // consumed token — no re-submit
+    var cancel = id("modal-cancel"); cancel.disabled = false; cancel.textContent = "Close";
+    if (res.status === 200 && d.readiness === "SESSION7_13_ACTION_COMPLETED") {
+      resEl.className = "ok"; resEl.textContent = "";
+      resEl.appendChild(el("strong", { text: "Completed — " + d.readiness }));
+      if (d.upstream_result_id) resEl.appendChild(el("p", { text: "Result id: " + d.upstream_result_id }));
+      if (d.authority) resEl.appendChild(el("p", { class: "em", text: "Accepted authority: " + d.authority }));
+      appendExportResult(resEl, d);
+      toast("Action completed");
+      route(); refreshStatusBar();                // refresh the read model; modal stays open until closed
+    } else {
+      resEl.className = "bad"; resEl.textContent = "";
+      resEl.appendChild(el("strong", { text: "Not completed" }));
+      var reason = (res.body && res.body.error) || d.failure_reason || d.readiness
+        || (res.status ? "HTTP " + res.status : "network error");
+      resEl.appendChild(el("p", { text: String(reason) }));
+      if (d.policy_result && d.policy_result !== "ALLOWED")
+        resEl.appendChild(el("p", { class: "em", text: "Policy: " + d.policy_result }));
+      refreshStatusBar();
+    }
+    id("modal-cancel").focus();
+  }
+
+  function appendExportResult(resEl, d) {
+    var exports = (d.upstream_summary || {}).exports;
+    if (!exports || !exports.length) return;      // only export-overview yields a file list
+    resEl.appendChild(el("p", { class: "em", text: "Export files written under the console workspace:" }));
+    var ul = el("ul", { class: "export-list" });
+    exports.forEach(function (name) { ul.appendChild(el("li", { class: "mono", text: String(name) })); });
+    resEl.appendChild(ul);
+    var row = el("div", { class: "export-row" });
+    [["owner_console_snapshot.json", "json"], ["owner_console_status.tsv", "tsv"],
+     ["owner_console_report.md", "md"]].forEach(function (e) {
+      row.appendChild(el("a", { class: "btn", href: API + "/exports/overview?format=" + e[1],
+                                download: e[0], text: "Download " + e[0] }));
     });
+    resEl.appendChild(row);
+  }
+
+  function modalFocusables() {
+    var out = [];
+    if (!id("modal-confirm-wrap").hidden) out.push(id("modal-phrase"));
+    var cancel = id("modal-cancel"); if (!cancel.hidden && !cancel.disabled) out.push(cancel);
+    var exec = id("modal-execute"); if (!exec.hidden && !exec.disabled) out.push(exec);
+    return out;
+  }
+  function trapTab(e) {
+    var f = modalFocusables();
+    if (!f.length) { e.preventDefault(); return; }
+    var first = f[0], last = f[f.length - 1], active = document.activeElement;
+    if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+    else if (f.indexOf(active) < 0) { e.preventDefault(); first.focus(); }
+  }
+
+  function wireModal() {
+    id("modal-cancel").addEventListener("click", closeModal);
+    id("modal-execute").addEventListener("click", executeModal);
+    var input = id("modal-phrase");
+    input.addEventListener("input", function () { setText("modal-phrase-hint", ""); refreshExecuteEnabled(); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      // Enter submits only when the confirm button would itself be enabled (exact phrase + live token).
+      if (!modalState.executing && !modalState.done && modalState.token
+          && (!modalState.requires || input.value === modalState.phrase)) executeModal();
+    });
+    var backdrop = id("modal-backdrop");
+    backdrop.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { closeModal(); return; }   // closeModal no-ops while executing
+      if (e.key === "Tab") trapTab(e);
+    });
+    // Deliberate: a click on the dimmed backdrop does NOT dismiss a prepared confirmation, so an
+    // accidental click can never discard a single-use token. Cancel / Close / Escape dismiss it.
+    backdrop.addEventListener("mousedown", function (e) { if (e.target === backdrop) e.preventDefault(); });
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) e.preventDefault(); });
   }
 
   // ---------------------------------------------------------------- status bar + badges

@@ -15,3 +15,28 @@ production/phase7_unified_owner_console_static/icons.svg text eol=lf
 tests/test_phase7_13_unified_owner_console.py text eol=lf
 tests/phase7_13_modal_dom_harness.js text eol=lf
 docs/PHASE7_13-UNIFIED-OWNER-CONSOLE-POLICY.md text eol=lf
+
+# Pin the Phase 7.14 owner-usability surface (launcher, guidance read model, launcher scripts,
+# static assets and pilot kit) to LF so their SHA-256 hashes, recorded in
+# SESSION7_14-OWNER-USABILITY-PILOT-READINESS-PROOF.json, reproduce identically in every checkout
+# regardless of core.autocrlf. This is repo config only; no accepted authority is changed.
+production/phase7_owner_launcher.py text eol=lf
+production/phase7_owner_next_action.py text eol=lf
+production/phase7_unified_owner_console_static/favicon.svg text eol=lf
+tests/test_phase7_14_owner_usability_pilot_readiness.py text eol=lf
+tests/phase7_14_console_dom_harness.js text eol=lf
+tests/phase7_14_browser_qa.js text eol=lf
+Start-AMZ-Toolkit.ps1 text eol=lf
+Stop-AMZ-Toolkit.ps1 text eol=lf
+Open-AMZ-Toolkit.ps1 text eol=lf
+docs/PHASE7_14-OWNER-USABILITY-POLICY.md text eol=lf
+docs/PHASE7_14-OWNER-PILOT-GUIDE.md text eol=lf
+docs/PHASE7_14-OWNER-PILOT-CHECKLIST.md text eol=lf
+docs/PHASE7_14-PILOT-ISSUE-TEMPLATE.md text eol=lf
+docs/PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md text eol=lf
+docs/PHASE7_14-PILOT-EXIT-CRITERIA.md text eol=lf
+
+# The .bat launchers MUST keep CRLF: cmd.exe mis-parses an LF-only batch file.
+Start-AMZ-Toolkit.bat text eol=crlf
+Stop-AMZ-Toolkit.bat text eol=crlf
+Open-AMZ-Toolkit.bat text eol=crlf

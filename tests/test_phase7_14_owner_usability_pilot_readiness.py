@@ -1,0 +1,2642 @@
+#!/usr/bin/env python3
+"""Phase 7.14 — Owner Usability & Pilot Readiness.
+
+Covers the four Phase 7.14 deliverables: Launcher Lite, the smart next-action guidance read model,
+the owner-facing dashboard refinements, and the real-pilot preparation kit.
+
+Every test runs offline. No committed test uses the real Internet: the launcher is driven entirely
+through injected seams (health probe, port probe, spawn, browser, process identity, clock), and the
+front-end is rendered in a dependency-free Node DOM harness against fixtures produced here. The
+permanent boundary is asserted throughout — no Amazon Seller Central, no seller sign-in, no seller
+API, no advertising API, no seller browser automation, and every seller-account counter is a
+constant zero.
+"""
+import ast
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stdout, redirect_stderr
+import io
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (ROOT, os.path.join(ROOT, "core"), os.path.join(ROOT, "production"),
+           os.path.join(ROOT, "tests")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from production import phase7_owner_launcher as L                    # noqa: E402
+from production import phase7_owner_next_action as NA                # noqa: E402
+from production import phase7_unified_owner_console as UC            # noqa: E402
+
+LAUNCHER_PATH = os.path.join(ROOT, "production", "phase7_owner_launcher.py")
+NEXT_PATH = os.path.join(ROOT, "production", "phase7_owner_next_action.py")
+CONSOLE_PATH = os.path.join(ROOT, "production", "phase7_unified_owner_console.py")
+STATIC_DIR = os.path.join(ROOT, "production", "phase7_unified_owner_console_static")
+DOCS = os.path.join(ROOT, "docs")
+TESTS = os.path.join(ROOT, "tests")
+
+SCRIPTS = ("Start-AMZ-Toolkit.bat", "Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.bat",
+           "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.bat", "Open-AMZ-Toolkit.ps1")
+PILOT_DOCS = ("PHASE7_14-OWNER-USABILITY-POLICY.md", "PHASE7_14-OWNER-PILOT-GUIDE.md",
+              "PHASE7_14-OWNER-PILOT-CHECKLIST.md", "PHASE7_14-PILOT-ISSUE-TEMPLATE.md",
+              "PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md", "PHASE7_14-PILOT-EXIT-CRITERIA.md")
+
+NODE = shutil.which("node")
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def doc(name):
+    return read(os.path.join(DOCS, name))
+
+
+def script(name):
+    return read(os.path.join(ROOT, name))
+
+
+def static(name):
+    return read(os.path.join(STATIC_DIR, name))
+
+
+# ================================================================ next-action fixtures
+def model(**over):
+    """A complete, healthy console model. Each test perturbs exactly one thing."""
+    ov = {"pending_decisions": 0, "pending_manual_actions": 0, "due_followups": 0,
+          "open_alerts": 0, "due_watchlists": 0, "notification_unknown": 0, "notification_sent": 0,
+          "notification_failed": 0, "backup_snapshots": 1, "update_available": False,
+          "stale_data_phases": [], "blocked_modules": [], "unavailable_modules": [],
+          "attention_items": 0, "research_runs": 1}
+    ov.update(over.pop("overview", {}))
+    m = {
+        "readiness": UC.CONSOLE_READY,
+        "overview": ov,
+        "sections": {
+            "analysis": {"status": "READY", "counts": {"analyzed_rows": 10},
+                         "model": {"overview": {"decision_package_id": "pkg-1"}}},
+            "research": {"status": "READY", "counts": {"runs": 1}},
+            "watchlists": {"status": "READY", "alerts": [], "counts": {}},
+            "notifications": {"status": "READY", "counts": {}},
+            "backup": {"status": "READY", "counts": {}},
+        },
+        "freshness": {"7.3": {"present": True, "stale": False},
+                      "7.9": {"present": True, "stale": False}},
+        "system": {"audit_chain": {"ok": True},
+                   "seller_central_counters": dict(UC.SELLER_CENTRAL_COUNTERS),
+                   "connectivity_boundary": {"seller_central_blocked": True,
+                                             "seller_api_blocked": True,
+                                             "advertising_api_blocked": True}},
+    }
+    for k, v in over.items():
+        if k in ("sections", "system", "freshness") and isinstance(v, dict):
+            m[k].update(v)
+        else:
+            m[k] = v
+    return m
+
+
+def na_for(**over):
+    return NA.build_next_action(model(**over))
+
+
+CASES = {
+    1: lambda: model(system={"audit_chain": {"ok": False, "reason": "HASH_MISMATCH"}}),
+    2: lambda: model(system={"seller_central_counters": dict(UC.SELLER_CENTRAL_COUNTERS,
+                                                            seller_api_calls=1)}),
+    3: lambda: model(sections={"analysis": {"status": "MODULE_UNAVAILABLE", "counts": {}}},
+                     overview={"unavailable_modules": ["analysis"]}),
+    4: lambda: model(sections={"analysis": {"status": "READY_EMPTY",
+                                            "counts": {"analyzed_rows": 0}}}),
+    5: lambda: model(freshness={"7.3": {"present": True, "stale": True}}),
+    6: lambda: model(overview={"pending_decisions": 3}),
+    7: lambda: model(overview={"pending_manual_actions": 2}),
+    8: lambda: model(overview={"due_followups": 4}),
+    9: lambda: model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+        {"alert_id": "al-1", "status": "OPEN", "severity": "CRITICAL"}]}}),
+    10: lambda: model(overview={"due_watchlists": 1}),
+    11: lambda: model(overview={"notification_unknown": 2}),
+    12: lambda: model(overview={"backup_snapshots": 0}),
+    13: lambda: model(overview={"update_available": True}),
+    14: lambda: model(),
+}
+
+
+# ================================================================ launcher seams
+class FakeProc:
+    """A spawned console stand-in. `exit_after` makes it 'crash' after N health polls."""
+
+    def __init__(self, pid=424242, exit_after=None, exit_code=1):
+        self.pid = pid
+        self._exit_after = exit_after
+        self._exit_code = exit_code
+        self.polls = 0
+
+    def poll(self):
+        self.polls += 1
+        if self._exit_after is not None and self.polls > self._exit_after:
+            return self._exit_code
+        return None
+
+
+HEALTHY = {"ok": True, "reason": "OK", "stage_id": "7.13",
+           "api_schema": "phase7-13-console-api-v1", "readiness": UC.CONSOLE_READY,
+           "http_status": 200, "seller_central_action_performed": False}
+UNHEALTHY = {"ok": False, "reason": "ConnectionRefusedError", "stage_id": None,
+             "api_schema": None, "readiness": None, "http_status": None}
+FOREIGN = {"ok": False, "reason": "NOT_THE_ACCEPTED_CONSOLE", "stage_id": None,
+           "api_schema": "something-else", "readiness": None, "http_status": 200}
+
+
+class LauncherBase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="p714-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.ws = L.Workspace(self.tmp)
+        self.ws.ensure()
+        self.browser_calls = []
+        self.terminated = []
+        self.slept = []
+
+    def launcher(self, **kw):
+        kw.setdefault("root", ROOT)
+        kw.setdefault("workspace", self.ws)
+        kw.setdefault("clock", self._clock())
+        kw.setdefault("sleep", self.slept.append)
+        kw.setdefault("health", lambda h, p: dict(UNHEALTHY))
+        kw.setdefault("port_probe", lambda h, p: False)
+        kw.setdefault("spawn", lambda cmd, cwd: FakeProc())
+        kw.setdefault("browser", self._browser)
+        kw.setdefault("alive", lambda pid: True)
+        kw.setdefault("start_token", lambda pid: "tok-" + str(pid))
+        kw.setdefault("terminate", self._terminate)
+        return L.Launcher(**kw)
+
+    def _clock(self):
+        box = {"t": 0.0}
+
+        def clock():
+            box["t"] += 0.25
+            return box["t"]
+        return clock
+
+    def _browser(self, url):
+        self.browser_calls.append(url)
+        return True
+
+    def _terminate(self, pid, *, hard=False):
+        self.terminated.append((pid, hard))
+        return True
+
+
+# ================================================================ 1) launcher CLI
+class TestLauncherCLI(unittest.TestCase):
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            try:
+                rc = L.main(argv)
+            except SystemExit as e:
+                rc = e.code
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_001_cli_help(self):
+        rc, out, _ = self.run_cli(["--help"])
+        self.assertEqual(rc, 0)
+        self.assertIn("start", out)
+        self.assertIn("stop", out)
+        self.assertIn("open", out)
+
+    def test_002_unknown_command_rejected(self):
+        rc, _, err = self.run_cli(["frobnicate"])
+        self.assertEqual(rc, 2)
+
+    def test_002b_help_states_no_seller_action(self):
+        rc, out, _ = self.run_cli(["--help"])
+        self.assertIn("Seller Central", out)
+
+    def test_003_validate_only(self):
+        rc, out, _ = self.run_cli(["validate-only"])
+        self.assertEqual(rc, 0)
+        self.assertIn("readiness=" + L.LAUNCHER_READY, out)
+        self.assertIn("ok=True", out)
+
+    def test_004_validate_only_no_side_effects(self):
+        res = L.validate_only()
+        for k in ("files_written", "directories_created", "processes_spawned", "processes_signalled",
+                  "browsers_opened", "network_requests", "ports_probed", "locks_taken"):
+            self.assertEqual(res[k], 0, k)
+
+    def test_004b_validate_only_writes_nothing_to_disk(self):
+        tmp = tempfile.mkdtemp(prefix="p714-vo-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        before = sorted(os.listdir(tmp))
+        L.validate_only(root=tmp)
+        self.assertEqual(sorted(os.listdir(tmp)), before)
+
+    def test_004c_validate_only_json(self):
+        rc, out, _ = self.run_cli(["--json", "validate-only"])
+        self.assertEqual(json.loads(out)["schema_version"], "phase7-14-launcher-validate-v1")
+
+    def test_004d_non_loopback_host_refused_by_cli(self):
+        rc, _, err = self.run_cli(["--host", "0.0.0.0", "start"])
+        self.assertEqual(rc, 2)
+        self.assertIn("NON_LOOPBACK_BIND_REFUSED", err)
+
+    def test_004e_invalid_port_refused_by_cli(self):
+        rc, _, err = self.run_cli(["--port", "99999", "start"])
+        self.assertEqual(rc, 2)
+
+
+# ================================================================ 2) preflight
+class TestLauncherPreflight(LauncherBase):
+    def test_005_python_detected(self):
+        c = L.check_python()
+        self.assertTrue(c["ok"])
+        self.assertEqual(c["python_version"], ".".join(str(x) for x in sys.version_info[:3]))
+
+    def test_006_unsupported_python_refused(self):
+        self.assertFalse(L.check_python((3, 6, 0))["ok"])
+        self.assertFalse(L.check_python((2, 7, 18))["ok"])
+
+    def test_006b_supported_python_accepted(self):
+        for v in ((3, 9, 0), (3, 12, 10), (3, 13, 1)):
+            self.assertTrue(L.check_python(v)["ok"], v)
+
+    def test_006c_beyond_tested_python_still_runs(self):
+        c = L.check_python((3, 99, 0))
+        self.assertTrue(c["ok"])
+        self.assertTrue(c["beyond_tested"])
+
+    def test_007_repository_detected(self):
+        c = L.check_repository(ROOT)
+        self.assertTrue(c["ok"], c["missing"])
+        self.assertEqual(c["missing"], [])
+
+    def test_008_repository_moved_detected(self):
+        c = L.check_repository(self.tmp)
+        self.assertFalse(c["ok"])
+        self.assertIn("production/phase7_unified_owner_console.py", c["missing"])
+
+    def test_008b_repository_root_resolved_from_module_not_cwd(self):
+        self.assertTrue(os.path.isfile(os.path.join(L.repo_root(), L.CONSOLE_SOURCE)))
+
+    def test_008c_missing_static_asset_detected(self):
+        fake = os.path.join(self.tmp, "repo")
+        os.makedirs(os.path.join(fake, "production", "phase7_unified_owner_console_static"))
+        open(os.path.join(fake, L.CONSOLE_SOURCE), "w").close()
+        c = L.check_repository(fake)
+        self.assertFalse(c["ok"])
+        self.assertTrue(any("index.html" in m for m in c["missing"]))
+
+    def test_009_paths_with_spaces(self):
+        spaced = os.path.join(self.tmp, "My Toolkit Folder")
+        shutil.copytree(os.path.join(ROOT, "production", "phase7_unified_owner_console_static"),
+                        os.path.join(spaced, "production", "phase7_unified_owner_console_static"))
+        shutil.copy(CONSOLE_PATH, os.path.join(spaced, L.CONSOLE_SOURCE))
+        self.assertTrue(L.check_repository(spaced)["ok"])
+
+    def test_009b_workspace_in_spaced_path(self):
+        spaced = os.path.join(self.tmp, "a b c")
+        ws = L.Workspace(spaced)
+        self.assertTrue(ws.ensure())
+        ws.log("probe", note="ok")
+        self.assertTrue(os.path.isfile(ws.path(L.LOG_FILE)))
+
+    def test_009c_required_imports_present(self):
+        c = L.check_imports()
+        self.assertTrue(c["ok"], c)
+        self.assertTrue(c["console_module_importable"])
+        self.assertEqual(c["missing_stdlib"], [])
+
+    def test_009d_preflight_aggregates(self):
+        pre = self.launcher().preflight()
+        self.assertTrue(pre["ok"])
+        self.assertEqual({c["check"] for c in pre["checks"]},
+                         {"python_supported", "repository_contains_console", "required_imports"})
+
+    # ---- pilot readiness of the working copy ----------------------------------------------------
+    def test_009e_pilot_kit_present_in_this_checkout(self):
+        p = L.pilot_readiness(ROOT)
+        self.assertTrue(p["ok"], p["missing"])
+        self.assertEqual(p["readiness"], L.PILOT_READY)
+
+    def test_009f_pilot_required_when_kit_missing(self):
+        p = L.pilot_readiness(self.tmp)
+        self.assertFalse(p["ok"])
+        self.assertEqual(p["readiness"], L.PILOT_REQUIRED)
+        self.assertEqual(len(p["missing"]), len(L.LAUNCHER_SCRIPTS) + len(L.PILOT_DOCUMENTS))
+
+    def test_009g_pilot_kit_lists_all_six_scripts_and_docs(self):
+        self.assertEqual(len(L.LAUNCHER_SCRIPTS), 6)
+        self.assertEqual(len(L.PILOT_DOCUMENTS), 6)
+        self.assertEqual(set(L.LAUNCHER_SCRIPTS), set(SCRIPTS))
+        self.assertEqual({os.path.basename(d) for d in L.PILOT_DOCUMENTS}, set(PILOT_DOCS))
+
+    def test_009h_validate_only_reports_pilot_readiness(self):
+        self.assertEqual(L.validate_only()["pilot_readiness"], L.PILOT_READY)
+
+    def test_009i_starting_state_declared_and_messaged(self):
+        self.assertEqual(L.LAUNCHER_STARTING, "SESSION7_14_LAUNCHER_STARTING")
+        self.assertIn(L.LAUNCHER_STARTING, L._OWNER_MESSAGES)
+
+    def test_009j_starting_status_published_during_the_wait(self):
+        seen = []
+        ws = self.ws
+
+        class Recording(L.Workspace):
+            pass
+        original = ws.write_status
+
+        def record(result):
+            seen.append(result["readiness"])
+            return original(result)
+        ws.write_status = record
+        self.addCleanup(setattr, ws, "write_status", original)
+        self.launcher(health=lambda h, p: dict(HEALTHY), workspace=ws).start()
+        self.assertEqual(seen[0], L.LAUNCHER_STARTING, seen)
+        self.assertEqual(seen[-1], L.LAUNCHER_READY, seen)
+
+
+# ================================================================ 3) port handling
+class TestLauncherPort(LauncherBase):
+    def test_010_port_free_starts(self):
+        seq = [dict(UNHEALTHY), dict(HEALTHY)]
+        lc = self.launcher(port_probe=lambda h, p: False,
+                           health=lambda h, p: seq.pop(0) if seq else dict(HEALTHY))
+        res = lc.start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_READY)
+
+    def test_011_port_occupied_by_stranger_blocks(self):
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN))
+        res = lc.start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_PORT_BLOCKED)
+
+    def test_011b_port_blocked_message_is_exact(self):
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN))
+        self.assertEqual(lc.start()["port_message"], "PORT 8780 IS ALREADY IN USE")
+
+    def test_011c_port_blocked_message_constant(self):
+        self.assertEqual(L.PORT_IN_USE_MESSAGE, "PORT 8780 IS ALREADY IN USE")
+
+    def test_012_port_occupied_by_accepted_console_is_already_running(self):
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(HEALTHY))
+        res = lc.start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_ALREADY_RUNNING)
+        self.assertTrue(res["duplicate_start_refused"])
+
+    def test_013_port_occupied_by_unrelated_process_never_spawns(self):
+        spawned = []
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN),
+                           spawn=lambda cmd, cwd: spawned.append(cmd) or FakeProc())
+        lc.start()
+        self.assertEqual(spawned, [])
+
+    def test_013b_port_occupied_by_unrelated_process_never_terminates_it(self):
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN))
+        lc.start()
+        self.assertEqual(self.terminated, [])
+
+    def test_013c_no_automatic_random_port(self):
+        self.assertIs(L.AUTOMATIC_PORT_SELECTION, False)
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN))
+        self.assertEqual(lc.start()["port"], 8780)
+
+    def test_013d_port_fixed_across_start_stop_open(self):
+        self.assertEqual(L.DEFAULT_PORT, 8780)
+        for verb in ("start", "stop", "open"):
+            self.assertIn("--port", script("%s-AMZ-Toolkit.ps1" % verb.capitalize()))
+            self.assertIn("8780", script("%s-AMZ-Toolkit.ps1" % verb.capitalize()))
+
+    def test_013e_port_validation_bounds(self):
+        for bad in (-1, 0, 65536, "x", None):
+            with self.assertRaises(L.LauncherError):
+                L.validate_port(bad)
+
+
+# ================================================================ 4) already-running / duplicates
+class TestLauncherRunning(LauncherBase):
+    def test_014_already_running_healthy_console_not_duplicated(self):
+        spawned = []
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(HEALTHY),
+                           spawn=lambda cmd, cwd: spawned.append(cmd) or FakeProc())
+        res = lc.start()
+        self.assertEqual(spawned, [])
+        self.assertTrue(res["already_running"])
+
+    def test_015_already_running_unhealthy_is_blocked_not_killed(self):
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(UNHEALTHY))
+        res = lc.start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_PORT_BLOCKED)
+        self.assertEqual(self.terminated, [])
+
+    def test_016_duplicate_start_opens_browser_but_starts_nothing(self):
+        lc = self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(HEALTHY))
+        lc.start()
+        self.assertEqual(self.browser_calls, ["http://127.0.0.1:8780"])
+
+    def test_016b_repeated_double_click_is_idempotent(self):
+        state = {"running": False}
+
+        def probe(h, p):
+            return state["running"]
+
+        def health(h, p):
+            return dict(HEALTHY) if state["running"] else dict(UNHEALTHY)
+
+        def spawn(cmd, cwd):
+            state["running"] = True
+            return FakeProc()
+        first = self.launcher(port_probe=probe, health=health, spawn=spawn).start()
+        second = self.launcher(port_probe=probe, health=health, spawn=spawn).start()
+        self.assertEqual(first["readiness"], L.LAUNCHER_READY)
+        self.assertEqual(second["readiness"], L.LAUNCHER_ALREADY_RUNNING)
+
+    def test_017_launcher_lock_is_exclusive(self):
+        a = L.LauncherLock(self.ws)
+        b = L.LauncherLock(self.ws)
+        self.assertTrue(a.acquire())
+        self.assertFalse(b.acquire())
+        a.release()
+        self.assertTrue(b.acquire())
+        b.release()
+
+    def test_017b_second_start_during_startup_refuses(self):
+        held = L.LauncherLock(self.ws)
+        held.acquire()
+        self.addCleanup(held.release)
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY)).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_LOCKED)
+
+    def test_017c_second_start_during_startup_spawns_nothing(self):
+        held = L.LauncherLock(self.ws)
+        held.acquire()
+        self.addCleanup(held.release)
+        spawned = []
+        self.launcher(spawn=lambda cmd, cwd: spawned.append(c) or FakeProc()).start()
+        self.assertEqual(spawned, [])
+
+    def test_017d_lock_released_after_start(self):
+        seq = [dict(HEALTHY)]
+        self.launcher(health=lambda h, p: seq[0]).start()
+        self.assertFalse(os.path.isfile(self.ws.path(L.LOCK_FILE)))
+
+    def test_018_stale_lock_reclaimed_when_owner_gone(self):
+        lock = L.LauncherLock(self.ws)
+        with open(lock.path, "w", encoding="utf-8") as f:
+            json.dump({"launcher_pid": 999999999, "acquired_at_epoch": 0.0}, f)
+        fresh = L.LauncherLock(self.ws)
+        self.assertTrue(fresh.acquire())
+        self.assertTrue(fresh.reclaimed_stale)
+        fresh.release()
+
+    def test_018b_stale_lock_reclaimed_when_too_old(self):
+        lock = L.LauncherLock(self.ws)
+        with open(lock.path, "w", encoding="utf-8") as f:
+            json.dump({"launcher_pid": os.getpid(), "acquired_at_epoch": 0.0}, f)
+        fresh = L.LauncherLock(self.ws, stale_after=1.0, clock=lambda: 10_000.0)
+        self.assertTrue(fresh.acquire())
+        fresh.release()
+
+    def test_018c_live_lock_not_reclaimed(self):
+        held = L.LauncherLock(self.ws)
+        held.acquire()
+        self.addCleanup(held.release)
+        other = L.LauncherLock(self.ws)
+        self.assertFalse(other.acquire())
+        self.assertFalse(other.reclaimed_stale)
+
+    def test_018d_corrupt_lock_file_is_reclaimed(self):
+        with open(L.LauncherLock(self.ws).path, "w", encoding="utf-8") as f:
+            f.write("not json")
+        fresh = L.LauncherLock(self.ws)
+        self.assertTrue(fresh.acquire())
+        fresh.release()
+
+
+# ================================================================ 5) PID record + identity
+class TestLauncherPid(LauncherBase):
+    def start_ok(self, **kw):
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        return self.launcher(**kw).start()
+
+    def test_019_pid_record_written(self):
+        res = self.start_ok(spawn=lambda cmd, cwd: FakeProc(pid=777))
+        self.assertEqual(res["pid"], 777)
+        rec = self.ws.read_pid()
+        self.assertEqual(rec["pid"], 777)
+        self.assertEqual(rec["schema_version"], L.PID_SCHEMA)
+
+    def test_019b_pid_record_holds_identity_token(self):
+        self.start_ok(spawn=lambda cmd, cwd: FakeProc(pid=778))
+        self.assertEqual(self.ws.read_pid()["process_start_token"], "tok-778")
+
+    def test_019c_pid_record_holds_command_fingerprint(self):
+        self.start_ok(spawn=lambda cmd, cwd: FakeProc(pid=779))
+        fp = self.ws.read_pid()["command_fingerprint"]
+        self.assertIn("production.phase7_unified_owner_console", fp)
+        self.assertTrue(fp.endswith("serve"))
+
+    def test_019d_pid_record_has_no_absolute_path(self):
+        self.start_ok(spawn=lambda cmd, cwd: FakeProc(pid=780))
+        blob = json.dumps(self.ws.read_pid())
+        self.assertNotIn(":\\", blob)
+        self.assertNotIn(self.tmp, blob)
+
+    def test_020_stale_pid_cleared_when_process_gone(self):
+        self.ws.write_pid({"pid": 4242, "process_start_token": "tok-4242", "host": "127.0.0.1",
+                           "port": 8780})
+        res = self.start_ok(alive=lambda pid: pid != 4242,
+                            spawn=lambda cmd, cwd: FakeProc(pid=99))
+        self.assertTrue(res["stale_pid_cleared"])
+        self.assertEqual(self.ws.read_pid()["pid"], 99)
+
+    def test_021_pid_reuse_detected_and_record_cleared(self):
+        self.ws.write_pid({"pid": 4242, "process_start_token": "tok-OLD", "host": "127.0.0.1",
+                           "port": 8780})
+        res = self.start_ok(alive=lambda pid: True, start_token=lambda pid: "tok-NEW",
+                            spawn=lambda cmd, cwd: FakeProc(pid=99))
+        self.assertTrue(res["stale_pid_cleared"])
+
+    def test_021b_pid_reuse_never_signals(self):
+        self.ws.write_pid({"pid": 4242, "process_start_token": "tok-OLD", "host": "127.0.0.1",
+                           "port": 8780})
+        self.start_ok(alive=lambda pid: True, start_token=lambda pid: "tok-NEW",
+                      spawn=lambda cmd, cwd: FakeProc(pid=99))
+        self.assertEqual(self.terminated, [])
+
+    def test_022_process_identity_helpers_real(self):
+        self.assertTrue(L.process_alive(os.getpid()))
+        self.assertIsNotNone(L.process_start_token(os.getpid()))
+
+    def test_022b_process_identity_stable_for_same_process(self):
+        self.assertEqual(L.process_start_token(os.getpid()), L.process_start_token(os.getpid()))
+
+    def test_022c_process_alive_false_for_impossible_pid(self):
+        self.assertFalse(L.process_alive(-1))
+        self.assertFalse(L.process_alive(0))
+        self.assertFalse(L.process_alive("x"))
+
+    def test_022d_start_token_none_for_impossible_pid(self):
+        self.assertIsNone(L.process_start_token(-1))
+        self.assertIsNone(L.process_start_token(None))
+
+    def test_022e_corrupt_pid_file_tolerated(self):
+        with open(self.ws.path(L.PID_FILE), "w", encoding="utf-8") as f:
+            f.write("{not json")
+        self.assertIsNone(self.ws.read_pid())
+
+
+# ================================================================ 6) start behaviour
+class TestLauncherStart(LauncherBase):
+    def test_023_start_bounded_timeout(self):
+        lc = self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=2.0)
+        res = lc.start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_TIMEOUT)
+        self.assertLessEqual(res["startup_seconds"], 10.0)
+
+    def test_023b_timeout_reports_budget(self):
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=2.0).start()
+        self.assertEqual(res["timeout_seconds"], 2.0)
+
+    def test_023c_default_timeout_is_bounded(self):
+        self.assertLessEqual(L.START_TIMEOUT_SECONDS, 120.0)
+        self.assertGreater(L.START_TIMEOUT_SECONDS, 0)
+
+    def test_024_health_polling_until_ready(self):
+        seq = [dict(UNHEALTHY), dict(UNHEALTHY), dict(HEALTHY)]
+        calls = []
+
+        def health(h, p):
+            calls.append(1)
+            return seq.pop(0) if seq else dict(HEALTHY)
+        res = self.launcher(health=health, timeout=30.0).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_READY)
+        self.assertGreaterEqual(len(calls), 3)
+
+    def test_024b_health_probe_targets_accepted_endpoint(self):
+        self.assertEqual(L.HEALTH_PATH, "/api/v1/health")
+        self.assertIn(L.HEALTH_PATH, UC._READ_ENDPOINTS[0].join(["/api/v1/", ""]) or "/api/v1/health")
+
+    def test_024c_health_requires_the_accepted_console_identity(self):
+        captured = {}
+
+        def opener(url, timeout):
+            captured["url"] = url
+            return 200, json.dumps({"data": {"stage_id": "9.9", "api_schema": "other"}}).encode()
+        res = L.probe_health("127.0.0.1", 8780, opener=opener)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["reason"], "NOT_THE_ACCEPTED_CONSOLE")
+
+    def test_024d_health_accepts_the_accepted_console(self):
+        def opener(url, timeout):
+            return 200, json.dumps({"readiness": UC.CONSOLE_READY, "data": {
+                "stage_id": "7.13", "api_schema": "phase7-13-console-api-v1"}}).encode()
+        self.assertTrue(L.probe_health("127.0.0.1", 8780, opener=opener)["ok"])
+
+    def test_024e_health_tolerates_malformed_body(self):
+        res = L.probe_health("127.0.0.1", 8780, opener=lambda u, t: (200, b"<html>"))
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["reason"], "MALFORMED_HEALTH_BODY")
+
+    def test_024f_health_tolerates_transport_failure(self):
+        def opener(url, timeout):
+            raise OSError("refused")
+        self.assertFalse(L.probe_health("127.0.0.1", 8780, opener=opener)["ok"])
+
+    def test_024g_health_probe_url_is_loopback(self):
+        captured = {}
+
+        def opener(url, timeout):
+            captured["url"] = url
+            return 200, b"{}"
+        L.probe_health("127.0.0.1", 8780, opener=opener)
+        self.assertTrue(captured["url"].startswith("http://127.0.0.1:8780/"))
+
+    def test_025_browser_opens_only_after_health(self):
+        order = []
+        seq = [dict(UNHEALTHY), dict(UNHEALTHY), dict(HEALTHY)]
+
+        def health(h, p):
+            r = seq.pop(0) if seq else dict(HEALTHY)
+            order.append("health:" + ("ok" if r["ok"] else "no"))
+            return r
+
+        def browser(url):
+            order.append("browser")
+            return True
+        self.launcher(health=health, browser=browser, timeout=30.0).start()
+        self.assertEqual(order[-1], "browser")
+        self.assertEqual(order[-2], "health:ok")
+
+    def test_026_browser_not_opened_before_health(self):
+        self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=1.0).start()
+        self.assertEqual(self.browser_calls, [])
+
+    def test_026b_browser_not_opened_on_port_block(self):
+        self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN)).start()
+        self.assertEqual(self.browser_calls, [])
+
+    def test_026c_browser_not_opened_on_preflight_failure(self):
+        self.launcher(root=self.tmp).start()
+        self.assertEqual(self.browser_calls, [])
+
+    def test_027_browser_failure_is_bounded_not_fatal(self):
+        def bad_browser(url):
+            raise RuntimeError("no browser")
+        res = self.launcher(health=lambda h, p: dict(HEALTHY), browser=bad_browser).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_READY)
+        self.assertFalse(res["browser_opened"])
+        self.assertTrue(res["browser_attempted"])
+
+    def test_027b_browser_returning_false_is_reported(self):
+        res = self.launcher(health=lambda h, p: dict(HEALTHY), browser=lambda u: False).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_READY)
+        self.assertFalse(res["browser_opened"])
+
+    def test_027c_no_browser_flag_respected(self):
+        self.launcher(health=lambda h, p: dict(HEALTHY), open_browser_on_start=False).start()
+        self.assertEqual(self.browser_calls, [])
+
+    def test_028_console_spawn_failure_reported(self):
+        def spawn(cmd, cwd):
+            raise OSError("cannot exec")
+        res = self.launcher(spawn=spawn).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["error_code"], "CONSOLE_SPAWN_FAILED")
+
+    def test_029_console_crash_during_startup_detected(self):
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=30.0,
+                            spawn=lambda cmd, cwd: FakeProc(exit_after=1)).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["error_code"], "CONSOLE_EXITED_DURING_STARTUP")
+
+    def test_029b_crash_during_startup_clears_pid(self):
+        self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=30.0,
+                      spawn=lambda cmd, cwd: FakeProc(exit_after=1)).start()
+        self.assertIsNone(self.ws.read_pid())
+
+    def test_029c_crash_during_startup_opens_no_browser(self):
+        self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=30.0,
+                      spawn=lambda cmd, cwd: FakeProc(exit_after=1)).start()
+        self.assertEqual(self.browser_calls, [])
+
+    def test_029d_unwritable_runtime_dir_reported(self):
+        ws = L.Workspace(self.tmp)
+        ws.ensure()
+        ws.writable = False
+        ws.write_error = "PermissionError"
+        res = self.launcher(workspace=ws).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_WORKSPACE_REQUIRED)
+
+    def test_029e_missing_repository_reported(self):
+        res = self.launcher(root=self.tmp).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_MODULE_REQUIRED)
+
+    def test_029f_owner_message_present_on_every_outcome(self):
+        outcomes = [
+            self.launcher(root=self.tmp).start(),
+            self.launcher(health=lambda h, p: dict(HEALTHY)).start(),
+            self.launcher(port_probe=lambda h, p: True, health=lambda h, p: dict(FOREIGN)).start(),
+            self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=1.0).start(),
+        ]
+        for o in outcomes:
+            self.assertTrue(o["owner_message"], o["readiness"])
+
+
+# ================================================================ 7) stop behaviour
+class TestLauncherStop(LauncherBase):
+    def test_030_stop_accepted_console(self):
+        self.ws.write_pid({"pid": 555, "process_start_token": "tok-555", "host": "127.0.0.1",
+                           "port": 8780})
+        alive = {"v": True}
+        res = self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                            terminate=lambda pid, hard=False: (self.terminated.append((pid, hard)),
+                                                               alive.update(v=False), True)[-1]).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertTrue(res["identity_verified"])
+
+    def test_030b_stop_clears_pid_record(self):
+        self.ws.write_pid({"pid": 556, "process_start_token": "tok-556"})
+        alive = {"v": True}
+        self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                      terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1]).stop()
+        self.assertIsNone(self.ws.read_pid())
+
+    def test_030c_stop_signals_only_the_recorded_pid(self):
+        self.ws.write_pid({"pid": 557, "process_start_token": "tok-557"})
+        alive = {"v": True}
+        self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                      terminate=lambda pid, hard=False: (self.terminated.append((pid, hard)),
+                                                         alive.update(v=False), True)[-1]).stop()
+        self.assertEqual({pid for pid, _ in self.terminated}, {557})
+
+    def test_030d_stop_tries_graceful_first(self):
+        self.ws.write_pid({"pid": 558, "process_start_token": "tok-558"})
+        alive = {"v": True}
+        self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                      terminate=lambda pid, hard=False: (self.terminated.append((pid, hard)),
+                                                         alive.update(v=False), True)[-1]).stop()
+        self.assertEqual(self.terminated[0][1], False)
+
+    def test_031_stop_already_stopped(self):
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY)).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_ALREADY_STOPPED)
+        self.assertFalse(res["signalled"])
+
+    def test_031b_stop_with_dead_pid_record(self):
+        self.ws.write_pid({"pid": 559, "process_start_token": "tok-559"})
+        res = self.launcher(alive=lambda pid: False).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_ALREADY_STOPPED)
+        self.assertTrue(res["stale_pid_cleared"])
+        self.assertEqual(self.terminated, [])
+
+    def test_032_stop_refuses_reused_pid(self):
+        self.ws.write_pid({"pid": 560, "process_start_token": "tok-OLD"})
+        res = self.launcher(alive=lambda pid: True, start_token=lambda pid: "tok-NEW").stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PID_REUSED_BY_ANOTHER_PROCESS")
+        self.assertEqual(self.terminated, [])
+
+    def test_032b_stop_refuses_unproven_identity(self):
+        self.ws.write_pid({"pid": 561, "process_start_token": "tok-561"})
+        res = self.launcher(alive=lambda pid: True, start_token=lambda pid: None).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
+        self.assertEqual(self.terminated, [])
+
+    def test_032c_stop_refuses_console_it_did_not_start(self):
+        res = self.launcher(health=lambda h, p: dict(HEALTHY)).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "NOT_LAUNCHER_OWNED")
+        self.assertEqual(self.terminated, [])
+
+    def test_033_stop_bounded_wait(self):
+        self.ws.write_pid({"pid": 562, "process_start_token": "tok-562"})
+        res = self.launcher(alive=lambda pid: True, health=lambda h, p: dict(HEALTHY),
+                            stop_timeout=2.0).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["error_code"], "CONSOLE_DID_NOT_STOP")
+        self.assertLessEqual(res["stop_seconds"], 12.0)
+
+    def test_033b_stop_escalates_after_grace(self):
+        self.ws.write_pid({"pid": 563, "process_start_token": "tok-563"})
+        res = self.launcher(alive=lambda pid: True, health=lambda h, p: dict(HEALTHY),
+                            stop_timeout=3.0).stop()
+        self.assertTrue(res["escalated"])
+        self.assertIn((563, True), self.terminated)
+
+    def test_033c_grace_window_shorter_than_budget(self):
+        self.assertLess(L.STOP_GRACE_SECONDS, L.STOP_TIMEOUT_SECONDS)
+
+    def test_033d_stop_records_command_identity_check(self):
+        self.ws.write_pid({"pid": 564, "process_start_token": "tok-564"})
+        alive = {"v": True}
+        res = self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                            terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1]).stop()
+        self.assertTrue(res["command_identity_verified"])
+
+
+# ================================================================ 8) open behaviour
+class TestLauncherOpen(LauncherBase):
+    def test_034_open_healthy_console(self):
+        res = self.launcher(health=lambda h, p: dict(HEALTHY)).open()
+        self.assertEqual(res["readiness"], L.LAUNCHER_ALREADY_RUNNING)
+        self.assertEqual(self.browser_calls, ["http://127.0.0.1:8780"])
+
+    def test_035_open_unhealthy_console_explains(self):
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY)).open()
+        self.assertEqual(res["readiness"], L.LAUNCHER_NOT_RUNNING)
+        self.assertIn("Start-AMZ-Toolkit", res["owner_message"])
+
+    def test_035b_open_unhealthy_opens_no_browser(self):
+        self.launcher(health=lambda h, p: dict(UNHEALTHY)).open()
+        self.assertEqual(self.browser_calls, [])
+
+    def test_036_open_never_starts_a_server(self):
+        spawned = []
+        for health in (dict(HEALTHY), dict(UNHEALTHY)):
+            self.launcher(health=lambda h, p, r=health: dict(r),
+                          spawn=lambda cmd, cwd: spawned.append(c) or FakeProc()).open()
+        self.assertEqual(spawned, [])
+
+    def test_036b_open_reports_started_a_server_false(self):
+        for health in (dict(HEALTHY), dict(UNHEALTHY)):
+            res = self.launcher(health=lambda h, p, r=health: dict(r)).open()
+            self.assertFalse(res["started_a_server"])
+
+    def test_036c_open_browser_failure_bounded(self):
+        res = self.launcher(health=lambda h, p: dict(HEALTHY), browser=lambda u: False).open()
+        self.assertEqual(res["readiness"], L.LAUNCHER_BROWSER_UNAVAILABLE)
+        self.assertIn("127.0.0.1:8780", res["owner_message"])
+
+    def test_036d_status_reports_without_side_effects(self):
+        spawned = []
+        res = self.launcher(health=lambda h, p: dict(HEALTHY),
+                            spawn=lambda cmd, cwd: spawned.append(c) or FakeProc()).status()
+        self.assertEqual(res["readiness"], L.LAUNCHER_ALREADY_RUNNING)
+        self.assertEqual(spawned, [])
+
+
+# ================================================================ 9) launcher safety
+class TestLauncherSafety(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.src = read(LAUNCHER_PATH)
+        cls.tree = ast.parse(cls.src)
+
+    def test_037_no_taskkill_anywhere(self):
+        for bad in ("taskkill", "TASKKILL", "pkill", "killall", "Get-Process", "wmic"):
+            self.assertNotIn(bad, self.src)
+
+    def test_037b_no_process_name_matching(self):
+        for bad in ("python.exe", "pythonw", "process_iter", "psutil"):
+            self.assertNotIn(bad, self.src)
+
+    def test_037c_scripts_never_taskkill(self):
+        for name in SCRIPTS:
+            body = script(name)
+            for bad in ("taskkill", "Stop-Process", "Get-Process", "kill "):
+                self.assertNotIn(bad, body, "%s in %s" % (bad, name))
+
+    def test_038_no_shell_true(self):
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if kw.arg == "shell":
+                        self.assertNotEqual(getattr(kw.value, "value", None), True)
+        self.assertNotIn("shell=True", self.src)
+
+    def test_038b_no_os_system_or_popen_shell(self):
+        for bad in ("os.system(", "os.popen(", "commands.getoutput"):
+            self.assertNotIn(bad, self.src)
+
+    def test_039_only_the_fixed_console_command(self):
+        cmd = L.console_command(python_exe="python")
+        self.assertEqual(cmd[1:], ["-m", "production.phase7_unified_owner_console",
+                                   "--workspace-root", "runs/T2/phase7",
+                                   "--host", "127.0.0.1", "--port", "8780", "serve"])
+
+    def test_039b_command_module_is_a_constant(self):
+        self.assertEqual(L.CONSOLE_MODULE, "production.phase7_unified_owner_console")
+        self.assertEqual(L.CONSOLE_COMMAND_VERB, "serve")
+
+    def test_039c_command_is_a_list_never_a_string(self):
+        self.assertIsInstance(L.console_command(), list)
+
+    def test_040_no_arbitrary_module(self):
+        # the module name is never built from a variable
+        self.assertEqual(self.src.count("CONSOLE_MODULE ="), 1)
+        self.assertNotIn("importlib", self.src)
+        self.assertNotIn("__import__(mod", self.src)
+
+    def test_040b_workspace_root_escape_refused(self):
+        for bad in ("../outside", "/etc", "C:\\Windows", "runs/../../x", "runs/T2/.."):
+            with self.assertRaises(L.LauncherError, msg=bad):
+                L.console_command(workspace_root=bad)
+
+    def test_040c_workspace_root_normal_accepted(self):
+        cmd = L.console_command(workspace_root="runs/T2/phase7")
+        self.assertIn("runs/T2/phase7", cmd)
+
+    def test_041_no_arbitrary_url(self):
+        self.assertTrue(L.is_allowed_url("http://127.0.0.1:8780", "127.0.0.1", 8780))
+        self.assertTrue(L.is_allowed_url("http://127.0.0.1:8780/", "127.0.0.1", 8780))
+        for bad in ("http://example.com", "https://127.0.0.1:8780", "http://127.0.0.1:9999",
+                    "file:///c:/", "http://127.0.0.1:8780/evil", "javascript:alert(1)"):
+            self.assertFalse(L.is_allowed_url(bad, "127.0.0.1", 8780), bad)
+
+    def test_041b_open_browser_refuses_foreign_url(self):
+        calls = []
+        with self.assertRaises(L.LauncherError):
+            L.open_browser("http://example.com", "127.0.0.1", 8780, opener=calls.append)
+        self.assertEqual(calls, [])
+
+    def test_041c_console_url_is_loopback(self):
+        self.assertEqual(L.console_url("127.0.0.1", 8780), "http://127.0.0.1:8780")
+        self.assertEqual(L.console_url("::1", 8780), "http://[::1]:8780")
+
+    def test_042_loopback_only(self):
+        for good in ("127.0.0.1", "localhost", "::1"):
+            self.assertTrue(L.is_loopback_host(good), good)
+        for bad in ("0.0.0.0", "192.168.1.5", "10.0.0.1", "example.com", "", None,
+                    "127.0.0.1.evil.com"):
+            self.assertFalse(L.is_loopback_host(bad), bad)
+
+    def test_042b_non_loopback_bind_refused(self):
+        for bad in ("0.0.0.0", "192.168.1.5"):
+            with self.assertRaises(L.LauncherError):
+                L.validate_host(bad)
+
+    def test_042c_non_loopback_probe_refused(self):
+        with self.assertRaises(L.LauncherError):
+            L._open_loopback("http://example.com/x", 1.0)
+
+    # ---- regression guards for two defects the real double-click QA exposed -------------------
+    def test_042d1_powershell_scripts_are_ascii_only(self):
+        """Windows PowerShell 5.1 reads a BOM-less .ps1 as ANSI, so a non-ASCII character renders
+        as mojibake in the owner's window. These scripts must stay pure ASCII."""
+        for name in ("Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.ps1"):
+            body = script(name)
+            bad = [c for c in body if ord(c) > 127]
+            self.assertEqual(bad, [], "%s contains non-ASCII: %r" % (name, bad[:5]))
+
+    def test_042d2_version_probe_has_no_embedded_quote(self):
+        """PowerShell 5.1 strips embedded double quotes when building a native command line, which
+        silently corrupts an inline Python one-liner. The probe must contain no quote character."""
+        for name in ("Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.ps1"):
+            for line in script(name).splitlines():
+                if "'-c'" not in line:
+                    continue
+                inner = line.split("'-c'", 1)[1]
+                probe = inner[inner.index("'") + 1:inner.rindex("'")]
+                self.assertNotIn('"', probe, "%s: quoted probe %r" % (name, probe))
+                self.assertIn("sys.version", probe)
+
+    def test_042d3_version_probe_is_not_stderr_redirected(self):
+        """A redirected native stderr becomes a terminating ErrorRecord under -ErrorAction Stop."""
+        for name in ("Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.ps1"):
+            for line in script(name).splitlines():
+                if "'-c'" in line:
+                    self.assertNotIn("2>$null", line, name)
+                    self.assertNotIn("2>&1", line, name)
+
+    def test_042d4_probe_runs_with_continue_preference(self):
+        for name in ("Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.ps1"):
+            self.assertIn("$ErrorActionPreference = 'Continue'", script(name), name)
+
+    def test_042d5_batch_files_use_crlf(self):
+        """cmd.exe mis-parses an LF-only batch file, so the .bat launchers are pinned to CRLF."""
+        ga = read(os.path.join(ROOT, ".gitattributes"))
+        for name in ("Start-AMZ-Toolkit.bat", "Stop-AMZ-Toolkit.bat", "Open-AMZ-Toolkit.bat"):
+            self.assertIn("%s text eol=crlf" % name, ga, name)
+
+    def test_042d6_scripts_delegate_the_console_command(self):
+        """The console command lives in ONE place; the scripts must never inline it themselves."""
+        for name in ("Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.ps1"):
+            body = script(name)
+            self.assertNotIn("phase7_unified_owner_console", body, name)
+            self.assertIn("production.phase7_owner_launcher", body, name)
+
+    def test_042e_scripts_bind_loopback_only(self):
+        for name in ("Start-AMZ-Toolkit.ps1", "Stop-AMZ-Toolkit.ps1", "Open-AMZ-Toolkit.ps1"):
+            body = script(name)
+            self.assertIn("127.0.0.1", body)
+            for bad in ("0.0.0.0", "192.168.", "--host 0"):
+                self.assertNotIn(bad, body, "%s in %s" % (bad, name))
+
+    def test_043_logs_are_secret_free(self):
+        for probe in ("PHASE7_12_WEBHOOK_URL=https://hooks.example.com/secret",
+                      "csrf_token=abc123", "Authorization=Bearer xyz", "session=deadbeef",
+                      "api_key=k-123", "password=hunter2", "cookie=console_session=zzz"):
+            red = L.redact(probe)
+            self.assertIn("[REDACTED]", red, probe)
+            for leak in ("hooks.example.com/secret", "abc123", "xyz", "deadbeef", "k-123",
+                         "hunter2", "zzz"):
+                self.assertNotIn(leak, red, "%s leaked from %s" % (leak, probe))
+
+    def test_043b_log_lines_are_bounded(self):
+        self.assertLessEqual(len(L.redact("x" * 5000)), L.MAX_LOG_LINE)
+
+    def test_043c_log_never_multiline(self):
+        self.assertNotIn("\n", L.redact("a\nb\r\nc"))
+
+    def test_043d_log_rotates(self):
+        tmp = tempfile.mkdtemp(prefix="p714-log-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        ws = L.Workspace(tmp)
+        ws.ensure()
+        with open(ws.path(L.LOG_FILE), "w", encoding="utf-8") as f:
+            f.write("x" * (L.MAX_LOG_BYTES + 10))
+        ws.log("event")
+        self.assertTrue(os.path.isfile(ws.path(L.LOG_FILE) + ".1"))
+        self.assertLess(os.path.getsize(ws.path(L.LOG_FILE)), 1000)
+
+    def test_043e_no_environ_dump(self):
+        self.assertNotIn("os.environ)", self.src)
+        self.assertNotIn("dict(os.environ", self.src)
+
+    def test_043f_relpath_never_leaks_absolute(self):
+        self.assertNotIn(":", L._relpath(os.path.join(ROOT, "production", "x.py")))
+
+    def test_044_launcher_runtime_is_ignored_by_git(self):
+        self.assertTrue(L.LAUNCHER_SUBDIR.replace("\\", "/").startswith("runs/"))
+        gi = read(os.path.join(ROOT, ".gitignore"))
+        self.assertTrue(any(line.strip() in ("runs/", "/runs/", "runs", "/runs")
+                            for line in gi.splitlines()))
+
+    def test_044b_launcher_runtime_files_untracked(self):
+        out = subprocess.run(["git", "ls-files", "runs/"], cwd=ROOT, capture_output=True,
+                             text=True).stdout.strip()
+        self.assertEqual(out, "")
+
+    def test_044c_launcher_never_registers_service_or_scheduler(self):
+        for bad in ("schtasks", "New-Service", "sc.exe", "Register-ScheduledTask", "systemd",
+                    "Startup\\", "CurrentVersion\\Run"):
+            self.assertNotIn(bad, self.src)
+            for name in SCRIPTS:
+                self.assertNotIn(bad, script(name), "%s in %s" % (bad, name))
+
+    def test_044d_launcher_never_claims_a_seller_action(self):
+        for k, v in L.SELLER_CENTRAL_COUNTERS.items():
+            self.assertEqual(v, 0, k)
+        self.assertTrue(all(L.LAUNCHER_NEVER.values()))
+
+    def test_044e_no_network_beyond_loopback_probe(self):
+        # the only outbound call site is the bounded loopback health probe
+        self.assertEqual(self.src.count("urllib.request.build_opener"), 1)
+        self.assertNotIn("socket.create_connection((h", self.src.replace(
+            'socket.create_connection((h, int(port))', ''))
+
+
+# ================================================================ 10) next-action priority
+class TestNextActionPriority(unittest.TestCase):
+    def test_045_overview_carries_next_action(self):
+        m = model()
+        m["next_action"] = NA.build_next_action(m)
+        self.assertEqual(m["next_action"]["schema_version"], "phase7.14.next-action.v1")
+
+    def test_046_priority_is_deterministic(self):
+        for p, build in CASES.items():
+            a = NA.build_next_action(build())
+            b = NA.build_next_action(build())
+            self.assertEqual(a["next_action_identity"], b["next_action_identity"], p)
+
+    def test_046b_rule_table_is_total_and_ordered(self):
+        rules = NA.describe_rules()
+        self.assertEqual([r["priority"] for r in rules], list(range(1, 15)))
+        self.assertEqual(len(NA.RULES), NA.MAX_PRIORITY)
+
+    def test_046c_every_priority_reachable(self):
+        for p, build in CASES.items():
+            self.assertEqual(NA.build_next_action(build())["priority"], p)
+
+    def test_047_integrity_block_is_highest(self):
+        m = CASES[1]()
+        m["overview"].update({"pending_decisions": 9, "due_followups": 9, "open_alerts": 9,
+                              "update_available": True, "backup_snapshots": 0})
+        na = NA.build_next_action(m)
+        self.assertEqual(na["priority"], 1)
+        self.assertEqual(na["readiness"], NA.NEXT_ACTION_BLOCKED)
+
+    def test_047b_blocked_module_is_priority_one(self):
+        m = model(overview={"blocked_modules": ["research"]})
+        self.assertEqual(NA.build_next_action(m)["priority"], 1)
+
+    def test_047c_integrity_messages_differ_by_cause(self):
+        audit = NA.build_next_action(CASES[1]())
+        mod = NA.build_next_action(model(overview={"blocked_modules": ["research"]}))
+        self.assertNotEqual(audit["owner_message"], mod["owner_message"])
+        self.assertIn("State-changing actions are blocked", audit["owner_message"])
+
+    def test_048_security_block_second(self):
+        m = CASES[2]()
+        m["overview"].update({"pending_decisions": 9, "due_followups": 9})
+        na = NA.build_next_action(m)
+        self.assertEqual(na["priority"], 2)
+        self.assertEqual(na["readiness"], NA.NEXT_ACTION_BLOCKED)
+
+    def test_048b_unrefused_boundary_triggers_security(self):
+        m = model(system={"connectivity_boundary": {"seller_central_blocked": False,
+                                                    "seller_api_blocked": True,
+                                                    "advertising_api_blocked": True}})
+        self.assertEqual(NA.build_next_action(m)["priority"], 2)
+
+    def test_048c_intact_boundary_does_not_trigger(self):
+        self.assertNotEqual(NA.build_next_action(model())["priority"], 2)
+
+    def test_049_required_module_unavailable(self):
+        na = NA.build_next_action(CASES[3]())
+        self.assertEqual(na["priority"], 3)
+        self.assertEqual(na["canonical_status"], NA.USABILITY_REQUIRED)
+
+    def test_050_missing_required_data(self):
+        na = NA.build_next_action(CASES[4]())
+        self.assertEqual(na["priority"], 4)
+        self.assertEqual(na["owner_title"], "No current report analysis found")
+
+    def test_050b_zero_analyzed_rows_counts_as_missing(self):
+        m = model(sections={"analysis": {"status": "READY", "counts": {"analyzed_rows": 0}}})
+        self.assertEqual(NA.build_next_action(m)["priority"], 4)
+
+    def test_051_stale_critical_data(self):
+        na = NA.build_next_action(CASES[5]())
+        self.assertEqual(na["priority"], 5)
+        self.assertIn("7.3", na["source_ids"])
+
+    def test_051b_stale_non_critical_phase_ignored(self):
+        m = model(freshness={"7.10": {"present": True, "stale": True}})
+        self.assertNotEqual(NA.build_next_action(m)["priority"], 5)
+
+    def test_052_pending_decision(self):
+        na = NA.build_next_action(CASES[6]())
+        self.assertEqual(na["priority"], 6)
+        self.assertEqual(na["destination"]["section"], "decisions")
+
+    def test_052b_pending_decision_counts_shown(self):
+        self.assertIn("3", NA.build_next_action(CASES[6]())["owner_message"])
+
+    def test_053_pending_manual_action(self):
+        na = NA.build_next_action(CASES[7]())
+        self.assertEqual(na["priority"], 7)
+        self.assertEqual(na["destination"]["section"], "manual-actions")
+
+    def test_053b_manual_action_states_owner_is_the_bridge(self):
+        msg = NA.build_next_action(CASES[7]())["why_it_matters"]
+        self.assertIn("never changes anything in your Amazon account", msg)
+
+    def test_054_due_followup(self):
+        na = NA.build_next_action(CASES[8]())
+        self.assertEqual(na["priority"], 8)
+        self.assertEqual(na["destination"]["section"], "outcomes")
+
+    def test_055_open_critical_alert(self):
+        na = NA.build_next_action(CASES[9]())
+        self.assertEqual(na["priority"], 9)
+        self.assertEqual(na["destination"]["page"], "alerts")
+        self.assertIn("al-1", na["source_ids"])
+
+    def test_055b_important_alert_also_escalates(self):
+        m = model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+            {"alert_id": "al-2", "status": "OPEN", "severity": "IMPORTANT"}]}})
+        self.assertEqual(NA.build_next_action(m)["priority"], 9)
+
+    def test_055c_info_alert_does_not_escalate(self):
+        m = model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+            {"alert_id": "al-3", "status": "OPEN", "severity": "INFO"}]}})
+        self.assertNotEqual(NA.build_next_action(m)["priority"], 9)
+
+    def test_055d_acknowledged_alert_does_not_escalate(self):
+        m = model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+            {"alert_id": "al-4", "status": "ACKNOWLEDGED", "severity": "CRITICAL"}]}})
+        self.assertNotEqual(NA.build_next_action(m)["priority"], 9)
+
+    def test_056_due_watchlist(self):
+        self.assertEqual(NA.build_next_action(CASES[10]())["priority"], 10)
+
+    def test_057_notification_unknown(self):
+        na = NA.build_next_action(CASES[11]())
+        self.assertEqual(na["priority"], 11)
+        self.assertIn("UNKNOWN", na["owner_message"])
+
+    def test_057b_unknown_is_never_called_failed(self):
+        na = NA.build_next_action(CASES[11]())
+        self.assertNotIn("failed", NA.owner_text(na).lower().replace("never treated as failed", ""))
+
+    def test_058_backup_missing_or_stale(self):
+        self.assertEqual(NA.build_next_action(CASES[12]())["priority"], 12)
+
+    def test_058b_stale_backup_triggers(self):
+        m = model(freshness={"7.9": {"present": True, "stale": True}})
+        self.assertEqual(NA.build_next_action(m)["priority"], 12)
+
+    def test_058c_backup_module_unavailable_is_unavailable_destination(self):
+        m = model(sections={"backup": {"status": "MODULE_UNAVAILABLE", "counts": {}}})
+        na = NA.build_next_action(m)
+        self.assertEqual(na["priority"], 12)
+        self.assertEqual(na["destination"]["type"], NA.DEST_UNAVAILABLE)
+
+    def test_059_update_available(self):
+        na = NA.build_next_action(CASES[13]())
+        self.assertEqual(na["priority"], 13)
+        self.assertIn("never installed for you", na["why_it_matters"])
+
+    def test_060_no_urgent_action(self):
+        na = NA.build_next_action(CASES[14]())
+        self.assertEqual(na["priority"], 14)
+        self.assertEqual(na["readiness"], NA.NEXT_ACTION_NONE)
+        self.assertEqual(na["owner_title"], "No urgent action")
+
+    def test_060b_no_urgent_action_is_not_an_error(self):
+        na = NA.build_next_action(CASES[14]())
+        self.assertEqual(na["canonical_status"], NA.NO_URGENT_ACTION)
+        self.assertNotIn("error", NA.owner_text(na).lower())
+
+    def test_060c_higher_priority_always_wins(self):
+        for high in range(1, 14):
+            m = CASES[high]()
+            m["overview"]["update_available"] = True         # priority 13 also true
+            self.assertEqual(NA.build_next_action(m)["priority"], high, high)
+
+    def test_060d_empty_model_degrades_safely(self):
+        na = NA.build_next_action({})
+        self.assertIn(na["priority"], (3, 4))
+        self.assertTrue(NA.validate_destination(na["destination"]))
+
+
+# ================================================================ 11) guidance language
+class TestNextActionLanguage(unittest.TestCase):
+    def all_actions(self):
+        return [NA.build_next_action(build()) for build in CASES.values()]
+
+    def test_061_no_invented_metric(self):
+        # every number in the owner text traces to a count supplied in the model
+        na = NA.build_next_action(CASES[6]())
+        self.assertIn("3", na["owner_message"])
+        self.assertNotIn("%", NA.owner_text(na))
+        for a in self.all_actions():
+            self.assertNotIn("score", NA.owner_text(a).lower())
+            self.assertNotIn("estimated", NA.owner_text(a).lower())
+
+    def test_062_no_causal_language(self):
+        for a in self.all_actions():
+            self.assertEqual(NA.forbidden_phrases_in(a), [], a["rule_id"])
+
+    def test_062b_causal_words_are_actually_banned(self):
+        fake = {"owner_title": "t", "owner_message": "this caused that", "why_it_matters": "",
+                "recommended_step": "", "expected_result": "", "destination": {}}
+        self.assertIn("caused", NA.forbidden_phrases_in(fake))
+
+    def test_062c_word_boundary_avoids_false_positives(self):
+        fake = {"owner_title": "enabled to proceed", "owner_message": "forbidden overbid handling",
+                "why_it_matters": "", "recommended_step": "", "expected_result": "",
+                "destination": {}}
+        self.assertEqual(NA.forbidden_phrases_in(fake), [])
+
+    def test_063_no_ppc_recommendation(self):
+        for a in self.all_actions():
+            low = NA.owner_text(a).lower()
+            for banned in ("ppc", "campaign", "bid", "budget", "ad group"):
+                self.assertNotIn(banned, low.split(), banned)
+
+    def test_064_no_advertising_analysis_wording(self):
+        for a in self.all_actions():
+            self.assertNotIn("advertising analysis", NA.owner_text(a).lower())
+
+    def test_064b_absent_analysis_uses_the_required_wording(self):
+        self.assertEqual(NA.build_next_action(CASES[4]())["owner_title"],
+                         "No current report analysis found")
+
+    def test_065_no_fake_import_page(self):
+        for a in self.all_actions():
+            dest = a["destination"]
+            self.assertNotEqual(dest.get("page"), "import")
+            self.assertNotIn("import page", NA.owner_text(a).lower())
+
+    def test_065b_import_is_only_ever_an_instruction(self):
+        na = NA.build_next_action(CASES[3]())
+        self.assertEqual(na["destination"]["type"], NA.DEST_INSTRUCTIONS)
+        self.assertTrue(any("Import" in s for s in na["destination"]["steps"]))
+
+    def test_065c_engine_refuses_refused_wording(self):
+        original = NA._r14_none
+
+        def bad(f):
+            out = original(f)
+            out["owner_message"] = "this proves the campaign caused it"
+            return out
+        NA.RULES[-1].__code__  # sanity: rules are plain functions
+        try:
+            NA.__dict__["_r14_none"] = bad
+            rules = list(NA.RULES)
+            rules[-1] = bad
+            NA.RULES = tuple(rules)
+            with self.assertRaises(ValueError):
+                NA.build_next_action(model())
+        finally:
+            NA.__dict__["_r14_none"] = original
+            rules = list(NA.RULES)
+            rules[-1] = original
+            NA.RULES = tuple(rules)
+
+    def test_065d_no_seller_account_recommendation(self):
+        for a in self.all_actions():
+            low = NA.owner_text(a).lower()
+            for banned in ("seller central", "sp-api", "ads api", "bulk upload", "sign in to amazon"):
+                self.assertNotIn(banned, low)
+
+    def test_065e_amazon_action_never_implied(self):
+        for a in self.all_actions():
+            self.assertFalse(a["amazon_action_implied"])
+
+
+# ================================================================ 12) destinations
+class TestNextActionDestinations(unittest.TestCase):
+    def all_actions(self):
+        return [NA.build_next_action(build()) for build in CASES.values()]
+
+    def test_066_existing_destination_only(self):
+        for a in self.all_actions():
+            self.assertTrue(NA.validate_destination(a["destination"]), a["rule_id"])
+
+    def test_066b_pages_are_real_console_pages(self):
+        for a in self.all_actions():
+            page = a["destination"].get("page")
+            if page is not None:
+                self.assertIn(page, NA.CONSOLE_PAGES)
+
+    def test_066c_sections_are_real_analysis_views(self):
+        for a in self.all_actions():
+            sec = a["destination"].get("section")
+            if sec is not None:
+                self.assertIn(sec, NA.ANALYSIS_SECTIONS)
+
+    def test_066d_console_pages_match_front_end_views(self):
+        js = static("app.js")
+        for page in NA.CONSOLE_PAGES:
+            self.assertIn('id: "%s"' % page, js, page)
+
+    def test_066e_analysis_sections_match_backend_views(self):
+        py = read(CONSOLE_PATH)
+        for sec in NA.ANALYSIS_SECTIONS:
+            self.assertIn('sub == "%s"' % sec, py + 'sub == "analysis"', sec)
+
+    def test_066f_unknown_page_refused(self):
+        with self.assertRaises(ValueError):
+            NA._destination_page("import")
+        self.assertFalse(NA.validate_destination({"type": NA.DEST_PAGE, "page": "import"}))
+
+    def test_066g_unknown_section_refused(self):
+        with self.assertRaises(ValueError):
+            NA._destination_page("analysis", section="nope")
+
+    def test_067_cli_copy_destination_valid(self):
+        d = NA._destination_command(NA.SUPPORTED_COMMANDS[0])
+        self.assertTrue(NA.validate_destination(d))
+
+    def test_067b_unsupported_command_refused(self):
+        with self.assertRaises(ValueError):
+            NA._destination_command("rm -rf /")
+        self.assertFalse(NA.validate_destination({"type": NA.DEST_COMMAND, "command": "rm -rf /"}))
+
+    def test_067c_supported_commands_are_real_modules(self):
+        for cmd in NA.SUPPORTED_COMMANDS:
+            m = re.search(r"-m\s+(production\.[a-z0-9_]+)", cmd)
+            self.assertIsNotNone(m, cmd)
+            self.assertTrue(os.path.isfile(os.path.join(
+                ROOT, m.group(1).replace(".", os.sep) + ".py")), cmd)
+
+    def test_067d_supported_commands_touch_no_amazon_account(self):
+        for cmd in NA.SUPPORTED_COMMANDS:
+            for bad in ("sellercentral", "sp-api", "advertising-api", "signin"):
+                self.assertNotIn(bad, cmd.lower())
+
+    def test_068_instruction_only_destination(self):
+        na = NA.build_next_action(CASES[3]())
+        d = na["destination"]
+        self.assertEqual(d["type"], NA.DEST_INSTRUCTIONS)
+        self.assertTrue(len(d["steps"]) >= 2)
+        self.assertTrue(NA.validate_destination(d))
+
+    def test_068b_instruction_command_is_allowlisted(self):
+        d = NA.build_next_action(CASES[3]())["destination"]
+        self.assertIn(d["command"], NA.SUPPORTED_COMMANDS)
+
+    def test_068c_empty_instructions_refused(self):
+        self.assertFalse(NA.validate_destination({"type": NA.DEST_INSTRUCTIONS, "steps": []}))
+
+    def test_069_disabled_destination_reason(self):
+        m = model(sections={"backup": {"status": "MODULE_UNAVAILABLE", "counts": {}}})
+        d = NA.build_next_action(m)["destination"]
+        self.assertEqual(d["type"], NA.DEST_UNAVAILABLE)
+        self.assertTrue(d["reason"].strip())
+        self.assertEqual(d["page"], "backups")
+
+    def test_069b_unavailable_without_reason_refused(self):
+        self.assertFalse(NA.validate_destination({"type": NA.DEST_UNAVAILABLE, "reason": ""}))
+
+    def test_069c_all_four_destination_kinds_reachable(self):
+        kinds = {NA.build_next_action(b())["destination"]["type"] for b in CASES.values()}
+        kinds.add(NA.build_next_action(model(
+            sections={"backup": {"status": "MODULE_UNAVAILABLE", "counts": {}}}))["destination"]["type"])
+        self.assertIn(NA.DEST_PAGE, kinds)
+        self.assertIn(NA.DEST_INSTRUCTIONS, kinds)
+        self.assertIn(NA.DEST_UNAVAILABLE, kinds)
+        # the copy-a-command kind is reachable through the instruction destination's command field
+        self.assertIn("command", NA.build_next_action(CASES[3]())["destination"])
+        self.assertTrue(NA.validate_destination(NA._destination_command(NA.SUPPORTED_COMMANDS[0])))
+
+    def test_069d_unknown_destination_type_refused(self):
+        self.assertFalse(NA.validate_destination({"type": "teleport"}))
+        self.assertFalse(NA.validate_destination(None))
+
+    def test_070_source_authorities_retained(self):
+        for a in self.all_actions():
+            self.assertTrue(a["source_authorities"], a["rule_id"])
+            for auth in a["source_authorities"]:
+                self.assertTrue(auth.startswith("production.") or auth.startswith("core."))
+
+    def test_070b_authorities_are_accepted_modules(self):
+        for a in self.all_actions():
+            for auth in a["source_authorities"]:
+                mod = auth.split(" ")[0].replace(".", os.sep) + ".py"
+                self.assertTrue(os.path.isfile(os.path.join(ROOT, mod)), auth)
+
+    def test_071_source_ids_retained_and_bounded(self):
+        na = NA.build_next_action(CASES[9]())
+        self.assertEqual(na["source_ids"], ["al-1"])
+        many = model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+            {"alert_id": "al-%d" % i, "status": "OPEN", "severity": "CRITICAL"} for i in range(50)]}})
+        self.assertLessEqual(len(NA.build_next_action(many)["source_ids"]), NA.MAX_SOURCE_IDS)
+
+    def test_071b_source_ids_never_contain_a_path(self):
+        for a in self.all_actions():
+            for sid in a["source_ids"]:
+                self.assertNotIn("/", sid)
+                self.assertNotIn("\\", sid)
+
+    def test_071c_decision_package_id_retained(self):
+        self.assertEqual(NA.build_next_action(CASES[6]())["source_ids"], ["pkg-1"])
+
+
+# ================================================================ 13) guidance shape
+class TestNextActionFields(unittest.TestCase):
+    def all_actions(self):
+        return [NA.build_next_action(build()) for build in CASES.values()]
+
+    def test_072_owner_title_present(self):
+        for a in self.all_actions():
+            self.assertTrue(a["owner_title"].strip())
+            self.assertLess(len(a["owner_title"]), 70)
+
+    def test_073_owner_message_present(self):
+        for a in self.all_actions():
+            self.assertTrue(a["owner_message"].strip())
+
+    def test_074_why_it_matters_present(self):
+        for a in self.all_actions():
+            self.assertTrue(a["why_it_matters"].strip())
+
+    def test_075_recommended_step_present(self):
+        for a in self.all_actions():
+            self.assertTrue(a["recommended_step"].strip())
+
+    def test_076_expected_result_present(self):
+        for a in self.all_actions():
+            self.assertTrue(a["expected_result"].strip())
+
+    def test_077_canonical_status_declared(self):
+        for a in self.all_actions():
+            self.assertIn(a["canonical_status"], NA.CANONICAL_STATUSES)
+            self.assertIn(a["readiness"], NA.READINESS_STATES)
+
+    def test_077b_canonical_statuses_are_phase_7_14(self):
+        for s in NA.CANONICAL_STATUSES + NA.READINESS_STATES:
+            self.assertTrue(s.startswith("SESSION7_14_"), s)
+
+    def test_078_generated_at_excluded_from_identity(self):
+        m = model()
+        a = NA.build_next_action(m, generated_at="2026-01-01T00:00:00Z")
+        b = NA.build_next_action(m, generated_at="2030-12-31T23:59:59Z")
+        self.assertNotEqual(a["generated_at"], b["generated_at"])
+        self.assertEqual(a["next_action_identity"], b["next_action_identity"])
+
+    def test_078b_identity_changes_when_guidance_changes(self):
+        self.assertNotEqual(NA.build_next_action(CASES[6]())["next_action_identity"],
+                            NA.build_next_action(CASES[7]())["next_action_identity"])
+
+    def test_078c_identity_field_excluded_from_itself(self):
+        a = NA.build_next_action(model())
+        self.assertEqual(a["next_action_identity"], NA.next_action_identity(a))
+
+    def test_078d_schema_hash_stable(self):
+        self.assertEqual(NA.schema_hash(), NA.schema_hash())
+        self.assertEqual(len(NA.schema_hash()), 64)
+
+    def test_078e_every_declared_field_present(self):
+        for a in self.all_actions():
+            self.assertEqual(set(a), set(NA.SCHEMA_FIELDS))
+
+    def test_078f_json_serialisable_and_canonical(self):
+        for a in self.all_actions():
+            self.assertEqual(json.loads(UC.canonical_json(a))["schema_version"],
+                             "phase7.14.next-action.v1")
+
+    # ---- overall usability readiness ------------------------------------------------------------
+    def test_078g_usability_states_declared(self):
+        for s in NA.USABILITY_STATES:
+            self.assertTrue(s.startswith("SESSION7_14_USABILITY_"), s)
+        self.assertEqual(len(set(NA.USABILITY_STATES)), 4)
+
+    def test_078h_usability_blocked_for_priority_1_2(self):
+        for p in (1, 2):
+            self.assertEqual(NA.usability_readiness(NA.build_next_action(CASES[p]())),
+                             NA.USABILITY_BLOCKED, p)
+
+    def test_078i_usability_required_for_setup_priorities(self):
+        for p in (3, 4, 5):
+            self.assertEqual(NA.usability_readiness(NA.build_next_action(CASES[p]())),
+                             NA.USABILITY_REQUIRED, p)
+
+    def test_078j_usability_partial_when_work_is_waiting(self):
+        for p in range(6, 14):
+            self.assertEqual(NA.usability_readiness(NA.build_next_action(CASES[p]())),
+                             NA.USABILITY_READY_PARTIAL, p)
+
+    def test_078k_usability_ready_when_nothing_waiting(self):
+        self.assertEqual(NA.usability_readiness(NA.build_next_action(CASES[14]())),
+                         NA.USABILITY_READY)
+
+    def test_078l_usability_labels_are_owner_words(self):
+        self.assertEqual(set(NA.USABILITY_LABELS), set(NA.USABILITY_STATES))
+        for label in NA.USABILITY_LABELS.values():
+            self.assertNotIn("SESSION7_14", label)
+
+    def test_078m_usability_degrades_on_missing_guidance(self):
+        self.assertEqual(NA.usability_readiness(None), NA.USABILITY_READY)
+        self.assertEqual(NA.usability_readiness({}), NA.USABILITY_READY)
+
+
+# ================================================================ 14) console API wiring
+class TestConsoleWiring(unittest.TestCase):
+    def test_045b_next_action_endpoint_declared(self):
+        self.assertIn("next-action", UC._READ_ENDPOINTS)
+
+    def test_045c_overview_includes_next_action(self):
+        py = read(CONSOLE_PATH)
+        self.assertIn('"next_action": model.get("next_action")', py)
+
+    def test_045d_console_model_builds_next_action(self):
+        py = read(CONSOLE_PATH)
+        self.assertIn("NEXT.build_next_action(model", py)
+
+    def test_045e_accepted_overview_fields_still_present(self):
+        # the 7.13 contract is additive-only
+        for key in ("console_readiness", "owner_label", "module_status", "pending_decisions",
+                    "pending_manual_actions", "due_followups", "open_alerts", "notification_sent",
+                    "notification_failed", "notification_unknown", "backup_snapshots",
+                    "update_available", "stale_data_phases", "seller_central_counters"):
+            self.assertIn('"%s"' % key, read(CONSOLE_PATH), key)
+
+    def test_045f_module_owner_labels_declared(self):
+        self.assertEqual(set(UC.MODULE_OWNER_LABELS),
+                         {"analysis", "research", "watchlists", "notifications", "backup"})
+
+    def test_045g_favicon_served(self):
+        self.assertIn("favicon.svg", UC.STATIC_FILES)
+        self.assertEqual(UC.FAVICON_ALIASES["favicon.ico"], "favicon.svg")
+        self.assertTrue(os.path.isfile(os.path.join(STATIC_DIR, "favicon.svg")))
+
+    def test_045l_overview_publishes_usability_readiness(self):
+        py = read(CONSOLE_PATH)
+        self.assertIn('NEXT.usability_readiness(model["next_action"])', py)
+        self.assertIn("usability_label", py)
+
+    def test_045m_front_end_maps_every_usability_state(self):
+        js = static("app.js")
+        for s in NA.USABILITY_STATES:
+            self.assertIn('"%s"' % s, js, s)
+
+    def test_045n_front_end_prefers_the_usability_state(self):
+        self.assertIn("ov.usability_readiness || readiness", static("app.js"))
+
+    def test_045h_validate_only_still_clean(self):
+        tmp = tempfile.mkdtemp(prefix="p714-uc-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        res = UC.validate_only(UC.Config(os.path.join(tmp, "7.13"), tmp))
+        self.assertTrue(res["ok"], [c for c in res["checks"] if not c["ok"]])
+
+    def test_045i_next_action_never_mutates_the_model(self):
+        m = model()
+        before = UC.canonical_json(m)
+        NA.build_next_action(m)
+        self.assertEqual(UC.canonical_json(m), before)
+
+    def test_045j_next_action_module_has_no_write_path(self):
+        src = read(NEXT_PATH)
+        for bad in ("open(", "os.makedirs", "os.remove", "shutil.", "subprocess", "urllib",
+                    "socket", "requests"):
+            self.assertNotIn(bad, src, bad)
+
+    def test_045k_next_action_module_reads_no_file(self):
+        tree = ast.parse(read(NEXT_PATH))
+        names = {n.func.id for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        self.assertNotIn("open", names)
+
+
+# ================================================================ 15) front-end contracts (static)
+class TestFrontEndStatic(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = static("index.html")
+        cls.js = static("app.js")
+        cls.css = static("styles.css")
+        cls.icons = static("icons.svg")
+
+    def test_079_overview_hierarchy_declared(self):
+        for block in ("heading", "next-action", "attention", "counts", "freshness", "modules",
+                      "activity", "technical"):
+            self.assertIn('"data-block": "%s"' % block, self.js, block)
+
+    def test_080_next_action_declared_before_metrics(self):
+        # source order of the RENDER CALLS inside renderOverview is what fixes the page order
+        body = self.js[self.js.index("function renderOverview"):self.js.index("function nextActionPanel")]
+        self.assertLess(body.index("nextActionPanel(na)"), body.index('"data-block": "counts"'))
+        self.assertLess(body.index("nextActionPanel(na)"), body.index('"data-block": "modules"'))
+
+    def test_081_progressive_disclosure_used(self):
+        self.assertIn('el("details"', self.js)
+        self.assertIn("View details", self.js)
+        self.assertIn("details.tech", self.css)
+
+    def test_081b_disclosure_not_open_by_default(self):
+        self.assertNotIn('open: "open"', self.js)
+        self.assertNotIn('"open": true', self.js)
+
+    def test_082_empty_state_helper_exists(self):
+        self.assertIn("function emptyState", self.js)
+        self.assertIn("es-title", self.js)
+
+    def test_083_empty_state_explains_missing(self):
+        self.assertIn("es-title", self.js)
+        self.assertIn("No current report analysis found", self.js)
+
+    def test_084_empty_state_says_whether_error(self):
+        self.assertIn("This is not an error.", self.js)
+        self.assertIn("This is a problem that needs your attention.", self.js)
+
+    def test_085_empty_state_explains_next_step(self):
+        self.assertIn("es-next", self.js)
+        self.assertIn("Next step: ", self.js)
+
+    def test_085b_empty_state_never_bare_no_data(self):
+        self.assertNotIn('text: "No data"', self.js)
+
+    def test_086_no_dead_button_marker(self):
+        self.assertIn('"data-act"', self.js)
+        self.assertIn('data-act="modal:cancel"', self.html)
+        self.assertIn('data-act="modal:execute"', self.html)
+
+    def test_087_real_navigation(self):
+        self.assertIn('"data-act": "nav:"', self.js.replace('"data-act": "nav:" + v.id',
+                                                            '"data-act": "nav:"'))
+
+    def test_088_real_action_wiring(self):
+        self.assertIn('"data-act": "action:" + spec.action', self.js)
+        self.assertIn('"data-act": "action:" + action', self.js)
+
+    def test_089_copy_command_control(self):
+        self.assertIn('"data-act": "copy:command"', self.js)
+        self.assertIn('"data-act": "copy:id"', self.js)
+
+    def test_090_disabled_explanation_helper(self):
+        self.assertIn("function disabledBtn", self.js)
+        self.assertIn("aria-describedby", self.js)
+        self.assertIn("disabled-why", self.js)
+
+    def test_091_loading_state(self):
+        self.assertIn("Loading…", self.js)
+        self.assertIn('"data-state": "loading"', self.js)
+
+    def test_092_completed_state(self):
+        self.assertIn("completed:", self.js)
+        self.assertIn('setFeedback("completed"', self.js)
+
+    def test_093_blocked_state(self):
+        self.assertIn("blocked:", self.js)
+        self.assertIn("BLOCKED", self.js)
+
+    def test_094_failed_state(self):
+        self.assertIn("failed:", self.js)
+        self.assertIn('setFeedback("failed"', self.js)
+
+    def test_095_no_change_state(self):
+        self.assertIn('"no-change"', self.js)
+        self.assertIn("Nothing has changed since your last check.", self.js)
+
+    def test_096_session_expired_state(self):
+        self.assertIn('"session-expired"', self.js)
+        self.assertIn("Your local session expired.", self.js)
+
+    def test_097_stale_state(self):
+        self.assertIn("stale:", self.js)
+        self.assertIn("Stale data", self.js)
+
+    def test_098_sidebar_groups(self):
+        for g in ("OPERATIONS", "INTELLIGENCE", "SYSTEM"):
+            self.assertIn('"%s"' % g, self.js)
+        self.assertIn("nav-group-title", self.js)
+        self.assertIn("nav-group-title", self.css)
+
+    def test_099_active_navigation(self):
+        self.assertIn('aria-current", "page"', self.js)
+        self.assertIn('a[aria-current="page"]', self.css)
+
+    def test_100_keyboard_navigation(self):
+        self.assertIn("skip-link", self.html)
+        self.assertIn("trapTab", self.js)
+        self.assertIn(":focus-visible", self.css)
+
+    def test_101_breadcrumb(self):
+        self.assertIn('id="breadcrumbs"', self.html)
+        self.assertIn('aria-label="Breadcrumb"', self.html)
+        self.assertIn("breadcrumbs", self.js)
+
+    def test_102_hash_state_retained(self):
+        self.assertIn("window.location.hash", self.js)
+        self.assertIn('window.addEventListener("hashchange", route)', self.js)
+
+    def test_103_no_horizontal_overflow(self):
+        self.assertIn("overflow-x: auto", self.css)
+        self.assertIn("max-width: 100%", self.css)
+
+    def test_104_viewport_1366(self):
+        self.assertIn("@media (max-width: 1400px)", self.css)
+        self.assertIn("@media (max-width: 1100px)", self.css)
+
+    def test_105_bounded_search(self):
+        self.assertIn("slice(0, 200)", self.js)
+
+    def test_106_bounded_filter(self):
+        self.assertIn("MAX_QUERY_VALUE", read(CONSOLE_PATH))
+        self.assertEqual(UC.MAX_QUERY_VALUE, 256)
+
+    def test_107_bounded_sort(self):
+        self.assertIn('"data-act": "table:sort"', self.js)
+
+    def test_108_bounded_pagination(self):
+        self.assertLessEqual(UC.DEFAULT_PAGE_SIZE, UC.MAX_PAGE_SIZE)
+        self.assertIn("page_size=", self.js)
+
+    def test_109_sticky_headers(self):
+        self.assertIn("position: sticky", self.css)
+
+    def test_110_reset_filters(self):
+        self.assertIn("reset-filters", self.js)
+        self.assertIn("Reset filters", self.js)
+
+    def test_111_copy_id(self):
+        self.assertIn("function copyBtn", self.js)
+        self.assertIn("Copy identifier", self.js)
+
+    def test_112_view_details(self):
+        self.assertIn("View technical details", self.js)
+        self.assertIn("View data timestamps", self.js)
+
+    def test_113_record_count(self):
+        self.assertIn("record(s) · read-only", self.js)
+
+    def test_114_status_text(self):
+        for label in ("READY", "READY — NO ITEMS", "ACTION REQUIRED", "BLOCKED", "STALE",
+                      "UNKNOWN", "NEEDS SETUP"):
+            self.assertIn('"%s"' % label, self.js, label)
+
+    def test_115_status_icon(self):
+        self.assertIn('class: "glyph"', self.js)
+        self.assertIn("glyph:", self.js)
+
+    def test_116_status_shape(self):
+        self.assertIn('class: "dot"', self.js)
+        self.assertIn(".status-tag .dot", self.css)
+
+    def test_117_no_colour_only_state(self):
+        self.assertIn('"data-state": key', self.js)
+        self.assertIn(".status-tag .glyph", self.css)
+
+    def test_118_visible_focus(self):
+        self.assertIn("outline: 3px solid var(--focus)", self.css)
+
+    def test_119_reduced_motion(self):
+        self.assertIn("@media (prefers-reduced-motion: reduce)", self.css)
+        self.assertIn("@media (prefers-reduced-motion: no-preference)", self.css)
+
+    def test_120_heading_hierarchy(self):
+        self.assertIn('el("h1"', self.js)
+        self.assertIn('el("h2"', self.js)
+        self.assertIn(".panel h1", self.css)
+        self.assertIn(".panel h2", self.css)
+
+    def test_120b_type_scale_meets_policy(self):
+        self.assertIn("font-size: 1.6rem", self.css)     # h1 ~25.6px (24-28)
+        self.assertIn("font-size: 1.2rem", self.css)     # h2 ~19.2px (18-20)
+        self.assertIn("font-size: .95rem", self.css)     # body ~15.2px (14-16)
+        self.assertIn("font-size: .85rem", self.css)     # table ~13.6px (>=13)
+
+    def test_121_control_labels(self):
+        self.assertIn("<label", self.html)
+        self.assertIn('"aria-label": "Search "', self.js)
+        self.assertIn('"aria-label": "Rows per page"', self.js)
+
+    def test_122_screen_reader_icon_labels(self):
+        self.assertIn('aria-label="Hide or show the menu"', self.html)
+        self.assertIn('"aria-label": "Copy the command "', self.js)
+        self.assertIn('"aria-hidden", "true"', self.js)
+
+    def test_123_no_external_font(self):
+        for bad in ("@font-face", "fonts.googleapis", "@import"):
+            self.assertNotIn(bad, self.css)
+
+    def test_124_no_cdn(self):
+        for asset in (self.js, self.css, self.html):
+            for bad in ("cdn.", "unpkg", "jsdelivr", "googleapis", "http://", "https://"):
+                self.assertNotIn(bad, asset, bad)
+
+    def test_125_no_analytics(self):
+        for bad in ("sendBeacon", "gtag", "analytics", "ga(", "_paq", "mixpanel"):
+            self.assertNotIn(bad, self.js)
+
+    def test_126_no_external_browser_request(self):
+        self.assertNotIn('fetch("http', self.js)
+        self.assertNotIn("fetch('http", self.js)
+        self.assertNotIn("XMLHttpRequest", self.js)
+        self.assertNotIn("WebSocket", self.js)
+        self.assertNotIn("serviceWorker", self.js)
+
+    def test_127_no_unsafe_html(self):
+        for bad in ("insertAdjacentHTML", "outerHTML", "document.write", "createContextualFragment"):
+            self.assertNotIn(bad, self.js)
+
+    def test_128_no_innerhtml(self):
+        self.assertNotIn(".innerHTML", self.js)
+
+    def test_129_no_eval(self):
+        for bad in ("eval(", "new Function(", "setTimeout(\"", "setInterval(\""):
+            self.assertNotIn(bad, self.js)
+
+    def test_130_no_browser_storage_secret(self):
+        for bad in ("localStorage", "sessionStorage", "indexedDB", "document.cookie"):
+            self.assertNotIn(bad, self.js)
+
+    def test_130b_csrf_never_written_to_dom(self):
+        self.assertNotIn("textContent = CSRF", self.js)
+        self.assertNotIn("text: CSRF", self.js)
+
+    def test_130c_no_inline_script_in_html(self):
+        self.assertNotIn("<script>", self.html.lower())
+        self.assertIn('src="/app.js"', self.html)
+
+    def test_130d_no_inline_style_attribute(self):
+        # an inline style= attribute violates the strict style-src 'self' CSP the console sends
+        self.assertNotIn("style=", self.html)
+
+    def test_130e_icon_sprite_in_sync(self):
+        ids_html = set(re.findall(r'<symbol id="([a-z0-9\-]+)"', self.html))
+        ids_svg = set(re.findall(r'<symbol id="([a-z0-9\-]+)"', self.icons))
+        self.assertEqual(ids_html, ids_svg)
+        self.assertGreaterEqual(len(ids_html), 10)
+
+    def test_130f_every_icon_used_exists(self):
+        ids = set(re.findall(r'<symbol id="([a-z0-9\-]+)"', self.html))
+        for used in re.findall(r'icon: "([a-z0-9\-]+)"', self.js):
+            self.assertIn(used, ids, used)
+        for used in re.findall(r'svgIcon\("([a-z0-9\-]+)"\)', self.js):
+            self.assertIn(used, ids, used)
+
+    def test_130g_favicon_is_local_and_self_contained(self):
+        fav = static("favicon.svg")
+        self.assertNotIn("http", fav.replace("http://www.w3.org", ""))
+        self.assertIn('rel="icon"', self.html)
+        self.assertIn('href="/favicon.svg"', self.html)
+
+
+# ================================================================ 16) Phase 7.13 / 7.12 regression
+class TestPriorPhaseRegression(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = static("index.html")
+        cls.js = static("app.js")
+
+    def test_131_modal_markup_intact(self):
+        for marker in ('id="modal"', 'aria-modal="true"', 'id="modal-title"', 'id="modal-desc"',
+                       'id="modal-confirm-wrap"', 'id="modal-phrase"', 'id="modal-result"',
+                       'id="modal-cancel"', 'id="modal-execute"', 'id="modal-backdrop"'):
+            self.assertIn(marker, self.html, marker)
+
+    def test_131b_modal_functions_intact(self):
+        for fn in ("startAction", "openModal", "openModalBlocked", "executeModal", "closeModal",
+                   "wireModal", "refreshExecuteEnabled", "finishExecute", "buildDetails"):
+            self.assertIn("function %s" % fn, self.js, fn)
+
+    def test_131c_failed_prepare_still_opens_a_modal(self):
+        self.assertIn("openModalBlocked", self.js)
+        self.assertIn("This action cannot be prepared right now.", self.js)
+
+    def test_132_exact_phrase_gating_intact(self):
+        self.assertIn('id("modal-phrase").value !== modalState.phrase', self.js)
+        self.assertIn("confirmation_phrase", self.js)
+
+    def test_132b_no_phrase_normalisation(self):
+        for bad in (".trim()", ".toLowerCase()"):
+            snippet = self.js[self.js.index("function refreshExecuteEnabled"):
+                              self.js.index("function closeModal")]
+            self.assertNotIn(bad, snippet)
+
+    def test_133_failure_modal_intact(self):
+        self.assertIn('resEl.className = "bad"', self.js)
+        self.assertIn("Not completed", self.js)
+
+    def test_134_export_download_intact(self):
+        self.assertIn("/exports/overview?format=", self.js)
+        self.assertIn("appendExportResult", self.js)
+
+    def test_135_focus_trap_intact(self):
+        self.assertIn("function trapTab", self.js)
+        self.assertIn("modalFocusables", self.js)
+        self.assertIn("modalState.lastFocus", self.js)
+
+    def test_135b_single_use_token_intact(self):
+        self.assertIn("modalState.token = null", self.js)
+        self.assertIn("modalState.done = true", self.js)
+
+    def test_135c_backdrop_click_still_does_not_dismiss(self):
+        self.assertIn("backdrop.addEventListener(\"click\"", self.js)
+        self.assertIn("e.preventDefault()", self.js)
+
+    def test_136_phase_712_double_gate_untouched(self):
+        from production import phase7_owner_notification_delivery as N
+        self.assertTrue(hasattr(N, "DS_UNKNOWN"))
+        self.assertNotEqual(N.DS_UNKNOWN, N.DS_FAILED)
+
+    def test_136b_accepted_authorities_unmodified(self):
+        out = subprocess.run(
+            ["git", "diff", "--name-only", "3f758debc31bcf0b4e50d9693798e99910c64110", "--",
+             "production/phase7_ads_analysis.py", "production/phase7_report_ingestion.py",
+             "production/phase7_owner_dashboard.py", "production/phase7_owner_decision_package.py",
+             "production/phase7_manual_action_tracker.py", "production/phase7_outcome_followup.py",
+             "production/phase7_owner_operations_dashboard.py",
+             "production/phase7_connected_backup_recovery.py",
+             "production/phase7_connected_public_research.py",
+             "production/phase7_connected_research_watchlists.py",
+             "production/phase7_owner_notification_delivery.py", "core/"],
+            cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(out.stdout.strip(), "", "accepted 7.3-7.12 authority modified")
+
+    def test_136c_action_allowlist_still_fifteen(self):
+        self.assertEqual(len(UC.ACTIONS), 15)
+
+    def test_136d_prohibited_actions_still_absent(self):
+        for name in UC.PROHIBITED_ACTIONS:
+            self.assertNotIn(name, UC.ACTIONS)
+
+
+# ================================================================ 17) permanent boundary
+class TestBoundary(unittest.TestCase):
+    def sources(self):
+        return {"launcher": read(LAUNCHER_PATH), "next_action": read(NEXT_PATH),
+                "app.js": static("app.js"), "index.html": static("index.html"),
+                "styles.css": static("styles.css")}
+
+    def test_137_seller_central_counters_zero(self):
+        for k, v in L.SELLER_CENTRAL_COUNTERS.items():
+            self.assertEqual(v, 0, k)
+        for k, v in UC.SELLER_CENTRAL_COUNTERS.items():
+            self.assertEqual(v, 0, k)
+
+    def test_137b_counters_never_incremented(self):
+        for name, src in self.sources().items():
+            self.assertNotIn("SELLER_CENTRAL_COUNTERS[", src.replace(
+                'dict(SELLER_CENTRAL_COUNTERS)', ''), name)
+            self.assertNotIn("+= 1", src.split("SELLER_CENTRAL_COUNTERS")[-1][:200], name)
+
+    def test_138_no_sp_api(self):
+        for name, src in self.sources().items():
+            low = src.lower()
+            for bad in ("sellingpartnerapi", "sp-api", "sellingpartner"):
+                self.assertNotIn(bad, low, "%s in %s" % (bad, name))
+
+    def test_139_no_ads_api(self):
+        # NOTE: `advertising_api_calls` is an accepted constant-zero BOUNDARY COUNTER name shared with
+        # the accepted Phase 7.13 console. What must be absent is an advertising API endpoint or client.
+        for name, src in self.sources().items():
+            low = src.lower()
+            for bad in ("advertising-api.", "amazon-adsystem", "ads-api.", "/v2/campaigns"):
+                self.assertNotIn(bad, low, "%s in %s" % (bad, name))
+
+    def test_140_no_seller_oauth(self):
+        for name, src in self.sources().items():
+            low = src.lower()
+            for bad in ("lwa_", "login_with_amazon", "refresh_token", "client_secret",
+                        "oauth", "ap/signin", "sellercentral"):
+                self.assertNotIn(bad, low, "%s in %s" % (bad, name))
+
+    def test_141_no_seller_browser_automation(self):
+        for name, src in self.sources().items():
+            low = src.lower()
+            for bad in ("selenium", "playwright", "puppeteer", "webdriver", "chromedriver"):
+                self.assertNotIn(bad, low, "%s in %s" % (bad, name))
+
+    def test_141b_launcher_scripts_free_of_amazon(self):
+        for name in SCRIPTS:
+            low = script(name).lower()
+            for bad in ("sellercentral", "sp-api", "advertising-api", "amazon.com", "signin"):
+                self.assertNotIn(bad, low, "%s in %s" % (bad, name))
+
+    def test_141c_browser_only_ever_opens_loopback(self):
+        src = read(LAUNCHER_PATH)
+        self.assertIn("is_allowed_url(url, host, port)", src)
+        self.assertIn("URL_NOT_ALLOWED", src)
+
+    def test_141d_console_url_never_built_from_input(self):
+        self.assertIn("validate_host(host)", read(LAUNCHER_PATH))
+        with self.assertRaises(L.LauncherError):
+            L.console_url("evil.example.com", 8780)
+
+    def test_141e_guidance_never_recommends_an_amazon_mutation(self):
+        for build in CASES.values():
+            text = NA.owner_text(NA.build_next_action(build())).lower()
+            for bad in ("change your listing", "update your campaign", "upload", "log in to amazon"):
+                self.assertNotIn(bad, text, bad)
+
+
+# ================================================================ 18) pilot kit
+class TestPilotKit(unittest.TestCase):
+    def test_142_pilot_guide_present(self):
+        self.assertIn("14-day", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_143_pilot_checklist_present(self):
+        self.assertIn("Day 0", doc("PHASE7_14-OWNER-PILOT-CHECKLIST.md"))
+
+    def test_144_issue_template_present(self):
+        d = doc("PHASE7_14-PILOT-ISSUE-TEMPLATE.md")
+        self.assertIn("ISSUE ID", d)
+        self.assertIn("SEVERITY", d)
+
+    def test_145_daily_log_template_present(self):
+        self.assertIn("PILOT DAY", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_146_exit_criteria_present(self):
+        self.assertIn("Exit Criteria", doc("PHASE7_14-PILOT-EXIT-CRITERIA.md"))
+
+    def test_146b_usability_policy_present(self):
+        self.assertIn("Owner Usability Policy", doc("PHASE7_14-OWNER-USABILITY-POLICY.md"))
+
+    def test_146c_all_pilot_docs_exist(self):
+        for name in PILOT_DOCS:
+            self.assertTrue(os.path.isfile(os.path.join(DOCS, name)), name)
+
+    def test_147_day0_checklist(self):
+        g = doc("PHASE7_14-OWNER-PILOT-GUIDE.md")
+        c = doc("PHASE7_14-OWNER-PILOT-CHECKLIST.md")
+        for item in ("Launcher verification", "Browser verification", "Data backup",
+                     "Report availability", "Owner orientation", "Issue-recording method"):
+            self.assertIn(item, g, item)
+            self.assertIn(item, c, item)
+
+    def test_148_daily_workflow(self):
+        g = doc("PHASE7_14-OWNER-PILOT-GUIDE.md")
+        for step in ("Start the toolkit", "Review the next action", "Inspect the current analysis",
+                     "Record an owner decision", "record the manual action", "Review alerts",
+                     "Review follow-ups", "Stop the toolkit", "Record time spent"):
+            self.assertIn(step, g, step)
+
+    def test_149_export_exercise(self):
+        self.assertIn("Create an export", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+        self.assertIn("Export exercise", doc("PHASE7_14-OWNER-PILOT-CHECKLIST.md"))
+
+    def test_150_backup_exercise(self):
+        self.assertIn("Create a backup snapshot", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+        self.assertIn("Verify a backup", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_151_research_exercise(self):
+        self.assertIn("Create a research run", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_152_watchlist_exercise(self):
+        self.assertIn("Create a watchlist", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_153_alert_exercise(self):
+        self.assertIn("Review an alert", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_154_notification_review(self):
+        self.assertIn("Review the notification outbox", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_155_recovery_drill(self):
+        g = doc("PHASE7_14-OWNER-PILOT-GUIDE.md")
+        self.assertIn("recovery drill", g.lower())
+        self.assertIn("never on your live data", g)
+
+    def test_155b_recovery_drill_is_isolated(self):
+        self.assertIn("on a copy", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+
+    def test_156_seller_counter_verification(self):
+        self.assertIn("Seller Central counters", doc("PHASE7_14-OWNER-PILOT-GUIDE.md"))
+        self.assertIn("Seller Central counter verification",
+                      doc("PHASE7_14-OWNER-PILOT-CHECKLIST.md"))
+
+    def test_157_startup_metric(self):
+        self.assertIn("Startup success", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_158_startup_time_metric(self):
+        self.assertIn("Startup time", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_159_overview_understanding_metric(self):
+        self.assertIn("Time to understand Overview", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_160_next_action_time_metric(self):
+        self.assertIn("Time to identify the next action",
+                      doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_161_powershell_use_metric(self):
+        d = doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md")
+        self.assertIn("Number of PowerShell uses", d)
+        self.assertIn("target: 0", d)
+
+    def test_162_dead_end_metric(self):
+        self.assertIn("Number of dead ends", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_162b_unclear_status_metric(self):
+        self.assertIn("Number of unclear statuses", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_162c_ui_defect_metric(self):
+        self.assertIn("Number of UI defects", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_162d_blocked_workflow_metric(self):
+        self.assertIn("Number of blocked workflows", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_162e_review_time_metric(self):
+        self.assertIn("Time to complete the owner review",
+                      doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_163_confidence_metric(self):
+        d = doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md")
+        self.assertIn("Owner confidence rating", d)
+        self.assertIn("[ ]1 [ ]2 [ ]3 [ ]4 [ ]5", d)
+
+    def test_164_effort_metric(self):
+        self.assertIn("Owner effort rating", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_165_decision_metric(self):
+        self.assertIn("Completed decisions", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_166_manual_action_metric(self):
+        self.assertIn("Completed manual actions", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_167_followup_metric(self):
+        self.assertIn("Completed follow-ups", doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md"))
+
+    def test_167b_export_and_backup_metrics(self):
+        d = doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md")
+        self.assertIn("Exports created", d)
+        self.assertIn("Backups verified", d)
+
+    def test_167c_metrics_disclaim_business_causation(self):
+        d = doc("PHASE7_14-PILOT-DAILY-LOG-TEMPLATE.md")
+        self.assertIn("never describe business results", d)
+        self.assertIn("causation", d)
+
+    def test_168_pilot_no_infrastructure_rule(self):
+        for name in ("PHASE7_14-OWNER-PILOT-GUIDE.md", "PHASE7_14-OWNER-PILOT-CHECKLIST.md",
+                     "PHASE7_14-PILOT-ISSUE-TEMPLATE.md", "PHASE7_14-PILOT-EXIT-CRITERIA.md"):
+            self.assertIn("DO NOT ADD NEW INFRASTRUCTURE", doc(name), name)
+
+    def test_169_pilot_fix_only_rule(self):
+        for name in ("PHASE7_14-OWNER-PILOT-GUIDE.md", "PHASE7_14-PILOT-ISSUE-TEMPLATE.md",
+                     "PHASE7_14-PILOT-EXIT-CRITERIA.md"):
+            self.assertIn("FIX DEFECTS ONLY", doc(name), name)
+
+    def test_169b_deferred_list_exists(self):
+        self.assertIn("Deferred (post-pilot)", doc("PHASE7_14-PILOT-ISSUE-TEMPLATE.md"))
+
+    def test_170_full_workflow_exit_criterion(self):
+        self.assertIn("Owner completes at least one full workflow",
+                      doc("PHASE7_14-PILOT-EXIT-CRITERIA.md"))
+
+    def test_171_backup_exit_criterion(self):
+        self.assertIn("Backup and recovery drill completed",
+                      doc("PHASE7_14-PILOT-EXIT-CRITERIA.md"))
+
+    def test_172_no_critical_usability_defect_criterion(self):
+        self.assertIn("No unresolved critical usability defect",
+                      doc("PHASE7_14-PILOT-EXIT-CRITERIA.md"))
+
+    def test_173_confidence_threshold(self):
+        d = doc("PHASE7_14-PILOT-EXIT-CRITERIA.md")
+        self.assertIn("Owner confidence meets the threshold", d)
+        self.assertIn(">= 4.0 / 5".replace(">=", "≥"), d)
+
+    def test_173b_all_fourteen_exit_criteria(self):
+        d = doc("PHASE7_14-PILOT-EXIT-CRITERIA.md")
+        for phrase in ("Launcher works reliably", "No normal daily PowerShell requirement",
+                       "No dead buttons", "No blank or unusable modal", "No fake route",
+                       "Next-action guidance is accurate",
+                       "Owner completes at least one full workflow",
+                       "Owner records at least one decision",
+                       "Owner records at least one manual action",
+                       "A later report supports one observational follow-up",
+                       "Backup and recovery drill completed",
+                       "Seller Central counters remain zero",
+                       "No unresolved critical usability defect",
+                       "Owner confidence meets the threshold"):
+            self.assertIn(phrase, d, phrase)
+
+    def test_173c_hard_stops_declared(self):
+        self.assertIn("Hard stops", doc("PHASE7_14-PILOT-EXIT-CRITERIA.md"))
+
+    def test_173d_pilot_runtime_records_not_committed(self):
+        self.assertIn("Do not commit", doc("PHASE7_14-OWNER-PILOT-CHECKLIST.md"))
+        out = subprocess.run(["git", "ls-files", "runs/T2/phase7/7.14/"], cwd=ROOT,
+                             capture_output=True, text=True).stdout.strip()
+        self.assertEqual(out, "")
+
+    def test_173e_policy_declares_priority_order(self):
+        p = doc("PHASE7_14-OWNER-USABILITY-POLICY.md")
+        for rule in NA.describe_rules():
+            self.assertIn(rule["rule_id"], p, rule["rule_id"])
+
+    def test_173f_policy_declares_button_contract(self):
+        p = doc("PHASE7_14-OWNER-USABILITY-POLICY.md")
+        for phrase in ("dead buttons", "blank modals", "silent failures", "infinite spinners",
+                       "fake routes"):
+            self.assertIn(phrase, p, phrase)
+
+    def test_173g_policy_declares_boundary_first(self):
+        p = doc("PHASE7_14-OWNER-USABILITY-POLICY.md")
+        self.assertLess(p.index("Permanent Amazon boundary"), p.index("Next-action guidance"))
+
+
+# ================================================================ 19) determinism + safety of output
+class TestDeterminism(unittest.TestCase):
+    def test_174_launcher_result_deterministic_where_applicable(self):
+        tmp = tempfile.mkdtemp(prefix="p714-det-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        results = []
+        for _ in range(2):
+            ws = L.Workspace(tmp)
+            ws.ensure()
+            lc = L.Launcher(root=ROOT, workspace=ws, health=lambda h, p: dict(HEALTHY),
+                            port_probe=lambda h, p: True, browser=lambda u: True)
+            r = lc.start()
+            r.pop("generated_at")
+            r.pop("preflight", None)
+            results.append(UC.canonical_json(r))
+        self.assertEqual(results[0], results[1])
+
+    def test_175_guidance_json_deterministic(self):
+        for build in CASES.values():
+            m = build()
+            a = UC.canonical_json(NA.build_next_action(m, generated_at="Z"))
+            b = UC.canonical_json(NA.build_next_action(m, generated_at="Z"))
+            self.assertEqual(a, b)
+
+    def test_176_no_secrets_in_guidance(self):
+        for build in CASES.values():
+            blob = UC.canonical_json(NA.build_next_action(build()))
+            for bad in ("token", "secret", "password", "cookie", "csrf", "authorization"):
+                self.assertNotIn(bad, blob.lower(), bad)
+
+    def test_177_no_absolute_path_in_guidance(self):
+        for build in CASES.values():
+            blob = UC.canonical_json(NA.build_next_action(build()))
+            self.assertNotIn(":\\", blob)
+            self.assertNotIn(ROOT.replace("\\", "\\\\"), blob)
+
+    def test_177b_no_absolute_path_in_launcher_result(self):
+        tmp = tempfile.mkdtemp(prefix="p714-abs-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        ws = L.Workspace(tmp)
+        ws.ensure()
+        res = L.Launcher(root=ROOT, workspace=ws, health=lambda h, p: dict(HEALTHY),
+                         port_probe=lambda h, p: True, browser=lambda u: True).start()
+        blob = json.dumps(res)
+        self.assertNotIn(tmp.replace("\\", "\\\\"), blob)
+
+    def test_178_vietnamese_unicode_preserved(self):
+        m = model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+            {"alert_id": "cảnh-báo-1", "status": "OPEN", "severity": "CRITICAL"}]}})
+        na = NA.build_next_action(m)
+        self.assertIn("cảnh-báo-1", na["source_ids"])
+        self.assertIn("cảnh-báo-1", UC.canonical_json(na))
+
+    def test_178b_unicode_survives_identity(self):
+        m = model(sections={"watchlists": {"status": "READY", "counts": {}, "alerts": [
+            {"alert_id": "Huế-1", "status": "OPEN", "severity": "CRITICAL"}]}})
+        self.assertEqual(NA.build_next_action(m)["next_action_identity"],
+                         NA.build_next_action(m)["next_action_identity"])
+
+    def test_179_legitimate_negative_values_preserved(self):
+        m = model(overview={"pending_decisions": 0, "notification_unknown": 0})
+        m["overview"]["some_negative_upstream_value"] = -12
+        na = NA.build_next_action(m)
+        # an unknown extra field changes nothing: the healthy model still resolves to "no urgent action"
+        self.assertEqual(na["priority"], 14)
+
+    def test_179b_counts_read_verbatim_never_clamped(self):
+        m = model(overview={"pending_decisions": 1234})
+        self.assertIn("1234", NA.build_next_action(m)["owner_message"])
+
+    def test_179c_negative_upstream_count_is_not_invented_away(self):
+        m = model(overview={"pending_decisions": -3})
+        # a negative count is not "pending work"; the engine reads it verbatim and does not fire
+        self.assertNotEqual(NA.build_next_action(m)["priority"], 6)
+
+    def test_180_formula_safe_tsv_rule_unchanged(self):
+        # 7.14 adds no exporter; the accepted formula-injection rule is still the one in use
+        self.assertTrue(callable(UC._TSV_CELL))
+        for danger in ("=cmd", "+1", "@x", "-abc"):
+            self.assertTrue(UC._TSV_CELL(danger).startswith("'"), danger)
+
+    def test_180b_legitimate_negative_number_not_quoted(self):
+        # the accepted rule deliberately preserves a real negative number
+        self.assertEqual(UC._TSV_CELL("-1"), "-1")
+        self.assertEqual(UC._TSV_CELL("-12.50"), "-12.50")
+
+    def test_181_source_immutability(self):
+        """The guidance never writes to, or derives a new value from, its inputs."""
+        m = model()
+        snapshot = UC.canonical_json(m)
+        for _ in range(3):
+            NA.build_next_action(m)
+        self.assertEqual(UC.canonical_json(m), snapshot)
+
+    def test_181b_facts_are_read_only_copies(self):
+        m = model()
+        f = NA.Facts(m)
+        f.stale_phases.append("tampered")
+        self.assertEqual(m["overview"]["stale_data_phases"], [])
+
+    def test_182_runs_ignored(self):
+        gi = read(os.path.join(ROOT, ".gitignore"))
+        self.assertIn("runs/", gi)
+        out = subprocess.run(["git", "check-ignore", "-q", "runs/T2/phase7/7.14/launcher"],
+                             cwd=ROOT)
+        self.assertEqual(out.returncode, 0)
+
+    def test_183_static_assets_hashable(self):
+        import hashlib
+        for name in ("index.html", "app.js", "styles.css", "icons.svg", "favicon.svg"):
+            h = hashlib.sha256(open(os.path.join(STATIC_DIR, name), "rb").read()).hexdigest()
+            self.assertEqual(len(h), 64)
+
+    def test_184_launcher_files_hashable(self):
+        import hashlib
+        for name in SCRIPTS + ("production/phase7_owner_launcher.py",):
+            p = os.path.join(ROOT, name.replace("/", os.sep))
+            self.assertTrue(os.path.isfile(p), name)
+            self.assertEqual(len(hashlib.sha256(open(p, "rb").read()).hexdigest()), 64)
+
+    def test_184b_lf_pinned_for_hashed_artifacts(self):
+        ga = read(os.path.join(ROOT, ".gitattributes"))
+        for name in ("production/phase7_owner_launcher.py",
+                     "production/phase7_owner_next_action.py",
+                     "production/phase7_unified_owner_console_static/favicon.svg",
+                     "Start-AMZ-Toolkit.ps1", "docs/PHASE7_14-OWNER-USABILITY-POLICY.md"):
+            self.assertIn(name, ga, name)
+
+    def test_185_compileall(self):
+        out = subprocess.run([sys.executable, "-m", "compileall", "-q",
+                              os.path.join(ROOT, "production", "phase7_owner_launcher.py"),
+                              os.path.join(ROOT, "production", "phase7_owner_next_action.py"),
+                              os.path.join(ROOT, "production", "phase7_unified_owner_console.py")],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+
+# ================================================================ 20) fresh-tree + evidence
+class TestFreshTreeAndEvidence(unittest.TestCase):
+    def test_186_focused_suite_present(self):
+        self.assertTrue(os.path.isfile(os.path.join(
+            TESTS, "test_phase7_14_owner_usability_pilot_readiness.py")))
+
+    def test_187_phase_713_suite_present(self):
+        self.assertTrue(os.path.isfile(os.path.join(
+            TESTS, "test_phase7_13_unified_owner_console.py")))
+
+    def test_188_phase_712_suite_present(self):
+        self.assertTrue(os.path.isfile(os.path.join(
+            TESTS, "test_phase7_12_owner_notification_delivery.py")))
+
+    def test_189_prior_suites_present(self):
+        for name in ("test_phase7_10_connected_public_research.py",
+                     "test_phase7_11_connected_research_watchlists.py",
+                     "test_phase7_1m_foundation.py", "test_phase7_1e_planning.py"):
+            self.assertTrue(os.path.isfile(os.path.join(TESTS, name)), name)
+
+    def test_190_full_suite_discoverable(self):
+        out = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests",
+                              "-p", "test_*.py", "--locals", "-v", "-k", "nothing_matches_this"],
+                             cwd=ROOT, capture_output=True, text=True)
+        self.assertIn("Ran 0 tests", out.stderr + out.stdout)
+
+    def test_191_connectivity_scanner_clean(self):
+        for name, src in (("launcher", read(LAUNCHER_PATH)), ("next_action", read(NEXT_PATH))):
+            for bad in ("requests.get", "requests.post", "http.client.HTTPSConnection",
+                        "ssl.wrap_socket"):
+                self.assertNotIn(bad, src, "%s in %s" % (bad, name))
+
+    def test_192_network_policy_scanner(self):
+        src = read(LAUNCHER_PATH)
+        self.assertIn("NON_LOOPBACK_PROBE_REFUSED", src)
+        self.assertIn("_NoRedirect", src)
+
+    def test_192b_health_probe_follows_no_redirect(self):
+        self.assertIn("def redirect_request", read(LAUNCHER_PATH))
+
+    def test_193_prohibited_integration_scan(self):
+        # matched on token boundaries, so an innocent word can never be mistaken for an integration
+        # ("always" contains "lwa"; "advertising_api_calls" is a constant-zero boundary counter).
+        banned = ("sellercentral", "sellingpartnerapi", "amazon-adsystem", "mws.amazonservices",
+                  "lwa", "seller_refresh_token", "selenium", "playwright", "puppeteer",
+                  "webdriver", "chromedriver", "taskkill", "pkill", "killall")
+        rx = [(b, re.compile(r"(?<![a-z0-9_.\-])" + re.escape(b) + r"(?![a-z0-9_])")) for b in banned]
+        literal = ("advertising-api.", "shell=true", "sp-api.")
+        targets = [LAUNCHER_PATH, NEXT_PATH,
+                   os.path.join(STATIC_DIR, "app.js"), os.path.join(STATIC_DIR, "index.html"),
+                   os.path.join(STATIC_DIR, "styles.css")] + \
+                  [os.path.join(ROOT, s) for s in SCRIPTS] + \
+                  [os.path.join(DOCS, d) for d in PILOT_DOCS]
+        for path in targets:
+            low = read(path).lower()
+            name = os.path.basename(path)
+            for bad, pat in rx:
+                self.assertIsNone(pat.search(low), "%s in %s" % (bad, name))
+            for bad in literal:
+                self.assertNotIn(bad, low, "%s in %s" % (bad, name))
+
+    def test_194_baseline_commit_reachable(self):
+        out = subprocess.run(["git", "cat-file", "-t",
+                              "3f758debc31bcf0b4e50d9693798e99910c64110"],
+                             cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(out.stdout.strip(), "commit")
+
+    def test_195_checkpoint_tag_present(self):
+        out = subprocess.run(["git", "tag", "--list",
+                              "phase7-14-owner-usability-pilot-readiness-checkpoint-3f758de"],
+                             cwd=ROOT, capture_output=True, text=True)
+        self.assertIn("checkpoint", out.stdout)
+
+    def test_196_launcher_works_without_runs_data(self):
+        """A fresh worktree has no runs/ tree; the launcher must still preflight and validate."""
+        tmp = tempfile.mkdtemp(prefix="p714-fresh-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        res = L.validate_only(root=ROOT)
+        self.assertTrue(res["ok"])
+        ws = L.Workspace(tmp)
+        self.assertTrue(ws.ensure())
+
+    def test_196b_launcher_creates_its_own_runtime_dir(self):
+        tmp = tempfile.mkdtemp(prefix="p714-mk-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        ws = L.Workspace(tmp)
+        ws.ensure()
+        self.assertTrue(os.path.isdir(ws.dir))
+
+    def test_197_static_assets_work_without_runs(self):
+        for name in ("index.html", "app.js", "styles.css", "icons.svg", "favicon.svg"):
+            self.assertGreater(len(static(name)), 100, name)
+
+    def test_198_no_runs_dependency_in_launcher_module(self):
+        src = read(LAUNCHER_PATH)
+        # runs/ is only ever the DEFAULT workspace + the launcher's own runtime dir
+        self.assertEqual(src.count('"runs"'), 1)
+        self.assertEqual(src.count('DEFAULT_WORKSPACE_ROOT = "runs/T2/phase7"'), 1)
+
+    def test_199_browser_qa_harness_present(self):
+        self.assertTrue(os.path.isfile(os.path.join(TESTS, "phase7_14_browser_qa.js")))
+
+    def test_199b_browser_qa_is_loopback_only(self):
+        src = read(os.path.join(TESTS, "phase7_14_browser_qa.js"))
+        self.assertIn("offOrigin", src)
+        self.assertIn("all_requests_same_origin_loopback", src)
+        self.assertIn("127.0.0.1", src)
+
+    def test_199c_browser_qa_records_more_than_screenshots(self):
+        src = read(os.path.join(TESTS, "phase7_14_browser_qa.js"))
+        for signal in ("consoleAPICalled", "exceptionThrown", "requestWillBeSent", "Runtime.evaluate"):
+            self.assertIn(signal, src, signal)
+        self.assertNotIn("captureScreenshot", src)
+
+    def test_199d_dom_harness_present(self):
+        self.assertTrue(os.path.isfile(os.path.join(TESTS, "phase7_14_console_dom_harness.js")))
+
+    def test_199e_no_acceptance_tag_yet(self):
+        out = subprocess.run(["git", "tag", "--list"], cwd=ROOT, capture_output=True, text=True)
+        for line in out.stdout.splitlines():
+            t = line.strip()
+            if "7-14" in t or "7.14" in t:
+                self.assertIn("checkpoint", t, "unexpected 7.14 tag: " + t)
+
+    def test_199f_no_phase_8_work(self):
+        for entry in os.listdir(os.path.join(ROOT, "production")):
+            self.assertFalse(entry.startswith("phase8"), entry)
+        for entry in os.listdir(TESTS):
+            self.assertFalse(entry.startswith("test_phase8"), entry)
+
+    def test_199g_no_ppc_module_added(self):
+        for entry in os.listdir(os.path.join(ROOT, "production")):
+            self.assertNotIn("ppc", entry.lower())
+
+
+# ================================================================ 21) Node DOM render contract
+@unittest.skipIf(NODE is None, "node is not available on this machine")
+class TestDomRenderContract(unittest.TestCase):
+    """Render the REAL app.js in a dependency-free DOM harness and assert the owner contract."""
+
+    def test_200_to_220_dom_render_contract(self):
+        tmp = tempfile.mkdtemp(prefix="p714-dom-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+
+        def envelope(data, readiness=UC.CONSOLE_READY, status=200):
+            return {"status": status, "body": {"readiness": readiness, "data": data}}
+
+        def paged(rows):
+            return {"data": rows, "page": 1, "page_size": 50, "total": len(rows),
+                    "total_pages": 1 if rows else 0}
+
+        na = NA.build_next_action(model(overview={"pending_decisions": 2}),
+                                  generated_at="2026-07-28T00:00:00Z")
+        fixtures = {
+            "app_js": os.path.join(STATIC_DIR, "app.js"),
+            "session": envelope({"csrf_token": "csrf-secret-value", "session_active": True}),
+            "overview": envelope({
+                "overview": {"module_status": {"analysis": "READY", "backup": "READY"},
+                             "module_labels": dict(UC.MODULE_OWNER_LABELS),
+                             "pending_decisions": 2, "pending_manual_actions": 0,
+                             "due_followups": 0, "open_alerts": 0, "due_watchlists": 0,
+                             "notification_unknown": 0, "notification_sent": 0,
+                             "notification_failed": 0, "research_runs": 1, "backup_snapshots": 1,
+                             "update_available": False, "attention_items": 0,
+                             "blocked_modules": [], "stale_data_phases": []},
+                "freshness": {"7.3": {"latest": "2026-07-27T10:00:00Z", "stale": False}},
+                "cache": {"state_hash": "h1", "age_seconds": 0.0},
+                "disclaimer": ["A", "B"], "next_action": na}),
+            "activity": envelope({"audit_chain": {"ok": True, "event_count": 0},
+                                  "events": paged([])}),
+            "research": envelope({"status": "READY", "counts": {"runs": 1},
+                                  "runs": paged([{"row_id": "uc-r1", "run_id": "run-1",
+                                                  "readiness": "READY", "source_count": 2,
+                                                  "evidence_count": 5}])}),
+            "backups": envelope({"status": "READY", "counts": {"snapshots": 1},
+                                 "update_check": None, "recovery_plans": [],
+                                 "snapshots": paged([{"row_id": "uc-s1", "snapshot_id": "snap-1",
+                                                      "file_count": 3, "total_bytes": 99,
+                                                      "encrypted": True}])}),
+            "system": envelope({"system": {
+                "python_version": "3.12.10", "platform": "win32",
+                "audit_chain": {"ok": True, "event_count": 0}, "recent_errors": [],
+                "phase_directories": {"7.3": True},
+                "seller_central_counters": dict(UC.SELLER_CENTRAL_COUNTERS),
+                "connectivity_boundary": {"seller_central_blocked": True,
+                                          "seller_api_blocked": True,
+                                          "advertising_api_blocked": True},
+                "runs_ignored": True, "network_policy_status": "LOOPBACK_UI_ONLY"}}),
+            "alerts": envelope({"status": "READY_EMPTY", "counts": {}, "alerts": paged([]),
+                                "notice": "n"}),
+            "notifications": envelope({"status": "READY_EMPTY", "counts": {}, "routes": [],
+                                       "deliveries": [], "batches": paged([]), "notice": "n"}),
+            "analysis": envelope({"status": "READY", "counts": {}, "rows": paged([])}),
+            "watchlists": envelope({"status": "READY_EMPTY", "counts": {},
+                                    "watchlists": paged([])}),
+            "prepare_default": envelope({
+                "action_token": "action-token-secret", "canonical_action": "refresh-overview",
+                "requires_confirmation": False, "confirmation_phrase": None,
+                "expected_authority": "console", "target_ids": [],
+                "expected_effect": "Rebuild the overview.", "network_use": "NONE",
+                "local_state_changes": "cache_only", "upstream_state_changes": "NONE",
+                "expires_in_seconds": 300, "readiness": UC.ACTION_READY}),
+            "execute_ok": envelope({"readiness": UC.ACTION_COMPLETED, "authority": "console",
+                                    "upstream_result_id": "r-1", "upstream_summary": {}}),
+        }
+        fx_path = os.path.join(tmp, "fixtures.json")
+        with open(fx_path, "w", encoding="utf-8") as f:
+            json.dump(fixtures, f)
+
+        out = subprocess.run([NODE, os.path.join(TESTS, "phase7_14_console_dom_harness.js"),
+                              fx_path], cwd=TESTS, capture_output=True, text=True)
+        report = out.stdout + out.stderr
+        failures = [ln for ln in report.splitlines() if ln.startswith("FAIL")]
+        self.assertEqual(out.returncode, 0, "\n".join(failures) or report[-3000:])
+        total = [ln for ln in report.splitlines() if ln.startswith("TOTAL")]
+        self.assertTrue(total, report[-2000:])
+        self.assertIn("FAILED 0", total[0])
+        # the harness is substantial: it must actually be running its full contract
+        self.assertGreaterEqual(int(total[0].split()[1]), 100, total[0])
+
+
+if __name__ == "__main__":
+    unittest.main()

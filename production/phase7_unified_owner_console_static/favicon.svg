@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner console tab icon. Self-contained, no external reference, no raster image. Serving it also
+     removes the /favicon.ico request a browser would otherwise log as a 404 on every page load. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="7" fill="#234a86"/>
+  <path fill="#ffffff" d="M6 24h20v2.5H6z"/>
+  <path fill="#ffffff" d="M8.5 13h3.5v9H8.5zM14.2 7.5h3.5v14.5h-3.5zM20 11h3.5v11H20z"/>
+</svg>

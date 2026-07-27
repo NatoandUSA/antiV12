@@ -59,6 +59,7 @@ from production import phase7_connected_backup_recovery as BACKUP   # noqa: E402
 from production import phase7_connected_public_research as RESEARCH # noqa: E402  accepted 7.10 authority
 from production import phase7_connected_research_watchlists as WATCH# noqa: E402  accepted 7.11 authority
 from production import phase7_owner_notification_delivery as NOTIFY # noqa: E402  accepted 7.12 authority
+from production import phase7_owner_next_action as NEXT             # noqa: E402  7.14 guidance read model
 from core import network_policy as NP                               # noqa: E402  the ONE network authority
 from core import diagnostics as DIAG                                # noqa: E402  redacted local diagnostics
 from core import money as MONEY                                     # noqa: E402  Decimal authority (parity import)
@@ -111,11 +112,17 @@ MOD_BLOCKED = "BLOCKED"
 # plain owner-facing labels (canonical value is always preserved alongside)
 OWNER_LABELS = {
     MOD_READY: "READY", MOD_READY_EMPTY: "READY — NO ITEMS", MOD_READY_PARTIAL: "READY — PARTIAL",
-    MOD_UNAVAILABLE: "NEEDS SETUP", MOD_BLOCKED: "BLOCKED",
+    MOD_UNAVAILABLE: "NEEDS SETUP", MOD_BLOCKED: "BLOCKED", DATA_STALE: "STALE",
     CONSOLE_READY: "READY", CONSOLE_READY_EMPTY: "READY — NO ITEMS",
     CONSOLE_READY_PARTIAL: "READY — PARTIAL", CONSOLE_REQUIRED: "NEEDS SETUP",
     CONSOLE_BLOCKED: "BLOCKED", AUDIT_STATE_BLOCKED: "INTEGRITY ERROR",
     INTEGRITY_BLOCKED: "INTEGRITY ERROR",
+}
+
+# Owner-facing names for the integrated modules — the internal key is never the visible label.
+MODULE_OWNER_LABELS = {
+    "analysis": "Analysis & Decisions", "research": "Research", "watchlists": "Watchlists & Alerts",
+    "notifications": "Notifications", "backup": "Backup & Recovery",
 }
 
 # ---------------------------------------------------------------- limits
@@ -151,7 +158,11 @@ STATIC_FILES = {
     "app.js": "text/javascript; charset=utf-8",
     "styles.css": "text/css; charset=utf-8",
     "icons.svg": "image/svg+xml; charset=utf-8",
+    "favicon.svg": "image/svg+xml; charset=utf-8",
 }
+# A browser requests /favicon.ico on its own. Serving the same local asset there removes the 404 the
+# browser would otherwise log on every single page load.
+FAVICON_ALIASES = {"favicon.ico": "favicon.svg"}
 
 # Strict same-origin CSP: no inline script, no external anything, no framing, no eval.
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -876,6 +887,8 @@ def build_overview(sections, readiness, freshness):
         "console_readiness": readiness,
         "owner_label": OWNER_LABELS.get(readiness, readiness),
         "module_status": {name: sec["status"] for name, sec in sections.items()},
+        # plain owner names for the same modules, so no internal key is ever the visible label.
+        "module_labels": dict(MODULE_OWNER_LABELS),
         "blocked_modules": blocked,
         "unavailable_modules": unavailable,
         "pending_decisions": a.get("pending_decisions", 0),
@@ -930,13 +943,21 @@ def build_console_model(config, *, now=None, audit=None):
     readiness = resolve_console_readiness(sections, audit_state)
     system = build_system_section(config, now=now, audit_state=audit_state)
     overview = build_overview(sections, readiness, freshness)
-    return {
+    model = {
         "schema_version": MODEL_SCHEMA, "stage_id": STAGE_ID, "stage_name": STAGE_NAME,
         "readiness": readiness, "overview": overview, "modules": build_modules(sections),
         "sections": sections, "freshness": freshness, "system": system,
         "source_authorities": SOURCE_AUTHORITIES, "disclaimer": list(DISCLAIMER_LINES),
         "seller_central_counters": dict(SELLER_CENTRAL_COUNTERS),
     }
+    # Phase 7.14 owner guidance: a presentation-only read model over the model just assembled. It
+    # adds no authority, reads nothing further, and never changes a value above.
+    model["next_action"] = NEXT.build_next_action(model, generated_at=_iso(now))
+    # one owner-facing word for "can I use this right now?", derived only from that guidance.
+    model["overview"]["usability_readiness"] = NEXT.usability_readiness(model["next_action"])
+    model["overview"]["usability_label"] = NEXT.USABILITY_LABELS[
+        model["overview"]["usability_readiness"]]
+    return model
 
 
 SOURCE_AUTHORITIES = {
@@ -946,6 +967,7 @@ SOURCE_AUTHORITIES = {
     "notifications": "production.phase7_owner_notification_delivery (Phase 7.12)",
     "backup": "production.phase7_connected_backup_recovery (Phase 7.9)",
     "network_policy": "core.network_policy",
+    "next_action": "production.phase7_owner_next_action (Phase 7.14, presentation only)",
 }
 
 
@@ -1725,7 +1747,7 @@ def write_exports(base_dir, model, *, subdir="exports"):
 
 # ================================================================ HTTP server
 _READ_ENDPOINTS = ("health", "overview", "modules", "analysis", "research", "watchlists", "alerts",
-                   "notifications", "backups", "system", "activity")
+                   "notifications", "backups", "system", "activity", "next-action")
 
 
 class ConsoleServer(ThreadingHTTPServer):
@@ -1930,6 +1952,8 @@ def _make_handler():
                     return self._static("index.html", extra=extra)
                 if path.lstrip("/") in STATIC_FILES:
                     return self._static(path.lstrip("/"), extra=extra)
+                if path.lstrip("/") in FAVICON_ALIASES:
+                    return self._static(FAVICON_ALIASES[path.lstrip("/")], extra=extra)
                 if path.startswith(f"/api/{API_VERSION}/"):
                     return self._api_get(path, qs, sid, extra)
                 return self._error(404, "NOT_FOUND", path)
@@ -1977,8 +2001,13 @@ def _make_handler():
             readiness = model["readiness"]
             cache_meta = model.get("_cache", {})
             if endpoint == "overview":
+                # `next_action` is additive: every field the accepted Phase 7.13 contract published
+                # is still present and unchanged.
                 return {"overview": model["overview"], "disclaimer": list(DISCLAIMER_LINES),
-                        "cache": cache_meta, "freshness": model["freshness"]}, readiness
+                        "cache": cache_meta, "freshness": model["freshness"],
+                        "next_action": model.get("next_action")}, readiness
+            if endpoint == "next-action":
+                return {"next_action": model.get("next_action")}, readiness
             if endpoint == "modules":
                 return {"modules": model["modules"]}, readiness
             if endpoint == "system":
@@ -2174,7 +2203,9 @@ def validate_only(config):
     checks.append({"check": "action_allowlist_fixed", "ok": len(ACTIONS) == 15, "count": len(ACTIONS)})
     checks.append({"check": "api_schema_defined", "ok": bool(API_SCHEMA)})
     checks.append({"check": "static_assets_declared", "ok": set(STATIC_FILES) == {
-        "index.html", "app.js", "styles.css", "icons.svg"}})
+        "index.html", "app.js", "styles.css", "icons.svg", "favicon.svg"}})
+    checks.append({"check": "next_action_schema_declared", "ok": NEXT.SCHEMA
+                   == "phase7.14.next-action.v1", "schema": NEXT.SCHEMA})
     checks.append({"check": "seller_central_counters_zero",
                    "ok": all(v == 0 for v in SELLER_CENTRAL_COUNTERS.values())})
     core_present = os.path.isdir(config.phase_dir("7.3"))
@@ -2231,9 +2262,13 @@ def _config_from_args(a):
 
 def _print_summary(model, *, host, port):
     ov = model["overview"]
+    na = model.get("next_action") or {}
     pairs = [
         ("console_readiness", model["readiness"]),
         ("owner_label", ov.get("owner_label")),
+        ("next_action_priority", na.get("priority")),
+        ("next_action_title", na.get("owner_title")),
+        ("next_action_step", na.get("recommended_step")),
         ("pending_decisions", ov.get("pending_decisions")),
         ("pending_manual_actions", ov.get("pending_manual_actions")),
         ("open_alerts", ov.get("open_alerts")),

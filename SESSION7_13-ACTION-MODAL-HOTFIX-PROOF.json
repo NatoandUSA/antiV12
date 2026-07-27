@@ -1,0 +1,164 @@
+{
+  "artifact": "SESSION7_13-ACTION-MODAL-HOTFIX-PROOF",
+  "stage": "phase7.13-hotfix",
+  "title": "Owner action confirmation modal hotfix",
+  "scope": "Frontend-only repair of the Phase 7.13 Unified Owner Console action preparation/confirmation UI. No new business capability. No Phase 7.14. No weakening of accepted boundaries.",
+  "branch": "hotfix-phase7-13-action-modal",
+  "baseline_commit": "1145a186b6ee7eb4da01b5021d27d9344b1b5bd0",
+  "checkpoint_tag": "phase7-13-action-modal-hotfix-checkpoint-1145a18",
+  "implementation_commit": "7f102742c45d8aeaef26702b319e50e4ceecd911",
+  "proof_commit": "self: the docs commit that adds this file (hash reported in the session final response and git log)",
+  "acceptance_status": "HOTFIX_IMPLEMENTED_PENDING_INDEPENDENT_ACCEPTANCE",
+
+  "root_cause": {
+    "reported_symptom": "Overview action opens a modal titled 'Confirm action' with a blank body; only Cancel / Confirm & run.",
+    "reproduction_method": [
+      "from-scratch dependency-free Node DOM harness loading the real app.js",
+      "real headless Microsoft Edge via Chrome DevTools Protocol against the real local server"
+    ],
+    "finding": "On the accepted baseline, a successful prepare DOES populate the modal (title + full body, no console errors) in BOTH the DOM harness and real Edge; a literally-blank body for a successful prepare is not a state the baseline produces.",
+    "true_cause": [
+      "No rendering test coverage: the modal was populated by mutating static index.html nodes in openModal(); every existing 7.13 test only string-scans app.js, so a partial/stale/regressed render (the reported static 'Confirm action' + empty body) passes CI undetected.",
+      "startAction() handled only HTTP 200; a failed/BLOCKED/SESSION_REQUIRED/CSRF_BLOCKED prepare was dropped to a transient toast and never rendered as a readiness/reason panel.",
+      "Confirm & run was never gated on the confirmation phrase (execute.disabled stayed false); exact-match enforced only server-side.",
+      "No focus trap, no execution lock (double-click / token reuse), no deterministic Escape/backdrop policy, and export actions never surfaced produced files."
+    ]
+  },
+
+  "backend_change": {
+    "changed": false,
+    "server_file": "production/phase7_unified_owner_console.py",
+    "note": "Byte-identical to baseline; 0 server files in the fix commit. prepare/execute responses already carry every field the modal renders."
+  },
+
+  "files_modified": [
+    "production/phase7_unified_owner_console_static/app.js",
+    "production/phase7_unified_owner_console_static/index.html",
+    "production/phase7_unified_owner_console_static/styles.css",
+    "tests/test_phase7_13_unified_owner_console.py",
+    ".gitattributes"
+  ],
+  "files_created": [
+    "tests/phase7_13_modal_dom_harness.js",
+    "SESSION7_13-ACTION-MODAL-HOTFIX-REPORT.md",
+    "SESSION7_13-ACTION-MODAL-HOTFIX-PROOF.json"
+  ],
+  "source_hashes_sha256_lf": {
+    "production/phase7_unified_owner_console_static/app.js": "d0f967d82ec54aee696a3174a51f8ea18527dd3346c164db8b1594292915bd51",
+    "production/phase7_unified_owner_console_static/index.html": "2b19215130a3ebed3eaf2fd6c76c9173e3b63265052af10aed1b58f85dcbe8a2",
+    "production/phase7_unified_owner_console_static/styles.css": "d341d9dbd660da056a955ba4b4e410f501c8800f394d3b168191fe335cde1947",
+    "tests/phase7_13_modal_dom_harness.js": "c15b509be174d1d5d5ea5ae456fd7ce38ffeb61c186c2bab7a4e894e78ca29a9",
+    "tests/test_phase7_13_unified_owner_console.py": "a93c71acd543ab648e9e42998f480728457071eb0390a723e9fd3d29fe8c0995"
+  },
+
+  "required_modal_content_after_success": [
+    "owner-facing action title (button label)",
+    "canonical action name (#modal-canonical)",
+    "accepted authority",
+    "target id(s) / summary",
+    "expected effect",
+    "network access used",
+    "local state changes",
+    "upstream authority state changes",
+    "expiration (confirmation window seconds)",
+    "exact required confirmation phrase (when confirmation required)",
+    "confirmation text input (when confirmation required)",
+    "Cancel button",
+    "Confirm & run button",
+    "visible aria-live result/error area"
+  ],
+  "never_rendered": [
+    "preparation token", "CSRF token", "session id", "session fingerprint",
+    "endpoint secret", "cookie", "authorization data", "local absolute path"
+  ],
+
+  "modal_dom_harness": {
+    "file": "tests/phase7_13_modal_dom_harness.js",
+    "runtime": "node (dependency-free minimal DOM; fetch shimmed with real backend envelopes; no Internet)",
+    "checks_total": 40,
+    "checks_passed": 40,
+    "checks_failed": 0,
+    "checks": [
+      "01_prepare_renders_nonempty", "02_action_title", "03_canonical_action", "04_authority",
+      "05_expected_effect", "06_network_use", "07_local_state_change", "08_upstream_state_change",
+      "09_expiration", "10_exact_phrase_rendered", "11_confirmation_input_present",
+      "12_confirm_initially_disabled", "13_exact_phrase_enables", "14_wrong_phrase_keeps_disabled",
+      "15_case_variation_rejected", "16_extra_whitespace_rejected", "17_prep_token_not_rendered",
+      "18_csrf_not_rendered", "19_session_data_not_rendered", "20_endpoint_secret_not_rendered",
+      "21_failed_prepare_not_blank", "22_blocked_reason_shown", "23_session_expired_reason",
+      "24_csrf_failure_reason", "25_js_exception_bounded", "26_cancel_closes",
+      "27_escape_closes_before_execution", "28_focus_returns_to_trigger",
+      "29_enter_submits_only_after_exact", "30_double_click_blocked", "31_token_consumed_once",
+      "32_success_result_rendered", "33_failure_result_rendered", "34_export_usable_result",
+      "35_refresh_updates_overview", "36_verify_state_visible_result", "37_all_15_actions_no_blank",
+      "38_no_external_frontend_request", "39_no_unsafe_innerHTML_with_authority",
+      "40_backdrop_click_no_dismiss"
+    ]
+  },
+
+  "real_browser_verification": {
+    "browser": "Microsoft Edge (headless, Edg/150) via CDP",
+    "baseline_1145a18": "modal renders (title changes, body filled) — literal blank NOT reproduced; confirmation action left Confirm ENABLED (execute.disabled=false) — the confirmed gating defect",
+    "fixed_7f10274": {
+      "console_action_export_snapshot": "owner title 'Export snapshot', canonical 'export-overview', readiness pill, 7 detail rows, Confirm enabled",
+      "confirmation_action_run_watchlist": "phrase-required row shows exact phrase; Confirm initially disabled=true; exact phrase -> disabled=false; trailing space -> disabled=true",
+      "console_errors": "none"
+    }
+  },
+
+  "test_totals": {
+    "modal_dom_harness": "40/40 PASS",
+    "phase7_13_focused": "Ran 269, OK (includes 3 new modal tests)",
+    "phase7_12_and_network_connectivity": "Ran 292, OK",
+    "full_in_place_discover": "Ran 4165, OK (skipped=4), 0 failures, 0 errors",
+    "compileall_production_core_tests": "exit 0"
+  },
+
+  "fresh_worktree_comparison": {
+    "method": "git worktree at baseline vs feature commit; unittest discover -s tests -p test_*.py (full run) plus TestLoader.countTestCases() to confirm the exact count delta",
+    "baseline_commit": "1145a186b6ee7eb4da01b5021d27d9344b1b5bd0",
+    "baseline_result": "4162 test cases (loader count); baseline worktree full run completed exit 0 with 0 FAIL/ERROR; every one of the 4162 baseline tests also passes inside the feature full run (which reported OK for all 4165), so baseline = 4162 tests, 4 skipped, 0 failures, 0 errors",
+    "feature_commit": "7f102742c45d8aeaef26702b319e50e4ceecd911",
+    "feature_result": "Ran 4165, OK (skipped=4), 0 failures, 0 errors",
+    "delta": "+3 tests (the new modal tests, all passing); 0 new failure, 0 new error, 0 new skip",
+    "wording": "The pre-existing suite is byte-identical between the two trees (only test_phase7_13_...py, the new harness, and .gitattributes differ), so every non-7.13 result is baseline-equivalent-nonzero and unchanged. countTestCases: baseline=4162, feature=4165 (delta +3)."
+  },
+
+  "security_regressions_preserved": {
+    "backend_untouched": true,
+    "loopback_only_bind": true,
+    "strict_host_validation": true,
+    "session_cookie": true,
+    "csrf_on_post": true,
+    "single_use_token_binding": "session/action/params/target",
+    "phase7_12_live_send_double_gate": true,
+    "fixed_15_action_allowlist": true,
+    "accepted_authority_dispatch": true,
+    "audit_chain_blocking": true,
+    "constant_zero_seller_central_counters": true,
+    "no_seller_central_paths_in_frontend": true,
+    "frontend_static_scan": {
+      "no_external_request_cdn_xhr_websocket_eval": true,
+      "no_innerHTML_localStorage_sessionStorage_cookie": true,
+      "no_token_or_csrf_in_dom_text": true,
+      "no_absolute_local_path": true,
+      "csrf_in_closure_and_x_csrf_header": true,
+      "token_in_closure_memory_only": true
+    }
+  },
+
+  "known_limitations": [
+    "Literal blank body for a successful prepare was NOT reproduced on the accepted baseline (both DOM harness and real Edge render it); the fix hardens/completes the contract (the confirmed defects DID reproduce) and adds the previously-absent rendering tests.",
+    "The exact === phrase gate is intentionally stricter than the server strip(); it never enables a server-rejected phrase.",
+    "Focus-return is exact for Cancel/Escape/blocked paths; after a successful execute the view re-renders behind the modal and focus falls back to body.",
+    "The DOM harness is a faithful minimal shim complemented by manual real-browser QA; committed DOM tests skip only if node is unavailable."
+  ],
+
+  "constraints_honored": {
+    "no_new_business_capability": true,
+    "no_phase_7_14": true,
+    "not_merged": true,
+    "no_new_acceptance_tag_created": true,
+    "recommend_independent_hotfix_acceptance_audit": true
+  }
+}

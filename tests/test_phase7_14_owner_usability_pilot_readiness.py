@@ -843,6 +843,230 @@ class TestLauncherStop(LauncherBase):
         self.assertTrue(res["command_identity_verified"])
 
 
+# ================================================================ 7b) stop owner-facing wording
+# The owner text every non-stop outcome must keep, byte for byte, exactly as the accepted Phase 7.14
+# baseline shipped it. The hotfix touches the stop path only; these are the control group.
+ACCEPTED_NON_STOP_MESSAGES = {
+    L.LAUNCHER_STARTING: "The toolkit is starting. Waiting until it is ready before opening a browser.",
+    L.LAUNCHER_READY: "The toolkit is running. Your browser should now be open on the console.",
+    L.LAUNCHER_ALREADY_RUNNING: "The toolkit was already running, so a second copy was not started.",
+    L.LAUNCHER_TIMEOUT: ("The toolkit started but did not become ready in time. Run Stop-AMZ-Toolkit, "
+                         "then try Start-AMZ-Toolkit once more."),
+    L.LAUNCHER_PORT_BLOCKED: (L.PORT_IN_USE_MESSAGE + " — another program on this computer is "
+                              "using it. Close that program, then run Start-AMZ-Toolkit again."),
+    L.LAUNCHER_PYTHON_REQUIRED: ("A supported Python was not found. Install Python 3.9 or newer, then "
+                                 "run Start-AMZ-Toolkit again."),
+    L.LAUNCHER_MODULE_REQUIRED: ("This folder does not contain the toolkit console. Run "
+                                 "Start-AMZ-Toolkit from inside the toolkit folder."),
+    L.LAUNCHER_WORKSPACE_REQUIRED: ("The toolkit could not write to its own runtime folder. Check that "
+                                    "the toolkit folder is not read-only."),
+    L.LAUNCHER_LOCKED: "The toolkit is already starting. Wait a few seconds, then try again.",
+    L.LAUNCHER_NOT_RUNNING: "The toolkit is not running yet. Run Start-AMZ-Toolkit first.",
+    L.LAUNCHER_FAILED: "The toolkit could not be started. See the launcher log for the recorded reason.",
+}
+
+
+class TestStopOwnerMessage(LauncherBase):
+    """Phase 7.14 hotfix - a Stop that fails must describe a stop.
+
+    The accepted baseline mapped every SESSION7_14_LAUNCHER_FAILED result to one sentence, "The
+    toolkit could not be started...", which the stop path also emitted on CONSOLE_DID_NOT_STOP. The
+    canonical readiness state and error_code are unchanged; only the owner-facing sentence is now
+    phase-accurate. What stop *does* - which process it signals, and the identity it proves first -
+    is untouched.
+    """
+
+    # ---- outcome builders: each drives one real stop path through the injected seams -----------
+    def stop_timeout(self):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 5620, "process_start_token": "tok-5620"})
+        return self.launcher(alive=lambda pid: True, health=lambda h, p: dict(HEALTHY),
+                             stop_timeout=2.0).stop()
+
+    def stop_identity_unproven(self):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 5610, "process_start_token": "tok-5610"})
+        return self.launcher(alive=lambda pid: True, start_token=lambda pid: None).stop()
+
+    def stop_pid_reused(self):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 5600, "process_start_token": "tok-OLD"})
+        return self.launcher(alive=lambda pid: True, start_token=lambda pid: "tok-NEW").stop()
+
+    def stop_not_ours(self):
+        self.ws.clear_pid()
+        return self.launcher(health=lambda h, p: dict(HEALTHY)).stop()
+
+    def stop_already_stopped(self):
+        self.ws.clear_pid()
+        return self.launcher(health=lambda h, p: dict(UNHEALTHY)).stop()
+
+    def stop_stale_pid(self):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 5590, "process_start_token": "tok-5590"})
+        return self.launcher(alive=lambda pid: False).stop()
+
+    def stop_success(self):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 5550, "process_start_token": "tok-5550"})
+        alive = {"v": True}
+        return self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                             terminate=lambda pid, hard=False: (self.terminated.append((pid, hard)),
+                                                                alive.update(v=False), True)[-1]).stop()
+
+    def all_stop_outcomes(self):
+        return [self.stop_timeout(), self.stop_identity_unproven(), self.stop_pid_reused(),
+                self.stop_not_ours(), self.stop_already_stopped(), self.stop_stale_pid(),
+                self.stop_success()]
+
+    # ---- 1) the defect itself: a failed stop never claims a failed start ----------------------
+    def test_h01_stop_timeout_never_says_started(self):
+        res = self.stop_timeout()
+        self.assertEqual(res["error_code"], "CONSOLE_DID_NOT_STOP")
+        self.assertNotIn("started", res["owner_message"])
+        self.assertNotIn("could not be started", res["owner_message"])
+
+    def test_h01b_no_stop_outcome_reports_a_start_failure(self):
+        for res in self.all_stop_outcomes():
+            self.assertNotIn("could not be started", res["owner_message"], res["readiness"])
+
+    # ---- 2) a failed stop uses the verb "stopped" ---------------------------------------------
+    def test_h02_every_stop_failure_uses_the_verb_stopped(self):
+        for res in (self.stop_timeout(), self.stop_identity_unproven(), self.stop_pid_reused(),
+                    self.stop_not_ours()):
+            self.assertIn("stopped", res["owner_message"], res["readiness"])
+
+    def test_h02b_generic_stop_failure_wording(self):
+        self.assertTrue(L.STOP_FAILED_MESSAGE.startswith("The toolkit could not be stopped."))
+        self.assertEqual(
+            L._owner_message(L.LAUNCHER_FAILED, "A_FUTURE_STOP_CODE", "", phase="stop"),
+            L.STOP_FAILED_MESSAGE)
+
+    # ---- 3) timeout wording --------------------------------------------------------------------
+    def test_h03_timeout_wording_is_accurate(self):
+        res = self.stop_timeout()
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["error_code"], "CONSOLE_DID_NOT_STOP")
+        self.assertIn("The toolkit did not stop within the allowed time.", res["owner_message"])
+
+    # ---- 4) identity refusal wording -----------------------------------------------------------
+    def test_h04_identity_refusal_wording_is_accurate(self):
+        res = self.stop_identity_unproven()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
+        self.assertIn("The toolkit was not stopped because the launcher could not safely verify "
+                      "the process identity.", res["owner_message"])
+
+    # ---- 5) unrelated-process refusal wording --------------------------------------------------
+    def test_h05_unrelated_process_wording_is_accurate(self):
+        want = "The process was not stopped because it was not started by this launcher."
+        for res, code in ((self.stop_pid_reused(), "PID_REUSED_BY_ANOTHER_PROCESS"),
+                          (self.stop_not_ours(), "NOT_LAUNCHER_OWNED")):
+            self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+            self.assertEqual(res["error_code"], code)
+            self.assertIn(want, res["owner_message"])
+
+    # ---- 6) already-stopped stays accurate -----------------------------------------------------
+    def test_h06_already_stopped_wording_unchanged(self):
+        for res in (self.stop_already_stopped(), self.stop_stale_pid()):
+            self.assertEqual(res["readiness"], L.LAUNCHER_ALREADY_STOPPED)
+            self.assertEqual(res["owner_message"],
+                             "The toolkit was not running, so there was nothing to stop.")
+            self.assertFalse(res["signalled"])
+        self.assertEqual(self.terminated, [])
+
+    # ---- 7) a successful stop is byte-identical to the accepted baseline -----------------------
+    def test_h07_successful_stop_wording_unchanged(self):
+        res = self.stop_success()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(res["owner_message"], "The toolkit has stopped.")
+        self.assertTrue(res["identity_verified"])
+
+    # ---- 8) start wording is untouched ---------------------------------------------------------
+    def test_h08_non_stop_owner_messages_unchanged(self):
+        for state, want in ACCEPTED_NON_STOP_MESSAGES.items():
+            self.assertEqual(L._OWNER_MESSAGES[state], want, state)
+            self.assertEqual(L._owner_message(state, "", ""), want, state)
+
+    def test_h08b_start_failure_still_reports_a_start(self):
+        def spawn(cmd, cwd):
+            raise OSError("cannot exec")
+        res = self.launcher(spawn=spawn).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["error_code"], "CONSOLE_SPAWN_FAILED")
+        self.assertEqual(res["owner_message"], ACCEPTED_NON_STOP_MESSAGES[L.LAUNCHER_FAILED])
+
+    def test_h08c_start_timeout_message_unchanged(self):
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY), timeout=1.0).start()
+        self.assertEqual(res["readiness"], L.LAUNCHER_TIMEOUT)
+        self.assertEqual(res["owner_message"], ACCEPTED_NON_STOP_MESSAGES[L.LAUNCHER_TIMEOUT])
+
+    def test_h08d_stop_codes_never_leak_into_another_phase(self):
+        for code in L._STOP_OWNER_MESSAGES:
+            self.assertEqual(L._owner_message(L.LAUNCHER_FAILED, code, ""),
+                             ACCEPTED_NON_STOP_MESSAGES[L.LAUNCHER_FAILED], code)
+
+    # ---- 9) open wording is untouched -----------------------------------------------------------
+    def test_h09_open_owner_messages_unchanged(self):
+        res = self.launcher(health=lambda h, p: dict(UNHEALTHY)).open()
+        self.assertEqual(res["readiness"], L.LAUNCHER_NOT_RUNNING)
+        self.assertEqual(res["owner_message"], ACCEPTED_NON_STOP_MESSAGES[L.LAUNCHER_NOT_RUNNING])
+
+    def test_h09b_open_success_and_browser_unavailable_unchanged(self):
+        ok = self.launcher(health=lambda h, p: dict(HEALTHY)).open()
+        self.assertEqual(ok["owner_message"],
+                         ACCEPTED_NON_STOP_MESSAGES[L.LAUNCHER_ALREADY_RUNNING])
+        nb = self.launcher(health=lambda h, p: dict(HEALTHY), browser=lambda u: False).open()
+        self.assertEqual(nb["owner_message"],
+                         "The toolkit is running but a browser could not be opened. Open this "
+                         "address yourself: http://127.0.0.1:8780")
+
+    # ---- 10) process identity protections are unchanged -----------------------------------------
+    def test_h10_refusals_still_signal_nothing(self):
+        for res in (self.stop_identity_unproven(), self.stop_pid_reused(), self.stop_not_ours()):
+            self.assertFalse(res["signalled"], res["error_code"])
+            self.assertFalse(res["identity_verified"], res["error_code"])
+        self.assertEqual(self.terminated, [])
+
+    def test_h10b_unprovable_identity_still_checked_before_mismatch(self):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 5611, "process_start_token": "tok-RECORDED"})
+        res = self.launcher(alive=lambda pid: True, start_token=lambda pid: None).stop()
+        self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
+        self.assertNotEqual(res["error_code"], "PID_REUSED_BY_ANOTHER_PROCESS")
+
+    def test_h10c_canonical_codes_preserved_separately_from_owner_text(self):
+        expected = {"CONSOLE_DID_NOT_STOP": L.LAUNCHER_FAILED,
+                    "PROCESS_IDENTITY_UNPROVEN": L.LAUNCHER_STOP_REFUSED,
+                    "PID_REUSED_BY_ANOTHER_PROCESS": L.LAUNCHER_STOP_REFUSED,
+                    "NOT_LAUNCHER_OWNED": L.LAUNCHER_STOP_REFUSED}
+        seen = {}
+        for res in self.all_stop_outcomes():
+            if res.get("error_code"):
+                seen[res["error_code"]] = res["readiness"]
+                # the machine code is carried in its own field, never printed at the owner
+                self.assertNotIn(res["error_code"], res["owner_message"])
+        self.assertEqual(seen, expected)
+
+    # ---- 11) no broad process termination is introduced -----------------------------------------
+    def test_h11_no_broad_process_termination_in_the_launcher(self):
+        src = read(LAUNCHER_PATH)
+        for bad in ("taskkill", "TASKKILL", "pkill", "killall", "Get-Process", "wmic", "psutil",
+                    "process_iter", "python.exe", "pythonw", "os.system(", "os.popen("):
+            self.assertNotIn(bad, src, bad)
+
+    def test_h11b_only_identity_verified_recorded_pids_are_ever_signalled(self):
+        self.all_stop_outcomes()
+        self.assertEqual({pid for pid, _ in self.terminated}, {5620, 5550})
+
+    # ---- 12) the PowerShell stop wrapper keeps stop-accurate, ASCII-only text --------------------
+    def test_h12_stop_wrapper_text_names_a_stop_and_stays_ascii(self):
+        body = script("Stop-AMZ-Toolkit.ps1")
+        self.assertIn("The toolkit was not stopped.", body)
+        self.assertNotIn("could not be started", body)
+        self.assertEqual([c for c in body if ord(c) > 127], [])
+
+
 # ================================================================ 8) open behaviour
 class TestLauncherOpen(LauncherBase):
     def test_034_open_healthy_console(self):

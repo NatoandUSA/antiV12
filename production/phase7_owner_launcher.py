@@ -981,11 +981,12 @@ class Launcher:
                 return self._finish(self._result(
                     LAUNCHER_STOP_REFUSED, phase="stop", error_code="NOT_LAUNCHER_OWNED",
                     identity_verified=False, signalled=False,
-                    owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "NOT_LAUNCHER_OWNED", "")))
+                    owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "NOT_LAUNCHER_OWNED", "",
+                                                 phase="stop")))
             self.ws.log("stop.already_stopped")
             return self._finish(self._result(
                 LAUNCHER_ALREADY_STOPPED, phase="stop", signalled=False, identity_verified=False,
-                owner_message=_owner_message(LAUNCHER_ALREADY_STOPPED, "", "")))
+                owner_message=_owner_message(LAUNCHER_ALREADY_STOPPED, "", "", phase="stop")))
 
         pid = rec.get("pid")
         if not self._alive(pid):
@@ -994,7 +995,7 @@ class Launcher:
             return self._finish(self._result(
                 LAUNCHER_ALREADY_STOPPED, phase="stop", pid=pid, signalled=False,
                 identity_verified=False, stale_pid_cleared=True,
-                owner_message=_owner_message(LAUNCHER_ALREADY_STOPPED, "", "")))
+                owner_message=_owner_message(LAUNCHER_ALREADY_STOPPED, "", "", phase="stop")))
 
         recorded = rec.get("process_start_token")
         current = self._start_token(pid)
@@ -1005,7 +1006,8 @@ class Launcher:
             return self._finish(self._result(
                 LAUNCHER_STOP_REFUSED, phase="stop", pid=pid, signalled=False,
                 identity_verified=False, error_code="PROCESS_IDENTITY_UNPROVEN",
-                owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PROCESS_IDENTITY_UNPROVEN", "")))
+                owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PROCESS_IDENTITY_UNPROVEN", "",
+                                             phase="stop")))
         if recorded and current != recorded:
             # The PID is alive but it is a DIFFERENT process now (PID reuse). Never signal it.
             self.ws.clear_pid()
@@ -1014,7 +1016,8 @@ class Launcher:
                 LAUNCHER_STOP_REFUSED, phase="stop", pid=pid, signalled=False,
                 identity_verified=False, error_code="PID_REUSED_BY_ANOTHER_PROCESS",
                 stale_pid_cleared=True,
-                owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PID_REUSED_BY_ANOTHER_PROCESS", "")))
+                owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PID_REUSED_BY_ANOTHER_PROCESS",
+                                             "", phase="stop")))
 
         # Command identity, where practical: the console still answering on the recorded port with
         # the accepted health contract is the strongest evidence available without a dependency.
@@ -1039,13 +1042,13 @@ class Launcher:
                 LAUNCHER_STOPPED, phase="stop", pid=pid, signalled=True, identity_verified=True,
                 command_identity_verified=command_verified, escalated=escalated,
                 stop_seconds=round(waited, 2),
-                owner_message=_owner_message(LAUNCHER_STOPPED, "", "")))
+                owner_message=_owner_message(LAUNCHER_STOPPED, "", "", phase="stop")))
         self.ws.log("stop.still_running", pid=_s(pid), waited=round(waited, 2))
         return self._finish(self._result(
             LAUNCHER_FAILED, phase="stop", pid=pid, signalled=True, identity_verified=True,
             command_identity_verified=command_verified, escalated=escalated,
             stop_seconds=round(waited, 2), error_code="CONSOLE_DID_NOT_STOP",
-            owner_message=_owner_message(LAUNCHER_FAILED, "CONSOLE_DID_NOT_STOP", "")))
+            owner_message=_owner_message(LAUNCHER_FAILED, "CONSOLE_DID_NOT_STOP", "", phase="stop")))
 
     def _await_exit(self, pid, budget):
         started = self.clock()
@@ -1117,8 +1120,34 @@ _OWNER_MESSAGES = {
     LAUNCHER_FAILED: "The toolkit could not be started. See the launcher log for the recorded reason.",
 }
 
+# Owner-facing text for the stop path, chosen by the canonical error_code. A stop that fails must
+# never describe itself as a start: LAUNCHER_FAILED is shared by both phases, so the readiness state
+# alone cannot name the operation. The machine-readable contract is untouched — readiness and
+# error_code keep the exact values the accepted Phase 7.14 baseline records, and only the sentence
+# the owner reads is phase-accurate. Nothing here changes what stop does.
+_STOP_OWNER_MESSAGES = {
+    "CONSOLE_DID_NOT_STOP": ("The toolkit did not stop within the allowed time. Nothing else on this "
+                             "computer was stopped. See the launcher log for the recorded reason."),
+    "PROCESS_IDENTITY_UNPROVEN": ("The toolkit was not stopped because the launcher could not safely "
+                                  "verify the process identity. Nothing on this computer was stopped."),
+    "PID_REUSED_BY_ANOTHER_PROCESS": ("The process was not stopped because it was not started by this "
+                                      "launcher. The recorded process number now belongs to a "
+                                      "different program, so nothing was stopped."),
+    "NOT_LAUNCHER_OWNED": ("The process was not stopped because it was not started by this launcher. "
+                           "A console is answering on this port, but this launcher did not start it, "
+                           "so nothing was stopped."),
+}
+STOP_FAILED_MESSAGE = "The toolkit could not be stopped. See the launcher log for the recorded reason."
 
-def _owner_message(readiness, code, detail):
+
+def _owner_message(readiness, code, detail, phase=None):
+    # Stop-specific text is scoped to the stop phase, so start and open wording cannot change.
+    if phase == "stop":
+        specific = _STOP_OWNER_MESSAGES.get(code)
+        if specific:
+            return specific
+        if readiness == LAUNCHER_FAILED:
+            return STOP_FAILED_MESSAGE
     base = _OWNER_MESSAGES.get(readiness, "")
     if readiness == LAUNCHER_BROWSER_UNAVAILABLE:
         return base + console_url(DEFAULT_HOST, DEFAULT_PORT)

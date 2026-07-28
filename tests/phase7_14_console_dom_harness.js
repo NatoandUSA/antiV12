@@ -79,7 +79,8 @@ function makeDom() {
   content.appendChild(mk('nav', 'breadcrumbs'));
   content.appendChild(mk('div', 'global-feedback'));
   content.appendChild(mk('section', 'view-root'));
-  body.appendChild(mk('div', 'toast'));
+  const toastEl = mk('div', 'toast'); toastEl.hidden = true;   // mirrors index.html
+  body.appendChild(toastEl);
   const backdrop = mk('div', 'modal-backdrop'); backdrop.hidden = true;
   const modal = mk('div', 'modal');
   modal.appendChild(mk('h2', 'modal-title'));
@@ -95,6 +96,7 @@ function makeDom() {
   // these mirror production/index.html, including the declared action each control performs
   const mc = mk('button', 'modal-cancel'); mc.setAttribute('data-act', 'modal:cancel');
   const me = mk('button', 'modal-execute'); me.setAttribute('data-act', 'modal:execute');
+  me.disabled = true;             // mirrors the `disabled` attribute in the served index.html
   modal.appendChild(mc);
   modal.appendChild(me);
   backdrop.appendChild(modal); body.appendChild(backdrop);
@@ -121,7 +123,8 @@ function byClass(root, cls) { return findAll(root, n => hasClass(n, cls)); }
 function byTag(root, tag) { return findAll(root, n => n.tagName === tag.toUpperCase()); }
 
 // ------------------------------------------------------------------ environment
-function newEnv(overrides) {
+function newEnv(overrides, opts) {
+  opts = opts || {};
   const dom = makeDom();
   const calls = [];
   const responses = Object.assign({
@@ -132,12 +135,17 @@ function newEnv(overrides) {
   function respond(fx) {
     return Promise.resolve({ status: fx.status, json: () => Promise.resolve(fx.body) });
   }
-  function fetchShim(path, opts) {
-    const method = (opts && opts.method) || 'GET';
+  function fetchShim(path, init) {          // `init` — must not shadow the outer newEnv `opts`
+    const method = (init && init.method) || 'GET';
     calls.push(method + ' ' + path);
     try {
-      if (method === 'POST' && path.indexOf('/actions/prepare') >= 0) return respond(FX.prepare_default);
-      if (method === 'POST' && path.indexOf('/actions/execute') >= 0) return respond(FX.execute_ok);
+      if (method === 'POST' && path.indexOf('/actions/prepare') >= 0) {
+        // opts.prepare swaps in a malformed / incomplete / failed / BLOCKED preparation;
+        // opts.prepareReject models a transport failure (fetch itself rejecting).
+        if (opts.prepareReject) return Promise.reject(new Error('transport'));
+        return respond(opts.prepare || FX.prepare_default);
+      }
+      if (method === 'POST' && path.indexOf('/actions/execute') >= 0) return respond(opts.execute || FX.execute_ok);
       const keys = ['session', 'overview', 'activity', 'next-action', 'research', 'backups',
                     'system', 'alerts', 'notifications', 'analysis', 'watchlists'];
       for (const k of keys) {
@@ -165,7 +173,14 @@ function newEnv(overrides) {
     + ' tag: tag, ownerTag: ownerTag, setFeedback: setFeedback, wireModal: wireModal,'
     + ' startAction: startAction, modalState: modalState, VIEWS: VIEWS, NAV_GROUPS: NAV_GROUPS,'
     + ' STATUS: STATUS, ownerState: ownerState, wireSidebarToggle: wireSidebarToggle,'
-    + ' refreshStatusBar: refreshStatusBar }; } })();');
+    + ' refreshStatusBar: refreshStatusBar, controlKind: controlKind,'
+    + ' isNavigationAct: isNavigationAct, CONTROL_KINDS: CONTROL_KINDS,'
+    + ' missingPreparationFields: missingPreparationFields,'
+    + ' REQUIRED_PREPARATION_FIELDS: REQUIRED_PREPARATION_FIELDS,'
+    + ' resetModal: resetModal, openBackdrop: openBackdrop, closeModal: closeModal,'
+    + ' executeModal: executeModal, refreshExecuteEnabled: refreshExecuteEnabled,'
+    + ' viewById: viewById, SECTION_ROUTE: SECTION_ROUTE,'
+    + ' renderWatchlists: renderWatchlists, renderNotifications: renderNotifications }; } })();');
   vm.runInContext(hooked, sandbox, { filename: 'app.js' });
   return { dom, calls, api: sandbox.window.__api, sandbox };
 }
@@ -353,10 +368,17 @@ async function run() {
       if (!wired) undeclared.push(n.textContent.trim().slice(0, 30));
     });
     assert('59_no_dead_control', undeclared.length === 0, undeclared.join(' | '));
-    const disabled = findAll(dom.doc.body, n => n.tagName === 'BUTTON' && n.disabled);
+    // Page controls that are unavailable must carry their reason as a title / description. The
+    // confirmation dialog's own Confirm button is excluded: it is disabled by default (fail closed,
+    // see index.html) and its reason is the dialog body — readiness, details and the phrase hint —
+    // which check 158b below asserts is always present whenever Confirm is disabled and visible.
+    const disabled = findAll(dom.doc.body, n => n.tagName === 'BUTTON' && n.disabled
+                                               && n.id !== 'modal-execute');
     assert('60_disabled_controls_explain',
       disabled.every(b => b.getAttribute('title') || b.getAttribute('aria-describedby')),
       disabled.map(b => b.textContent).join(','));
+    assert('60b_confirm_starts_disabled',
+      dom.doc.getElementById('modal-execute').disabled === true);
   }
 
   // ---- disabled row action states its reason -----------------------------------------------------
@@ -574,6 +596,372 @@ async function run() {
       dom.doc.getElementById('badge-analysis').hidden === false
       && dom.doc.getElementById('badge-analysis').textContent === '2',
       dom.doc.getElementById('badge-analysis').textContent);
+  }
+
+  /* ============================================================================================
+     Phase 7.14 next-action navigation hotfix — button contract, executed as real events.
+     A pilot found the Overview CTA "Go to Analysis & Decisions" failing to navigate while an empty
+     confirmation dialog sat over the page. These checks fire real clicks through the real listener
+     graph and watch the real fetch calls, so they fail if a navigation control is ever routed into
+     the prepare/execute pipeline, and if an incomplete preparation can ever become runnable.
+     ============================================================================================ */
+
+  // ---- classification: every clickable control declares exactly one kind ------------------------
+  {
+    const { dom, api } = newEnv();
+    api.buildNav(); api.renderOverview(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const navList = dom.doc.getElementById('nav-list');
+    const clickable = (r) => findAll(r, n => n.tagName === 'BUTTON' || n.tagName === 'A'
+                                            || n.tagName === 'SUMMARY');
+
+    const overviewControls = clickable(root);
+    const unclassified = overviewControls.filter(c => api.controlKind(c.getAttribute('data-act')) === null);
+    assert('104_overview_controls_exist', overviewControls.length >= 4, 'n=' + overviewControls.length);
+    assert('105_every_overview_control_classified', unclassified.length === 0,
+      unclassified.map(c => c.tagName + '[' + c.getAttribute('data-act') + ']:' + c.textContent.trim().slice(0, 24)).join(' | '));
+    const multi = overviewControls.filter(c => {
+      const act = c.getAttribute('data-act');
+      return act && String(act).split(':')[0] in api.CONTROL_KINDS === false;
+    });
+    assert('106_classification_is_single_valued', multi.length === 0, multi.length + ' ambiguous');
+
+    const sidebarControls = clickable(navList);
+    const sidebarBad = sidebarControls.filter(c => api.controlKind(c.getAttribute('data-act')) !== 'navigation');
+    assert('107_every_sidebar_control_is_navigation', sidebarControls.length >= 11 && sidebarBad.length === 0,
+      'n=' + sidebarControls.length + ' bad=' + sidebarBad.map(c => c.getAttribute('data-act')).join(','));
+
+    // the next-action CTA specifically
+    const cta = byClass(dom.doc.getElementById('next-action'), 'na-cta')[0];
+    assert('108_cta_present', !!cta);
+    assert('109_cta_classified_navigation', cta && api.controlKind(cta.getAttribute('data-act')) === 'navigation',
+      cta && cta.getAttribute('data-act'));
+    assert('110_cta_is_anchor_with_hash_href', cta && cta.tagName === 'A'
+      && cta.getAttribute('href') === '#analysis', cta && (cta.tagName + ' ' + cta.getAttribute('href')));
+    assert('111_cta_carries_no_action_attribute',
+      cta && !cta.getAttribute('data-action') && String(cta.getAttribute('data-act')).indexOf('action:') !== 0,
+      cta && cta.getAttribute('data-act'));
+    // A navigation control has NO click listener: it physically cannot call startAction().
+    assert('112_cta_has_no_click_listener',
+      cta && (!cta._listeners.click || cta._listeners.click.length === 0),
+      cta && cta._listeners.click ? cta._listeners.click.length + ' listeners' : 'none');
+  }
+
+  // ---- firing real clicks on every navigation control prepares nothing --------------------------
+  {
+    const { dom, api, calls } = newEnv();
+    api.buildNav(); api.wireModal(); api.renderOverview(); await flush();
+    const before = calls.length;
+    const navControls = findAll(dom.doc.body, n => (n.tagName === 'A' || n.tagName === 'BUTTON')
+      && api.controlKind(n.getAttribute('data-act')) === 'navigation');
+    navControls.forEach(c => dom.fire(c, 'click', { button: 0 }));
+    await flush();
+    const newCalls = calls.slice(before);
+    assert('113_navigation_controls_clicked', navControls.length >= 12, 'n=' + navControls.length);
+    assert('114_navigation_never_prepares',
+      newCalls.filter(c => c.indexOf('/actions/prepare') >= 0).length === 0, newCalls.join(' | '));
+    assert('115_navigation_never_executes',
+      newCalls.filter(c => c.indexOf('/actions/execute') >= 0).length === 0, newCalls.join(' | '));
+    assert('116_navigation_never_opens_the_modal',
+      dom.doc.getElementById('modal-backdrop').hidden === true);
+    assert('117_navigation_leaves_no_token', !api.modalState.token, String(api.modalState.token));
+  }
+
+  // ---- the CTA destination is a real page that routes, marks active nav and breadcrumbs ---------
+  {
+    const { dom, api, sandbox } = newEnv();
+    api.buildNav();
+    sandbox.window.location.hash = '#analysis';
+    api.route(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const h1 = byTag(root, 'H1')[0];
+    assert('118_cta_destination_renders', h1 && h1.textContent === 'Analysis & Decisions',
+      h1 && h1.textContent);
+    const active = findAll(dom.doc.getElementById('nav-list'),
+                           n => n.getAttribute('aria-current') === 'page');
+    assert('119_cta_destination_marks_active_nav',
+      active.length === 1 && active[0].getAttribute('href') === '#analysis',
+      active.map(a => a.getAttribute('href')).join(','));
+    const bc = dom.doc.getElementById('breadcrumbs');
+    assert('120_cta_destination_updates_breadcrumb',
+      bc.textContent.indexOf('Analysis & Decisions') >= 0, bc.textContent);
+    assert('121_cta_destination_is_a_declared_view', !!api.viewById('analysis'));
+    // Re-routing the same hash (what a browser refresh does) lands on the same page.
+    api.route(); await flush();
+    const h1b = byTag(dom.doc.getElementById('view-root'), 'H1')[0];
+    assert('122_destination_survives_a_reroute', h1b && h1b.textContent === 'Analysis & Decisions',
+      h1b && h1b.textContent);
+    assert('123_modal_stayed_closed_through_routing',
+      dom.doc.getElementById('modal-backdrop').hidden === true);
+  }
+
+  // ---- a real action control still reaches prepare (no silent fall-through to navigation) -------
+  {
+    const { dom, api, calls } = newEnv();
+    api.wireModal(); api.renderBackups(); await flush();
+    const actionBtns = findAll(dom.doc.getElementById('view-root'),
+      n => api.controlKind(n.getAttribute('data-act')) === 'action');
+    assert('124_action_controls_exist', actionBtns.length >= 1, 'n=' + actionBtns.length);
+    const before = calls.length;
+    dom.fire(actionBtns[0], 'click', { button: 0 }); await flush();
+    const newCalls = calls.slice(before);
+    assert('125_action_control_reaches_prepare',
+      newCalls.filter(c => c.indexOf('/actions/prepare') >= 0).length === 1, newCalls.join(' | '));
+    assert('126_action_control_opens_a_modal',
+      dom.doc.getElementById('modal-backdrop').hidden === false);
+    assert('127_action_control_did_not_navigate', !api.controlKind(actionBtns[0].getAttribute('data-act'))
+      || api.controlKind(actionBtns[0].getAttribute('data-act')) === 'action');
+  }
+
+  // ---- mutation guard: routing a navigation destination into startAction fails closed -----------
+  {
+    const { dom, api, calls } = newEnv();
+    api.wireModal();
+    const before = calls.length;
+    api.startAction('analysis', {}, 'Go to Analysis & Decisions'); await flush();
+    const newCalls = calls.slice(before);
+    assert('128_navigation_route_never_prepared',
+      newCalls.filter(c => c.indexOf('/actions/prepare') >= 0).length === 0, newCalls.join(' | '));
+    assert('129_navigation_route_has_no_token', !api.modalState.token);
+    assert('130_navigation_route_confirm_not_runnable',
+      dom.doc.getElementById('modal-execute').disabled === true
+      && dom.doc.getElementById('modal-execute').hidden === true);
+    api.startAction('nav:analysis', {}, 'Go to Analysis & Decisions'); await flush();
+    assert('131_nav_act_string_never_prepared',
+      calls.slice(before).filter(c => c.indexOf('/actions/prepare') >= 0).length === 0);
+  }
+
+  // ---- an incomplete / malformed / failed / blocked preparation can never become runnable -------
+  {
+    const good = FX.prepare_default.body.data;
+    function envelope(data, readiness, status) {
+      return { status: status === undefined ? 200 : status,
+               body: { readiness: readiness || FX.prepare_default.body.readiness, data: data } };
+    }
+    function without(field) {
+      const d = Object.assign({}, good); delete d[field]; return envelope(d);
+    }
+    const cases = [
+      ['132_missing_action_token', without('action_token')],
+      ['133_missing_canonical_action', without('canonical_action')],
+      ['134_missing_expected_authority', without('expected_authority')],
+      ['135_missing_expected_effect', without('expected_effect')],
+      ['136_missing_readiness', without('readiness')],
+      ['137_missing_target_ids', envelope(Object.assign({}, good, { target_ids: [] }))],
+      ['138_missing_expiration', envelope(Object.assign({}, good, { expires_in_seconds: null }))],
+      ['139_non_positive_expiration', envelope(Object.assign({}, good, { expires_in_seconds: 0 }))],
+      ['140_phrase_required_but_absent', envelope(Object.assign({}, good,
+        { requires_confirmation: true, confirmation_phrase: null }))],
+      ['141_malformed_body_array', envelope([1, 2, 3])],
+      ['142_malformed_body_string', envelope('nope')],
+      ['143_empty_body', { status: 200, body: {} }],
+      ['144_null_data', envelope(null)],
+      ['145_failed_prepare_500', envelope(good, 'SESSION7_13_ACTION_BLOCKED', 500)],
+      ['146_blocked_prepare_400', { status: 400,
+        body: { error: 'UNKNOWN_ACTION', readiness: 'SESSION7_13_ACTION_BLOCKED' } }],
+    ];
+    for (const [name, prep] of cases) {
+      const { dom, api } = newEnv(null, { prepare: prep });
+      api.wireModal();
+      api.startAction('create-backup-snapshot', {}, 'Create a backup'); await flush();
+      const exec = dom.doc.getElementById('modal-execute');
+      const desc = dom.doc.getElementById('modal-desc');
+      const runnable = exec.disabled === false && exec.hidden === false;
+      const blank = desc.textContent.trim() === '' && desc.children.length === 0;
+      assert(name, !runnable && !blank && !api.modalState.token,
+        'runnable=' + runnable + ' blank=' + blank + ' token=' + String(api.modalState.token));
+    }
+    // a transport failure is the same fail-closed outcome
+    {
+      const { dom, api } = newEnv(null, { prepareReject: true });
+      api.wireModal();
+      api.startAction('create-backup-snapshot', {}, 'Create a backup'); await flush();
+      const exec = dom.doc.getElementById('modal-execute');
+      assert('147_transport_failure_fails_closed',
+        exec.disabled === true && exec.hidden === true && !api.modalState.token
+        && dom.doc.getElementById('modal-desc').textContent.trim().length > 0);
+    }
+    // missing action entirely (a control with no declared action)
+    {
+      const { dom, api } = newEnv(null, { prepare: { status: 400,
+        body: { error: 'UNKNOWN_ACTION', readiness: 'SESSION7_13_ACTION_BLOCKED' } } });
+      api.wireModal();
+      api.startAction(undefined, {}, undefined); await flush();
+      const exec = dom.doc.getElementById('modal-execute');
+      assert('148_missing_action_fails_closed',
+        exec.disabled === true && exec.hidden === true && !api.modalState.token
+        && dom.doc.getElementById('modal-desc').textContent.trim().length > 0,
+        dom.doc.getElementById('modal-desc').textContent.slice(0, 120));
+      assert('149_missing_action_still_titled',
+        dom.doc.getElementById('modal-title').textContent.trim().length > 0,
+        dom.doc.getElementById('modal-title').textContent);
+    }
+  }
+
+  // ---- a failed / blocked preparation states the reason persistently, never as a toast ----------
+  {
+    const { dom, api } = newEnv(null, { prepare: { status: 500,
+      body: { error: 'INTERNAL', readiness: 'SESSION7_13_ACTION_BLOCKED' } } });
+    api.wireModal();
+    api.startAction('create-backup-snapshot', {}, 'Create a backup'); await flush();
+    const desc = dom.doc.getElementById('modal-desc');
+    assert('150_failed_prepare_is_visible', dom.doc.getElementById('modal-backdrop').hidden === false);
+    assert('151_failed_prepare_states_the_reason',
+      byClass(desc, 'notice').length === 1 && desc.textContent.length > 20, desc.textContent.slice(0, 140));
+    assert('152_failed_prepare_names_missing_details',
+      desc.textContent.indexOf('did not receive') >= 0, desc.textContent.slice(0, 200));
+    assert('153_failed_prepare_reassures_no_change',
+      desc.textContent.indexOf('Nothing was changed') >= 0, desc.textContent.slice(0, 200));
+    assert('154_failed_prepare_error_is_not_a_toast',
+      dom.doc.getElementById('toast').hidden === true);
+    assert('155_failed_prepare_offers_close_only',
+      dom.doc.getElementById('modal-cancel').textContent === 'Close'
+      && dom.doc.getElementById('modal-execute').hidden === true);
+  }
+
+  // ---- an empty modal body is structurally impossible -------------------------------------------
+  {
+    const { dom, api } = newEnv();
+    api.wireModal();
+    api.resetModal();                 // pristine dialog: title only, nothing in the body
+    assert('156_reset_leaves_confirm_disabled',
+      dom.doc.getElementById('modal-execute').disabled === true);
+    api.openBackdrop();               // the last line of defence, called directly
+    const desc = dom.doc.getElementById('modal-desc');
+    const exec = dom.doc.getElementById('modal-execute');
+    assert('157_blank_body_becomes_an_explanation', desc.textContent.trim().length > 0,
+      JSON.stringify(desc.textContent));
+    assert('158_blank_body_removes_confirm', exec.hidden === true && exec.disabled === true);
+    assert('159_blank_body_drops_any_token', !api.modalState.token);
+    assert('160_blank_body_is_not_confirmable', api.modalState.done === true);
+  }
+
+  // ---- Confirm gating: exact phrase only, before and after a valid preparation -------------------
+  {
+    const phrase = 'BACKUP:snap-1';
+    const prep = { status: 200, body: { readiness: 'SESSION7_13_ACTION_CONFIRMATION_REQUIRED',
+      data: Object.assign({}, FX.prepare_default.body.data,
+        { canonical_action: 'create-backup-snapshot', requires_confirmation: true,
+          confirmation_phrase: phrase, target_ids: ['snap-1'] }) } };
+    const { dom, api } = newEnv(null, { prepare: prep });
+    api.wireModal();
+    const exec = dom.doc.getElementById('modal-execute');
+    const input = dom.doc.getElementById('modal-phrase');
+    assert('161_confirm_disabled_before_preparation', exec.disabled === true);
+    api.startAction('create-backup-snapshot', { snapshot_id: 'snap-1' }, 'Create a backup'); await flush();
+    assert('162_prepared_modal_is_not_blank',
+      dom.doc.getElementById('modal-desc').textContent.length > 0);
+    assert('163_confirm_disabled_until_phrase_matches', exec.disabled === true);
+    assert('164_phrase_is_shown', dom.doc.getElementById('modal-phrase-required').textContent.indexOf(phrase) >= 0);
+    input.value = 'BACKUP:wrong'; dom.fire(input, 'input');
+    assert('165_wrong_phrase_stays_disabled', exec.disabled === true);
+    input.value = phrase.toLowerCase(); dom.fire(input, 'input');
+    assert('166_case_folded_phrase_stays_disabled', exec.disabled === true);
+    input.value = phrase + ' '; dom.fire(input, 'input');
+    assert('167_trailing_space_phrase_stays_disabled', exec.disabled === true);
+    input.value = ' ' + phrase; dom.fire(input, 'input');
+    assert('168_leading_space_phrase_stays_disabled', exec.disabled === true);
+    input.value = phrase; dom.fire(input, 'input');
+    assert('169_exact_phrase_enables_confirm', exec.disabled === false);
+  }
+
+  // ---- a valid preparation still shows the complete owner-facing dialog -------------------------
+  {
+    const { dom, api } = newEnv();
+    api.wireModal();
+    api.startAction('refresh-overview', {}, 'Refresh now'); await flush();
+    const text = dom.doc.getElementById('modal-desc').textContent;
+    const good = FX.prepare_default.body.data;
+    assert('170_modal_shows_authority', text.indexOf(good.expected_authority) >= 0, text.slice(0, 160));
+    assert('171_modal_shows_effect', text.indexOf(good.expected_effect) >= 0, text.slice(0, 160));
+    assert('172_modal_shows_window', text.indexOf(String(good.expires_in_seconds)) >= 0, text.slice(0, 160));
+    assert('173_modal_shows_canonical_action',
+      dom.doc.getElementById('modal-canonical').textContent.indexOf(good.canonical_action) >= 0);
+    assert('174_modal_shows_readiness',
+      dom.doc.getElementById('modal-readiness').textContent.length > 0);
+    assert('175_modal_still_hides_the_token',
+      JSON.stringify(dom.doc.getElementById('modal-backdrop').textContent).indexOf(good.action_token) < 0);
+  }
+
+  // ---- validator unit contract (used by the checks above, asserted directly) --------------------
+  {
+    const { api } = newEnv();
+    const good = FX.prepare_default.body.data;
+    assert('176_valid_preparation_has_no_missing_fields',
+      api.missingPreparationFields(good).length === 0,
+      api.missingPreparationFields(good).join(','));
+    assert('177_validator_rejects_undefined', api.missingPreparationFields(undefined).length > 0);
+    assert('178_validator_rejects_array', api.missingPreparationFields([]).length > 0);
+    assert('179_validator_rejects_string', api.missingPreparationFields('x').length > 0);
+    assert('180_validator_requires_token',
+      api.missingPreparationFields(Object.assign({}, good, { action_token: '' }))
+        .indexOf('action_token') >= 0);
+    assert('181_required_set_is_declared',
+      api.REQUIRED_PREPARATION_FIELDS.length >= 5
+      && api.REQUIRED_PREPARATION_FIELDS.indexOf('action_token') >= 0);
+    assert('182_nav_kind_is_navigation', api.controlKind('nav:analysis') === 'navigation'
+      && api.isNavigationAct('nav:analysis') === true);
+    assert('183_action_kind_is_action', api.controlKind('action:create-backup-snapshot') === 'action'
+      && api.isNavigationAct('action:create-backup-snapshot') === false);
+    assert('184_unknown_kind_is_null', api.controlKind('mystery:thing') === null
+      && api.controlKind('') === null && api.controlKind(null) === null);
+    assert('185_every_declared_kind_is_distinct',
+      Object.keys(api.CONTROL_KINDS).length === new Set(Object.keys(api.CONTROL_KINDS)).size);
+  }
+
+  // ---- export still shows a visible result and a same-origin download --------------------------
+  {
+    const exportOk = { status: 200, body: { readiness: 'SESSION7_13_CONSOLE_READY', data: {
+      readiness: 'SESSION7_13_ACTION_COMPLETED', authority: 'console', upstream_result_id: 'exp-1',
+      upstream_summary: { exports: ['owner_console_snapshot.json', 'owner_console_status.tsv'] } } } };
+    const { dom, api } = newEnv(null, { execute: exportOk });
+    api.wireModal();
+    api.startAction('export-overview', {}, 'Export the overview'); await flush();
+    dom.fire(dom.doc.getElementById('modal-execute'), 'click'); await flush();
+    const res = dom.doc.getElementById('modal-result');
+    assert('186_export_result_is_visible', res.textContent.indexOf('Completed') >= 0, res.textContent.slice(0, 120));
+    assert('187_export_lists_the_files',
+      res.textContent.indexOf('owner_console_snapshot.json') >= 0, res.textContent.slice(0, 200));
+    const dls = findAll(res, n => n.tagName === 'A');
+    assert('188_export_offers_downloads', dls.length === 3, 'n=' + dls.length);
+    assert('189_export_downloads_are_same_origin',
+      dls.every(a => String(a.getAttribute('href')).indexOf('/api/v1/exports/overview?format=') === 0),
+      dls.map(a => a.getAttribute('href')).join(' '));
+    assert('190_export_token_is_consumed', !api.modalState.token && api.modalState.done === true);
+    assert('191_export_confirm_removed_after_run',
+      dom.doc.getElementById('modal-execute').hidden === true);
+  }
+
+  // ---- no dead control anywhere: every clickable control on every page is classified ------------
+  {
+    const pages = ['renderOverview', 'renderAnalysis', 'renderManualActions', 'renderFollowups',
+                   'renderResearch', 'renderWatchlists', 'renderAlerts', 'renderNotifications',
+                   'renderBackups', 'renderSystem', 'renderActivity'];
+    const bad = [];
+    let seen = 0;
+    for (const p of pages) {
+      const { dom, api } = newEnv();
+      if (!api[p]) continue;
+      // the same wiring boot() performs, so every control is in its real runtime state
+      api.buildNav(); api.wireModal(); api.wireSidebarToggle(); api[p](); await flush();
+      const controls = findAll(dom.doc.body, n => n.tagName === 'BUTTON' || n.tagName === 'A'
+                                                 || n.tagName === 'SUMMARY');
+      controls.forEach(c => {
+        seen++;
+        const kind = api.controlKind(c.getAttribute('data-act'));
+        if (kind === null) bad.push(p + ':' + c.tagName + '[' + c.getAttribute('data-act') + ']');
+        // a navigation control must have a hash href and no click listener
+        if (kind === 'navigation') {
+          if (String(c.getAttribute('href') || '').charAt(0) !== '#') bad.push(p + ':nav-without-hash-href');
+          if (c._listeners.click && c._listeners.click.length) bad.push(p + ':nav-with-click-listener');
+        }
+        // a disabled control must actually be disabled and say why
+        if (kind === 'disabled' && !(c.disabled && c.getAttribute('title'))) bad.push(p + ':disabled-without-reason');
+      });
+    }
+    assert('192_all_pages_have_controls', seen >= 40, 'seen=' + seen);
+    assert('193_no_unclassified_or_miswired_control_on_any_page', bad.length === 0,
+      bad.slice(0, 10).join(' | '));
   }
 }
 

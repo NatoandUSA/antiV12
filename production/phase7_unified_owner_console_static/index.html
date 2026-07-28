@@ -129,7 +129,10 @@
       <div id="modal-result" role="alert" aria-live="assertive"></div>
       <div class="modal-actions">
         <button id="modal-cancel" class="btn" type="button" data-act="modal:cancel">Cancel</button>
-        <button id="modal-execute" class="btn primary" type="button"
+        <!-- Confirm starts disabled in the served markup: the un-prepared dialog can never present a
+             runnable Confirm, so a blank modal with an enabled Confirm is impossible before any
+             script runs. app.js enables it only after a preparation passes full field validation. -->
+        <button id="modal-execute" class="btn primary" type="button" disabled
                 data-act="modal:execute">Confirm &amp; run</button>
       </div>
     </div>

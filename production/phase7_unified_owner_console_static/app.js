@@ -92,6 +92,28 @@
                         "outcomes": "followups", "analysis": "analysis", "reviews": "analysis",
                         "attention": "analysis" };
 
+  /* Every clickable control declares exactly one kind in `data-act`, and the kind decides what the
+     control is allowed to do. Only "action" may enter startAction(); "navigation" is a plain anchor
+     with a hash href and no click listener at all, so it cannot reach the prepare/execute pipeline
+     even by accident. Anything unclassified is a bug, and the regression harness fails on it. */
+  var CONTROL_KINDS = {
+    "nav": "navigation",        // <a href="#page"> — routes only; never prepares, never opens a modal
+    "action": "action",         // the only kind that may prepare a state-changing action
+    "copy": "copy",             // copies a command or an id to the clipboard
+    "download": "download",     // same-origin export link
+    "disabled": "disabled",     // disabled and always states why
+    "modal": "modal",           // the two controls inside the confirmation dialog itself
+    "table": "table",           // local table paging / sorting / filtering
+    "toggle": "toggle",         // local layout toggle
+    "disclose": "disclose"      // <summary> progressive disclosure
+  };
+  function controlKind(act) {
+    if (act === null || act === undefined || act === "") return null;
+    var head = String(act).split(":")[0];
+    return CONTROL_KINDS[head] || null;
+  }
+  function isNavigationAct(act) { return controlKind(act) === "navigation"; }
+
   var state = {};
   var lastStateHash = null;
 
@@ -1201,19 +1223,63 @@
     var resEl = id("modal-result"); resEl.textContent = ""; resEl.className = "";
     id("modal-confirm-wrap").hidden = true;
     var cancel = id("modal-cancel"); cancel.textContent = "Cancel"; cancel.disabled = false; cancel.hidden = false;
-    var exec = id("modal-execute"); exec.textContent = "Confirm & run"; exec.disabled = false; exec.hidden = false;
+    // Fail closed: the reset state is never runnable. openModal() enables Confirm only after the
+    // preparation has passed full field validation, so no code path can reach an enabled Confirm
+    // without a validated preparation behind it.
+    var exec = id("modal-execute"); exec.textContent = "Confirm & run"; exec.disabled = true; exec.hidden = false;
     modalState.executing = false; modalState.done = false;
   }
 
+  /* A preparation may only become a runnable confirmation when the accepted authority returned every
+     field the owner needs in order to judge it: what will run, under whose authority, on what target,
+     with what effect, how ready it is, how long the window lasts, and — when the action demands it —
+     the exact phrase. A response missing any of these is a preparation failure, never a dialog the
+     owner is asked to confirm blind. This mirrors the accepted server contract; it never relaxes it. */
+  var REQUIRED_PREPARATION_FIELDS = ["action_token", "canonical_action", "readiness",
+                                     "expected_authority", "expected_effect"];
+  function missingPreparationFields(prep) {
+    if (!prep || typeof prep !== "object" || Object.prototype.toString.call(prep) === "[object Array]") {
+      return REQUIRED_PREPARATION_FIELDS.slice();          // malformed body: nothing is trustworthy
+    }
+    var missing = [];
+    REQUIRED_PREPARATION_FIELDS.forEach(function (k) {
+      var v = prep[k];
+      if (v === null || v === undefined || v === "" || typeof v === "object") missing.push(k);
+    });
+    // A bounded target: the accepted authority always names the exact row(s) an action will touch.
+    if (!(prep.target_ids && prep.target_ids.length
+          && prep.target_ids.join("") !== "")) missing.push("target_ids");
+    // The confirmation requirement must be internally consistent, or the phrase gate is meaningless.
+    if (prep.requires_confirmation === null || prep.requires_confirmation === undefined) {
+      missing.push("requires_confirmation");
+    } else if (prep.requires_confirmation && !prep.confirmation_phrase) {
+      missing.push("confirmation_phrase");
+    }
+    // The execution window must be a real, bounded, positive number of seconds.
+    if (!(typeof prep.expires_in_seconds === "number" && isFinite(prep.expires_in_seconds)
+          && prep.expires_in_seconds > 0)) missing.push("expires_in_seconds");
+    return missing;
+  }
+
   function startAction(action, params, label) {
+    // A navigation destination can never be prepared as an action. Navigation controls carry no click
+    // listener at all, so they cannot arrive here; this refuses the call outright if one ever does.
+    if (isNavigationAct(action) || viewById(action)) {
+      openModalBlocked(action, label, { status: 0, body: { error: "NOT_AN_ACTION" } },
+                       ["canonical_action"]);
+      return;
+    }
     postJSON(API + "/actions/prepare", { action: action, params: params || {} }).then(function (res) {
       var d = res.body && res.body.data;
-      // A successful prepare always carries an action_token; anything else is a preparation block and
-      // must still open a modal that shows the readiness + reason (never a blank confirmation dialog).
-      if (res.status === 200 && d && d.action_token) openModal(d, label);
-      else openModalBlocked(action, label, res);
+      // A prepare that did not return 200, or returned an incomplete / malformed body, is a
+      // preparation block: it opens a modal that states the readiness and the reason, and it never
+      // produces a runnable Confirm or a blank confirmation dialog.
+      var missing = res.status === 200 ? missingPreparationFields(d) : ["action_token"];
+      if (!missing.length) openModal(d, label);
+      else openModalBlocked(action, label, res, missing);
     }, function () {
-      openModalBlocked(action, label, { status: 0, body: { error: "NETWORK_ERROR" } });
+      openModalBlocked(action, label, { status: 0, body: { error: "NETWORK_ERROR" } },
+                       ["action_token"]);
     });
   }
 
@@ -1260,21 +1326,31 @@
     (modalState.requires ? id("modal-phrase") : exec).focus();
   }
 
-  function openModalBlocked(action, label, res) {
+  function openModalBlocked(action, label, res, missing) {
     resetModal();
     modalState.token = null;                      // never retain a stale preparation token
+    modalState.phrase = null;
     modalState.requires = false;
     modalState.done = true;                       // nothing to execute from a blocked prepare
     modalState.action = action;
     modalState.lastFocus = document.activeElement;
     var body = (res && res.body) || {};
     setText("modal-title", label || humanize(action));
-    setText("modal-canonical", "Canonical action: " + action);
+    setText("modal-canonical", "Canonical action: " + (action || "—"));
     setReadiness(body.readiness || "SESSION7_13_ACTION_BLOCKED");
-    id("modal-desc").appendChild(el("div", { class: "notice bad", role: "note" }, [
+    var note = el("div", { class: "notice bad", role: "note" }, [
       el("strong", { text: "This action cannot be prepared right now." }),
       el("p", { text: ownerReason(body) })
-    ]));
+    ]);
+    // An incomplete preparation names the missing details, so the owner can see WHY it is not
+    // runnable instead of facing a dialog with nothing in it. The list is bounded by the fixed
+    // required-field set, so nothing unbounded from the response reaches the page.
+    if (missing && missing.length) {
+      note.appendChild(el("p", { class: "em",
+        text: "The toolkit did not receive: " + missing.slice(0, 12).join(", ") + "." }));
+    }
+    note.appendChild(el("p", { class: "em", text: "Nothing was changed and nothing was sent." }));
+    id("modal-desc").appendChild(note);
     id("modal-confirm-wrap").hidden = true;
     var exec = id("modal-execute"); exec.hidden = true; exec.disabled = true;   // no Confirm on a block
     var cancel = id("modal-cancel"); cancel.textContent = "Close";
@@ -1282,7 +1358,26 @@
     cancel.focus();
   }
 
-  function openBackdrop() { id("modal-backdrop").hidden = false; }
+  /* The structural last line of defence. Nothing may put the confirmation dialog on screen without
+     owner-facing content in it: if the body is somehow empty at this point, the dialog fails closed —
+     any token is dropped, Confirm is removed, and the owner is told the preparation was incomplete.
+     A blank modal with a runnable Confirm therefore cannot exist, whatever a future caller does. */
+  function openBackdrop() {
+    var desc = id("modal-desc");
+    if (!desc.children.length && desc.textContent === "") {
+      modalState.token = null; modalState.phrase = null;
+      modalState.requires = false; modalState.done = true;
+      desc.appendChild(el("div", { class: "notice bad", role: "note" }, [
+        el("strong", { text: "This action could not be prepared." }),
+        el("p", { text: "The toolkit did not receive the details needed to confirm it." }),
+        el("p", { class: "em", text: "Nothing was changed and nothing was sent." })
+      ]));
+      id("modal-confirm-wrap").hidden = true;
+      var exec = id("modal-execute"); exec.hidden = true; exec.disabled = true;
+      var cancel = id("modal-cancel"); cancel.textContent = "Close"; cancel.disabled = false;
+    }
+    id("modal-backdrop").hidden = false;
+  }
 
   function refreshExecuteEnabled() {
     if (!modalState.requires || modalState.executing || modalState.done) return;

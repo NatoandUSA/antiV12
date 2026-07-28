@@ -155,7 +155,11 @@ const PROBE_OVERVIEW = `(function () {
   });
   var headings = Array.prototype.map.call(document.querySelectorAll('h1,h2,h3'), function (h) {
     return h.tagName + ':' + h.textContent.trim().slice(0, 60); });
-  var disabled = Array.prototype.map.call(document.querySelectorAll('button[disabled]'), function (b) {
+  // Page controls that are unavailable must state their reason. The confirmation dialog's Confirm
+  // button is excluded: it ships disabled on purpose (fail closed) and its reason is the dialog body,
+  // which the prepared-modal checks below assert. confirm_starts_disabled records that separately.
+  var disabled = Array.prototype.map.call(
+    document.querySelectorAll('button[disabled]:not(#modal-execute)'), function (b) {
     return { label: b.textContent.trim().slice(0, 40),
              reason: b.getAttribute('title') || b.getAttribute('aria-describedby') || null,
              described: !!(b.getAttribute('aria-describedby') || b.getAttribute('title')) }; });
@@ -181,6 +185,9 @@ const PROBE_OVERVIEW = `(function () {
     details_elements: document.querySelectorAll('details').length,
     details_open_by_default: Array.prototype.filter.call(document.querySelectorAll('details'), function (d) { return d.open; }).length,
     disabled_controls: disabled,
+    confirm_starts_disabled: (function () {
+      var e = document.getElementById('modal-execute'); return e ? e.disabled : null;
+    })(),
     buttons: buttons,
     doc_scroll_width: document.documentElement.scrollWidth,
     doc_client_width: document.documentElement.clientWidth,
@@ -238,6 +245,42 @@ const PROBE_FOCUS = `(function () {
            label: a ? (a.textContent || '').trim().slice(0, 40) : null,
            outline: a ? getComputedStyle(a).outlineStyle : null };
 })()`;
+
+/* Ask the accepted console, over loopback with a real session and CSRF token, to prepare an action
+ * that is not on the allowlist. Proves the refusal returns no preparation token and no phrase.
+ * Runs from Node so the page's console stays clean (see the call site for why that matters). */
+function preparedRefusal() {
+  const base = new URL(BASE);
+  const req = (opts, body) => new Promise((resolve, reject) => {
+    const r = http.request({ host: base.hostname, port: base.port, path: opts.path,
+                             method: opts.method || 'GET',
+                             headers: Object.assign({ Host: base.host }, opts.headers || {}) }, (res) => {
+      let b = '';
+      res.on('data', c => { b += c; });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+    });
+    r.on('error', reject);
+    if (body) r.write(body);
+    r.end();
+  });
+  return (async () => {
+    const s = await req({ path: '/api/v1/session', headers: { Accept: 'application/json' } });
+    const cookie = (s.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
+    let csrf = null;
+    try { csrf = (JSON.parse(s.body).data || {}).csrf_token || null; } catch (e) { /* reported below */ }
+    const payload = JSON.stringify({ action: 'not-a-real-action', params: {} });
+    const p = await req({ path: '/api/v1/actions/prepare', method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json',
+                 'Content-Length': Buffer.byteLength(payload),
+                 'X-CSRF-Token': csrf || '', Cookie: cookie } }, payload);
+    let parsed = {};
+    try { parsed = JSON.parse(p.body); } catch (e) { /* non-JSON body is itself a finding */ }
+    const data = parsed.data || {};
+    return { session_status: s.status, had_csrf: !!csrf, status: p.status,
+             error: parsed.error || null, readiness: parsed.readiness || null,
+             has_token: !!data.action_token, has_phrase: !!data.confirmation_phrase };
+  })();
+}
 
 // ------------------------------------------------------------------ main
 async function main() {
@@ -306,6 +349,8 @@ async function main() {
           JSON.stringify(ov.buttons.filter(b => !b.wired && !b.disabled && !b.href)));
     check('disabled_controls_have_reason', ov.disabled_controls.every(d => d.described),
           JSON.stringify(ov.disabled_controls));
+    check('confirm_starts_disabled', ov.confirm_starts_disabled === true,
+          String(ov.confirm_starts_disabled));
 
     // ---------------- 1366x768 ------------------------------------------------------------------
     await page.viewport(1366, 768);
@@ -411,6 +456,162 @@ async function main() {
     check('focus_is_visible', tabbed.some(t => t.outline && t.outline !== 'none'),
           JSON.stringify(tabbed.map(t => t.outline)));
 
+    /* ---------------- next-action navigation contract (Day-0 pilot hotfix) ----------------------
+     * A pilot found "Go to Analysis & Decisions" failing to navigate while an empty confirmation
+     * dialog covered the page. Root cause: the author rule `#modal-backdrop { display: flex }`
+     * outranked the user-agent `[hidden] { display: none }`, so the hidden dialog stayed painted at
+     * z-index 80 and swallowed every click. These checks are the ones that could have caught it:
+     * they read the COMPUTED style (not the `hidden` property, which was always correctly true),
+     * hit-test every control against what the browser would actually deliver the click to, and then
+     * click the CTA with a real mouse event at its real coordinates. */
+    await page.evaluate(`window.location.hash = 'overview';`);
+    await sleep(1200);
+
+    const hiddenCss = await page.evaluate(`(function () {
+      function st(id) {
+        var e = document.getElementById(id);
+        if (!e) return null;
+        var cs = getComputedStyle(e);
+        var r = e.getBoundingClientRect();
+        return { hidden_attr: e.hasAttribute('hidden'), hidden_prop: e.hidden,
+                 display: cs.display, visibility: cs.visibility,
+                 rect: { w: Math.round(r.width), h: Math.round(r.height) } };
+      }
+      return { backdrop: st('modal-backdrop'), confirm_wrap: st('modal-confirm-wrap'),
+               toast: st('toast'),
+               center_element: (function () {
+                 var e = document.elementFromPoint(Math.floor(window.innerWidth / 2),
+                                                   Math.floor(window.innerHeight / 2));
+                 var out = [];
+                 while (e) { out.push(e.tagName + (e.id ? '#' + e.id : '')); e = e.parentElement; }
+                 return out.join(' < ');
+               })() };
+    })()`);
+    result.hidden_css = hiddenCss;
+    check('hidden_modal_computes_to_display_none',
+          hiddenCss.backdrop && hiddenCss.backdrop.hidden_attr === true
+          && hiddenCss.backdrop.display === 'none', JSON.stringify(hiddenCss.backdrop));
+    check('hidden_modal_occupies_no_space',
+          hiddenCss.backdrop && hiddenCss.backdrop.rect.w === 0 && hiddenCss.backdrop.rect.h === 0,
+          JSON.stringify(hiddenCss.backdrop && hiddenCss.backdrop.rect));
+    check('page_centre_is_not_the_modal',
+          hiddenCss.center_element.indexOf('modal') < 0, hiddenCss.center_element);
+
+    // every visible control must be the element the browser would actually deliver a click to
+    const hitTest = await page.evaluate(`(function () {
+      var out = [];
+      Array.prototype.forEach.call(
+        document.querySelectorAll('#nav-list a, #view-root a, #view-root button, #statusbar button'),
+        function (b) {
+          var r = b.getBoundingClientRect();
+          if (r.width <= 0 || r.height <= 0) return;
+          var cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+          if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return;
+          var hit = document.elementFromPoint(cx, cy), e = hit, reachable = false;
+          while (e) { if (e === b) { reachable = true; break; } e = e.parentElement; }
+          out.push({ label: (b.textContent || '').trim().slice(0, 40),
+                     act: b.getAttribute('data-act'),
+                     hit: hit ? (hit.tagName + (hit.id ? '#' + hit.id : '')) : null,
+                     reachable: reachable });
+        });
+      return { total: out.length, blocked: out.filter(function (o) { return !o.reachable; }) };
+    })()`);
+    result.hit_test = hitTest;
+    check('every_control_is_clickable', hitTest.total > 0 && hitTest.blocked.length === 0,
+          hitTest.total + ' controls, blocked=' + JSON.stringify(hitTest.blocked.slice(0, 6)));
+
+    // Click the CTA with a real mouse event, at its real coordinates. The element is scrolled into
+    // view first and the coordinates are hit-tested, so a click that would have landed on something
+    // else is reported as such instead of silently looking like "navigation did not happen".
+    const ctaBefore = await page.evaluate(`(function () {
+      var na = document.getElementById('next-action');
+      var cta = na ? na.querySelector('.na-cta') : null;
+      if (!cta) return { found: false };
+      cta.scrollIntoView({ block: 'center' });
+      var r = cta.getBoundingClientRect();
+      var cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+      var hit = document.elementFromPoint(cx, cy), e = hit, reachable = false;
+      while (e) { if (e === cta) { reachable = true; break; } e = e.parentElement; }
+      return { found: true, tag: cta.tagName, text: cta.textContent.trim(),
+               act: cta.getAttribute('data-act'), href: cta.getAttribute('href'),
+               data_action: cta.getAttribute('data-action'),
+               cx: cx, cy: cy,
+               in_viewport: cx >= 0 && cy >= 0 && cx <= window.innerWidth && cy <= window.innerHeight,
+               hit: hit ? (hit.tagName + (hit.id ? '#' + hit.id : '')) : null,
+               click_reaches_cta: reachable,
+               hash_before: window.location.hash };
+    })()`);
+    result.next_action_cta = ctaBefore;
+    check('cta_is_a_navigation_anchor',
+          ctaBefore.found === true && ctaBefore.tag === 'A'
+          && String(ctaBefore.act || '').indexOf('nav:') === 0
+          && String(ctaBefore.href || '').charAt(0) === '#' && !ctaBefore.data_action,
+          JSON.stringify(ctaBefore));
+    check('cta_receives_the_owner_click',
+          ctaBefore.in_viewport === true && ctaBefore.click_reaches_cta === true,
+          'hit=' + ctaBefore.hit + ' in_viewport=' + ctaBefore.in_viewport);
+
+    const prepareBefore = page.requests.filter(r => r.url.indexOf('/actions/prepare') >= 0).length;
+    if (ctaBefore.found) {
+      await page.s('Input.dispatchMouseEvent', { type: 'mousePressed', x: ctaBefore.cx,
+                                                 y: ctaBefore.cy, button: 'left', clickCount: 1 });
+      await page.s('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ctaBefore.cx,
+                                                 y: ctaBefore.cy, button: 'left', clickCount: 1 });
+      await sleep(1500);
+    }
+    const afterCta = await page.evaluate(`(function () {
+      var links = Array.prototype.map.call(document.querySelectorAll('#nav-list a'), function (a) {
+        return { href: a.getAttribute('href'), current: a.getAttribute('aria-current') === 'page' }; });
+      var bd = document.getElementById('modal-backdrop');
+      var h1 = document.querySelector('#view-root h1');
+      var bc = document.getElementById('breadcrumbs');
+      return { hash: window.location.hash, h1: h1 ? h1.textContent.trim() : null,
+               breadcrumb: bc ? bc.textContent.trim() : null,
+               active: links.filter(function (l) { return l.current; }).map(function (l) { return l.href; }),
+               modal_hidden: bd ? bd.hidden : null,
+               modal_display: bd ? getComputedStyle(bd).display : null };
+    })()`);
+    const prepareAfter = page.requests.filter(r => r.url.indexOf('/actions/prepare') >= 0).length;
+    result.next_action_after_click = afterCta;
+    result.next_action_prepare_calls = prepareAfter - prepareBefore;
+    check('cta_navigates_to_analysis', afterCta.hash === '#analysis', JSON.stringify(afterCta));
+    check('cta_destination_content_visible', afterCta.h1 === 'Analysis & Decisions', afterCta.h1);
+    check('cta_updates_active_nav', afterCta.active.length === 1 && afterCta.active[0] === '#analysis',
+          JSON.stringify(afterCta.active));
+    check('cta_updates_breadcrumb', String(afterCta.breadcrumb || '').indexOf('Analysis & Decisions') >= 0,
+          afterCta.breadcrumb);
+    check('cta_opens_no_modal', afterCta.modal_hidden === true && afterCta.modal_display === 'none',
+          JSON.stringify(afterCta));
+    check('cta_issues_zero_prepare_requests', (prepareAfter - prepareBefore) === 0,
+          'prepare calls = ' + (prepareAfter - prepareBefore));
+
+    // the destination survives a normal reload and a cache-bypassing reload
+    for (const [name, ignoreCache] of [['normal_refresh', false], ['hard_refresh', true]]) {
+      await page.s('Page.reload', { ignoreCache });
+      await sleep(1800);
+      const kept = await page.evaluate(`(function () {
+        var h1 = document.querySelector('#view-root h1');
+        var bd = document.getElementById('modal-backdrop');
+        return { hash: window.location.hash, h1: h1 ? h1.textContent.trim() : null,
+                 modal_display: bd ? getComputedStyle(bd).display : null }; })()`);
+      result['destination_after_' + name] = kept;
+      check('destination_survives_' + name,
+            kept.hash === '#analysis' && kept.h1 === 'Analysis & Decisions'
+            && kept.modal_display === 'none', JSON.stringify(kept));
+    }
+
+    /* A bounded failed preparation. This is issued from Node with a real session + CSRF token rather
+     * than from inside the page: an in-page raw fetch would (correctly) be rejected by CSRF and the
+     * resulting 403 would appear as a browser console error, masking real console failures. The
+     * front end's own handling of a failed / incomplete / malformed preparation is proved by the
+     * committed DOM harness, which drives the real app.js code path against those responses. */
+    const failedPrep = await preparedRefusal();
+    result.failed_prepare = failedPrep;
+    check('unknown_action_refused_by_server',
+          failedPrep.status >= 400 && failedPrep.has_token === false, JSON.stringify(failedPrep));
+    check('refused_action_left_no_token_and_no_phrase',
+          !failedPrep.has_token && !failedPrep.has_phrase, JSON.stringify(failedPrep));
+
     // ---------------- modal regression ----------------------------------------------------------
     await page.evaluate(`window.location.hash = 'backups';`);
     await sleep(1200);
@@ -446,6 +647,56 @@ async function main() {
           JSON.stringify(modal));
     check('modal_gates_confirm', modal.confirm_visible === false || modal.exec_disabled === true
           || modal.exec_hidden === true, JSON.stringify(modal));
+
+    /* A real state-changing action must show the complete owner-facing dialog and keep Confirm
+     * disabled until the exact phrase is typed. Typed with real key events through the real input
+     * listener, so a gating regression cannot hide behind a programmatic value assignment. */
+    const prepared = await page.evaluate(`(function () {
+      var desc = document.getElementById('modal-desc');
+      var req = document.getElementById('modal-phrase-required');
+      var m = /Required confirmation phrase:\\s*(.+)$/.exec(req ? req.textContent.trim() : '');
+      var keys = Array.prototype.map.call(desc.querySelectorAll('dt'), function (d) { return d.textContent.trim(); });
+      return { keys: keys, text: desc.textContent,
+               canonical: document.getElementById('modal-canonical').textContent.trim(),
+               readiness: document.getElementById('modal-readiness').textContent.trim(),
+               phrase: m ? m[1] : null,
+               exec_disabled: document.getElementById('modal-execute').disabled };
+    })()`);
+    result.prepared_modal = prepared;
+    check('prepared_modal_states_authority_target_effect',
+          ['Accepted authority', 'Target(s)', 'Expected effect', 'Confirmation window']
+            .every(k => prepared.keys.indexOf(k) >= 0), JSON.stringify(prepared.keys));
+    check('prepared_modal_states_canonical_action_and_readiness',
+          prepared.canonical.indexOf('create-backup-snapshot') >= 0 && prepared.readiness.length > 0,
+          prepared.canonical + ' / ' + prepared.readiness);
+    check('prepared_modal_confirm_starts_disabled', prepared.exec_disabled === true,
+          String(prepared.exec_disabled));
+    check('prepared_modal_shows_a_phrase', !!prepared.phrase, String(prepared.phrase));
+
+    if (prepared.phrase) {
+      const typeInto = async (text) => {
+        await page.evaluate(`(function () { var i = document.getElementById('modal-phrase');
+          i.value = ''; i.focus(); return true; })()`);
+        await page.s('Input.insertText', { text });
+        await sleep(250);
+        return page.evaluate(`document.getElementById('modal-execute').disabled`);
+      };
+      const gate = {
+        wrong: await typeInto('WRONG:phrase'),
+        case_folded: await typeInto(prepared.phrase.toLowerCase()),
+        trailing_space: await typeInto(prepared.phrase + ' '),
+        leading_space: await typeInto(' ' + prepared.phrase),
+        exact: await typeInto(prepared.phrase),
+      };
+      result.phrase_gate = gate;
+      check('wrong_phrase_keeps_confirm_disabled', gate.wrong === true, String(gate.wrong));
+      check('case_folded_phrase_keeps_confirm_disabled', gate.case_folded === true, String(gate.case_folded));
+      check('trailing_space_phrase_keeps_confirm_disabled', gate.trailing_space === true,
+            String(gate.trailing_space));
+      check('leading_space_phrase_keeps_confirm_disabled', gate.leading_space === true,
+            String(gate.leading_space));
+      check('exact_phrase_enables_confirm', gate.exact === false, String(gate.exact));
+    }
     await page.key('Escape', 'Escape', 27);
     await sleep(500);
     const closed = await page.evaluate(`(function(){var b=document.getElementById('modal-backdrop');return b?b.hidden:null;})()`);

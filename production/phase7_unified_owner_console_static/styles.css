@@ -19,6 +19,16 @@
   }
 }
 * { box-sizing: border-box; }
+/* The `hidden` attribute is this console's ONLY hide mechanism — app.js sets element.hidden and
+   never toggles a class or an inline style. A plain author `display` declaration silently outranks
+   the user-agent `[hidden] { display: none }` rule (author origin beats user-agent origin whatever
+   the specificity), so `#modal-backdrop { display: flex }` below, and `.btn { display: inline-flex }`
+   further down, used to leave a hidden element painted and clickable: the empty confirmation modal
+   stayed on screen from first paint, covered the viewport at z-index 80 and swallowed every click,
+   including the Overview "Go to Analysis & Decisions" link. This guard makes `hidden` authoritative
+   for every element, so nothing the code hides can be seen, focused or clicked. Keep it !important:
+   without it any later `display` rule reintroduces the same class of defect. */
+[hidden] { display: none !important; }
 html { font-size: 16px; }
 body {
   margin: 0; color: var(--ink); background: var(--bg);

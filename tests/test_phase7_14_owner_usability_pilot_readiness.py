@@ -2776,6 +2776,342 @@ class TestFreshTreeAndEvidence(unittest.TestCase):
             self.assertNotIn("ppc", entry.lower())
 
 
+# ================================================================ hotfix: hidden must really hide
+#
+# Day-0 pilot defect (BLOCKING OWNER NAVIGATION): the Overview CTA "Go to Analysis & Decisions" did
+# not navigate and an empty "Confirm action" dialog sat over the page with a live Confirm button.
+#
+# Root cause: app.js hides the confirmation dialog with the `hidden` attribute ONLY, and
+# `#modal-backdrop { display: flex }` in styles.css is an author-origin declaration that outranks the
+# user-agent `[hidden] { display: none }` rule. The hidden backdrop therefore stayed painted at
+# `position: fixed; inset: 0; z-index: 80`, covered the whole viewport, and its own click handler
+# preventDefault()ed the CTA anchor. `.btn { display: inline-flex }` broke `exec.hidden` the same way.
+#
+# Neither DOM harness could catch this: both run in a dependency-free DOM with no CSS engine, and the
+# real-browser probes asserted the `hidden` property (correctly true) but never the computed style.
+# These tests close that gap offline by computing the real cascade for the elements app.js hides.
+_DECL_RE = re.compile(r"([a-zA-Z-]+)\s*:\s*([^;{}]+?)\s*(!important)?\s*(?:;|$)")
+
+
+def _css_rules(css):
+    """Parse the stylesheet into (selector, declarations) pairs, skipping @media/@print blocks.
+
+    Bounded and deliberately simple: this console's stylesheet is flat, hand-written and has no
+    nesting beyond at-rule blocks. At-rule bodies are skipped because none of them may be relied on
+    to hide anything -- a print or width-conditional rule is not a hide mechanism.
+    """
+    rules = []
+    i, n = 0, len(css)
+    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+    n = len(css)
+    while i < n:
+        brace = css.find("{", i)
+        if brace < 0:
+            break
+        selector = css[i:brace].strip()
+        depth, j = 1, brace + 1
+        while j < n and depth:
+            if css[j] == "{":
+                depth += 1
+            elif css[j] == "}":
+                depth -= 1
+            j += 1
+        body = css[brace + 1:j - 1]
+        if selector.startswith("@"):
+            pass                                    # at-rule block: never a hide mechanism
+        else:
+            decls = [(p.group(1).lower(), p.group(2).strip(), bool(p.group(3)))
+                     for p in _DECL_RE.finditer(body)]
+            for sel in selector.split(","):
+                sel = sel.strip()
+                if sel:
+                    rules.append((sel, decls))
+        i = j
+    return rules
+
+
+def _matches(sel, el):
+    """True when a simple selector matches the element dict {tag, id, classes, attrs}.
+
+    Supports the compound forms this stylesheet actually uses: tag, #id, .class, [attr] and
+    descendant combinations. A selector naming anything the element does not have simply misses.
+    """
+    parts = sel.split()
+    last = parts[-1]                                # only the subject of the selector must match
+    for tok in re.findall(r"[#.\[]?[^#.\[\]:]+\]?", last):
+        if tok.startswith("#"):
+            if tok[1:] != el["id"]:
+                return False
+        elif tok.startswith("."):
+            if tok[1:] not in el["classes"]:
+                return False
+        elif tok.startswith("["):
+            if tok.strip("[]").split("=")[0] not in el["attrs"]:
+                return False
+        elif tok in ("*",):
+            continue
+        else:
+            if tok.lower() != el["tag"]:
+                return False
+    return True
+
+
+def _specificity(sel):
+    last = sel.split()[-1]
+    return (last.count("#"), last.count(".") + last.count("["), len(re.findall(r"^[a-z]+", last)))
+
+
+def _winning_display(rules, el, ua_hidden=True):
+    """Compute the winning `display` for an element, honouring CSS origin precedence.
+
+    Order (lowest to highest): user-agent normal, author normal, author !important. That is the whole
+    point: an author `display` beats the user-agent `[hidden] { display: none }` however specific the
+    UA rule is, which is exactly how the blank modal reached a pilot.
+    """
+    winner, best = None, None
+    if ua_hidden and "hidden" in el["attrs"]:
+        winner, best = "none", (0, (0, 1, 0), -1)   # user-agent origin == 0
+    for idx, (sel, decls) in enumerate(rules):
+        if not _matches(sel, el):
+            continue
+        for prop, value, important in decls:
+            if prop != "display":
+                continue
+            key = (2 if important else 1, _specificity(sel), idx)
+            if best is None or key > best:
+                winner, best = value, key
+    return winner
+
+
+# Every element app.js hides by setting `.hidden`, with the classes it really carries.
+_HIDEABLE = (
+    ("modal backdrop", {"tag": "div", "id": "modal-backdrop", "classes": set(), "attrs": {"hidden"}}),
+    ("confirm wrap", {"tag": "div", "id": "modal-confirm-wrap", "classes": set(), "attrs": {"hidden"}}),
+    ("Confirm button", {"tag": "button", "id": "modal-execute",
+                        "classes": {"btn", "primary"}, "attrs": {"hidden"}}),
+    ("Cancel button", {"tag": "button", "id": "modal-cancel",
+                       "classes": {"btn"}, "attrs": {"hidden"}}),
+    ("toast", {"tag": "div", "id": "toast", "classes": {"toast"}, "attrs": {"hidden"}}),
+    ("nav badge", {"tag": "span", "id": "badge-alerts", "classes": {"badge"}, "attrs": {"hidden"}}),
+)
+
+
+class TestHiddenActuallyHides(unittest.TestCase):
+    """The `hidden` attribute is the console's only hide mechanism, so CSS must never outrank it."""
+
+    def setUp(self):
+        self.css = static("styles.css")
+        self.rules = _css_rules(self.css)
+
+    def test_300_stylesheet_parses(self):
+        self.assertGreater(len(self.rules), 60, len(self.rules))
+        self.assertTrue(any(sel == "#modal-backdrop" for sel, _ in self.rules))
+
+    def test_301_hidden_guard_declared(self):
+        winner = _winning_display(self.rules,
+                                  {"tag": "span", "id": "", "classes": set(), "attrs": {"hidden"}})
+        self.assertEqual(winner, "none", "a bare [hidden] element must compute to display:none")
+
+    def test_302_every_hideable_element_computes_to_display_none(self):
+        for name, el in _HIDEABLE:
+            with self.subTest(element=name):
+                self.assertEqual(_winning_display(self.rules, el), "none",
+                                 f"{name} stays displayed while hidden -> it can still be seen "
+                                 f"and can still swallow clicks")
+
+    def test_303_guard_is_load_bearing_not_vacuous(self):
+        """Without the guard the modal backdrop really would stay displayed.
+
+        This proves the test above is not passing by accident: strip the `[hidden]` guard from the
+        parsed rules and the backdrop must go back to `flex`. If this ever fails, the guard has
+        stopped being the thing that protects the console and test_302 has become decorative.
+        """
+        stripped = [(sel, decls) for sel, decls in self.rules if sel != "[hidden]"]
+        backdrop = dict(_HIDEABLE[0][1])
+        self.assertEqual(_winning_display(stripped, backdrop), "flex",
+                         "expected the historical defect to reappear without the guard")
+        self.assertEqual(_winning_display(stripped, dict(_HIDEABLE[2][1])), "inline-flex",
+                         "expected the Confirm button to reappear without the guard")
+
+    def test_304_guard_cannot_be_outranked(self):
+        """The guard is the only !important display in the stylesheet, so nothing can beat it."""
+        important = [(sel, value) for sel, decls in self.rules
+                     for prop, value, imp in decls if prop == "display" and imp]
+        self.assertEqual(important, [("[hidden]", "none")], important)
+
+    def test_305_guard_is_unconditional(self):
+        """The guard must not live inside @media/@print, where it would apply only sometimes."""
+        body = self.css
+        idx = body.find("[hidden]")
+        self.assertGreater(idx, 0)
+        before = body[:idx]
+        self.assertEqual(before.count("{"), before.count("}"),
+                         "the [hidden] guard is nested inside an at-rule block")
+
+    def test_306_hidden_is_the_declared_hide_mechanism(self):
+        """app.js must keep hiding via `hidden` only: a class/inline-style hide would bypass the guard."""
+        app = static("app.js")
+        self.assertIn(".hidden = false", app)
+        self.assertIn(".hidden = true", app)
+        self.assertNotIn(".style.display", app)
+        self.assertNotIn("classList", app)
+
+    def test_307_backdrop_still_lays_out_when_shown(self):
+        """The fix must not have removed the layout the dialog needs when it IS open."""
+        shown = {"tag": "div", "id": "modal-backdrop", "classes": set(), "attrs": set()}
+        self.assertEqual(_winning_display(self.rules, shown), "flex")
+
+    def test_308_no_hidden_element_is_left_clickable(self):
+        """A hidden element must be display:none, which removes it from hit-testing entirely."""
+        for name, el in _HIDEABLE:
+            with self.subTest(element=name):
+                self.assertNotIn(_winning_display(self.rules, el),
+                                 ("flex", "block", "inline-flex", "inline-block", "grid", "inline"),
+                                 name)
+
+
+class TestNextActionNavigationContract(unittest.TestCase):
+    """The Overview next-action CTA is navigation, and the modal fails closed. Static guarantees."""
+
+    def setUp(self):
+        self.app = static("app.js")
+        self.html = static("index.html")
+
+    def test_310_control_kinds_declared(self):
+        for kind in ('"nav": "navigation"', '"action": "action"', '"copy": "copy"',
+                     '"disabled": "disabled"'):
+            self.assertIn(kind, self.app, kind)
+        self.assertIn("function controlKind(", self.app)
+        self.assertIn("function isNavigationAct(", self.app)
+
+    def test_311_cta_is_an_anchor_with_a_hash_route(self):
+        """The CTA is built as an <a href="#route"> carrying a nav classification, never a button."""
+        self.assertIn('"data-act": "nav:" + route', self.app)
+        self.assertIn('href: "#" + route', self.app)
+
+    def test_312_cta_route_resolves_to_a_real_view(self):
+        """Every next-action destination page, and every section route, names a declared view."""
+        views = set(re.findall(r'\{ id: "([a-z-]+)", label:', self.app))
+        self.assertIn("analysis", views)
+        for page in NA.PAGE_LABELS:
+            self.assertIn(page, views, page)
+        for section, route in re.findall(r'"([a-z-]+)": "([a-z-]+)"',
+                                        self.app.split("SECTION_ROUTE = ")[1].split("};")[0]):
+            self.assertIn(route, views, f"{section} -> {route}")
+
+    def test_313_navigation_can_never_be_prepared(self):
+        """startAction refuses a navigation act and a view id before it ever calls the endpoint."""
+        body = self.app.split("function startAction(")[1].split("\n  }")[0]
+        self.assertIn("isNavigationAct(action) || viewById(action)", body)
+        guard = body.index("isNavigationAct(action) || viewById(action)")
+        post = body.index("postJSON(API")
+        self.assertLess(guard, post, "the refusal must precede the prepare call")
+
+    def test_314_prepare_is_validated_before_the_modal_opens(self):
+        body = self.app.split("function startAction(")[1].split("\n  }")[0]
+        self.assertIn("missingPreparationFields(d)", body)
+        self.assertIn("if (!missing.length) openModal(d, label);", body)
+        self.assertIn("else openModalBlocked(action, label, res, missing);", body)
+
+    def test_315_required_preparation_fields_are_complete(self):
+        decl = self.app.split("REQUIRED_PREPARATION_FIELDS = [")[1].split("]")[0]
+        for field in ("action_token", "canonical_action", "readiness", "expected_authority",
+                      "expected_effect"):
+            self.assertIn(field, decl, field)
+        validator = self.app.split("function missingPreparationFields(")[1].split("\n  }")[0]
+        for extra in ("target_ids", "requires_confirmation", "confirmation_phrase",
+                      "expires_in_seconds"):
+            self.assertIn(extra, validator, extra)
+
+    def test_316_required_fields_match_the_accepted_server_contract(self):
+        """Every field the front end demands is a field prepare_action() actually returns.
+
+        refresh-overview resolves its target without reading the config, so no workspace is needed.
+        """
+        prepared = UC.prepare_action(
+            None, "fingerprint", "refresh-overview", {},
+            now=0.0, tokens=UC.ActionTokenStore())
+        decl = self.app.split("REQUIRED_PREPARATION_FIELDS = [")[1].split("]")[0]
+        for field in re.findall(r'"([a-z_]+)"', decl):
+            self.assertIn(field, prepared, field)
+        for field in ("target_ids", "requires_confirmation", "expires_in_seconds"):
+            self.assertIn(field, prepared, field)
+        self.assertTrue(prepared["target_ids"], "a real preparation always names its target")
+
+    def test_317_confirm_starts_disabled_in_the_served_markup(self):
+        exec_tag = self.html.split('id="modal-execute"')[1].split(">")[0]
+        self.assertIn("disabled", exec_tag, exec_tag)
+
+    def test_318_reset_fails_closed(self):
+        body = self.app.split("function resetModal(")[1].split("\n  }")[0]
+        self.assertIn("exec.disabled = true", body)
+
+    def test_319_blank_modal_is_structurally_impossible(self):
+        body = self.app.split("function openBackdrop(")[1].split("\n  }\n")[0]
+        self.assertIn("desc.children.length", body)
+        self.assertIn("modalState.token = null", body)
+        self.assertIn("exec.hidden = true; exec.disabled = true", body)
+        # the guard must run BEFORE the backdrop is revealed
+        self.assertLess(body.index("desc.children.length"),
+                        body.index('id("modal-backdrop").hidden = false'))
+
+    def test_320_blocked_prepare_never_keeps_a_token_or_a_confirm(self):
+        body = self.app.split("function openModalBlocked(")[1].split("\n  }")[0]
+        self.assertIn("modalState.token = null", body)
+        self.assertIn("modalState.phrase = null", body)
+        self.assertIn("exec.hidden = true; exec.disabled = true", body)
+        self.assertIn("did not receive", body)
+        self.assertIn("Nothing was changed", body)
+
+    def test_321_phrase_gating_is_still_exact(self):
+        body = self.app.split("function refreshExecuteEnabled(")[1].split("\n  }")[0]
+        self.assertIn('id("modal-phrase").value !== modalState.phrase', body)
+        for loosener in (".trim()", ".toLowerCase()", ".toUpperCase()", ".normalize("):
+            self.assertNotIn(loosener, body, loosener)
+
+    def test_322_execute_still_single_use_and_double_run_locked(self):
+        body = self.app.split("function executeModal(")[1].split("\n  }")[0]
+        self.assertIn("modalState.executing || modalState.done || !modalState.token", body)
+        self.assertIn("!== modalState.phrase", body)
+
+    def test_323_no_new_unsafe_construct(self):
+        for banned in ("innerHTML", "outerHTML", "eval(", "new Function", "insertAdjacentHTML",
+                       "document.write", "localStorage", "sessionStorage", "indexedDB"):
+            self.assertNotIn(banned, self.app, banned)
+            self.assertNotIn(banned, self.html, banned)
+
+    def test_324_no_external_destination_added(self):
+        for asset in ("app.js", "index.html", "styles.css"):
+            src = static(asset)
+            self.assertNotIn("//cdn", src, asset)
+            self.assertNotIn("https://", src, asset)
+            self.assertNotIn("http://", src, asset)
+
+    def test_325_amazon_boundary_untouched(self):
+        for asset in ("app.js", "index.html"):
+            src = static(asset).lower()
+            for term in ("sellercentral", "seller-central", "sp-api", "advertising-api",
+                         "amazon.com"):
+                self.assertNotIn(term, src, f"{asset}:{term}")
+
+    def test_326_navigation_never_touches_the_action_endpoint(self):
+        """Every startAction() call site is an action:-classified control; no nav control binds one."""
+        # comments explain the contract and legitimately name startAction; only real code counts
+        code = re.sub(r"/\*.*?\*/", "", self.app, flags=re.S)
+        code = "\n".join(re.sub(r"//.*$", "", ln) for ln in code.splitlines())
+        lines = code.splitlines()
+        sites = [(i + 1, ln) for i, ln in enumerate(lines)
+                 if "startAction(" in ln and "function startAction" not in ln]
+        self.assertGreaterEqual(len(sites), 2, sites)
+        for line_no, line in sites:
+            window = "\n".join(lines[max(0, line_no - 4):line_no])
+            self.assertIn('"data-act": "action:', window, f"line {line_no}: {line.strip()}")
+        # and no nav-classified control is ever built with a startAction binding next to it
+        for match in re.finditer(r'"data-act": "nav:', code):
+            window = code[match.start():match.start() + 400]
+            self.assertNotIn("startAction", window, window[:200])
+
+
 # ================================================================ 21) Node DOM render contract
 @unittest.skipIf(NODE is None, "node is not available on this machine")
 class TestDomRenderContract(unittest.TestCase):
@@ -2836,10 +3172,13 @@ class TestDomRenderContract(unittest.TestCase):
             "analysis": envelope({"status": "READY", "counts": {}, "rows": paged([])}),
             "watchlists": envelope({"status": "READY_EMPTY", "counts": {},
                                     "watchlists": paged([])}),
+            # mirrors the accepted server contract exactly: prepare_action() always names the
+            # bounded target it resolved, so target_ids is never empty for a real preparation
+            # (see _resolve_target: every branch returns exactly one id).
             "prepare_default": envelope({
                 "action_token": "action-token-secret", "canonical_action": "refresh-overview",
                 "requires_confirmation": False, "confirmation_phrase": None,
-                "expected_authority": "console", "target_ids": [],
+                "expected_authority": "console", "target_ids": ["overview"],
                 "expected_effect": "Rebuild the overview.", "network_use": "NONE",
                 "local_state_changes": "cache_only", "upstream_state_changes": "NONE",
                 "expires_in_seconds": 300, "readiness": UC.ACTION_READY}),
@@ -2859,7 +3198,7 @@ class TestDomRenderContract(unittest.TestCase):
         self.assertTrue(total, report[-2000:])
         self.assertIn("FAILED 0", total[0])
         # the harness is substantial: it must actually be running its full contract
-        self.assertGreaterEqual(int(total[0].split()[1]), 100, total[0])
+        self.assertGreaterEqual(int(total[0].split()[1]), 190, total[0])
 
 
 if __name__ == "__main__":

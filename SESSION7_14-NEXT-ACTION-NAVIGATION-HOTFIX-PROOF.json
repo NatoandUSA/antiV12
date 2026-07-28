@@ -1,0 +1,1757 @@
+{
+ "schema_version": "phase7-14-next-action-navigation-hotfix-proof-v1",
+ "stage_id": "7.14",
+ "stage_name": "Phase 7.14 next-action navigation / blank modal hotfix",
+ "readiness": "PHASE7_14_NEXT_ACTION_NAVIGATION_HOTFIX_READY_FOR_INDEPENDENT_ACCEPTANCE_AUDIT",
+ "branch": "hotfix-phase7-14-next-action-navigation",
+ "baseline_commit": "b5324f83f326664660bb9084f1696aefb28c151c",
+ "baseline_tag": "phase7-14-stop-owner-message-hotfix-accepted-b5324f8",
+ "baseline_tag_object": "cecb5771e6f495e8c79c68c1821668ec7ccaae4b",
+ "prior_acceptance_tag": "phase7-14-owner-usability-pilot-readiness-accepted-b3e357e",
+ "prior_acceptance_tag_object": "a629cd701975926b8223482c005c338eddff6bf2",
+ "accepted_tags_modified_or_moved": false,
+ "checkpoint_tag": "phase7-14-next-action-navigation-hotfix-checkpoint-b5324f8",
+ "checkpoint_tag_object": "b5324f83f326664660bb9084f1696aefb28c151c",
+ "fix_commit": "af443b55c2a218204ba3d99d9b4734bc3037ed21",
+ "acceptance_claimed": false,
+ "acceptance_tag": null,
+ "merged_to_main": false,
+ "main_still_at": "b5324f83f326664660bb9084f1696aefb28c151c",
+ "pilot_started": false,
+ "pilot_status": "PAUSED_DAY_0",
+ "phase_8_started": false,
+ "pilot_record": {
+  "day": 0,
+  "classification": "BLOCKING OWNER NAVIGATION DEFECT",
+  "reported_symptom": "The Overview next-action CTA 'Go to Analysis & Decisions' did not navigate; an unusable confirmation dialog appeared with title 'Confirm action', an empty body, Cancel, an enabled 'Confirm & run', no confirmation phrase and no action details.",
+  "fourteen_day_pilot_started_successfully": false
+ },
+ "root_cause": {
+  "layer": "CSS cascade origin precedence in styles.css",
+  "location": "production/phase7_unified_owner_console_static/styles.css:233 (baseline b5324f8)",
+  "declaration": "#modal-backdrop { ... display: flex; ... z-index: 80; position: fixed; inset: 0 }",
+  "mechanism": "app.js hides the confirmation dialog only by setting element.hidden = true, which relies on the user-agent rule [hidden] { display: none }. A plain author display declaration outranks any user-agent declaration regardless of specificity, so #modal-backdrop kept display:flex while hidden was true. The empty dialog was painted from first paint, covered the viewport at z-index 80, intercepted every pointer event, and its own click handler (app.js:1406 baseline) called preventDefault() on the owner's CTA click.",
+  "navigation_classification_was_already_correct": true,
+  "action_pipeline_was_never_reached": true,
+  "backend_responsible": false,
+  "second_instance_same_cause": ".btn { display: inline-flex } overrode hidden on the dialog buttons, so exec.hidden = true in openModalBlocked() and finishExecute() had no visual effect: Confirm stayed visible (though still disabled) on a blocked preparation and after a consumed token.",
+  "cache_or_stale_server_contributed": false,
+  "cache_ruled_out_by": "served app.js / index.html / styles.css SHA-256 identical to local bytes in every run, in both browsers, with Network.setCacheDisabled, after a cache-bypassing reload, and after a full launcher Stop + restart; Cache-Control: no-cache on the served assets",
+  "why_prior_gates_missed_it": {
+   "phase7_13_modal_dom_harness": "dependency-free DOM shim, no CSS engine",
+   "phase7_14_console_dom_harness": "dependency-free DOM shim, no CSS engine",
+   "phase7_14_browser_qa": "real browser, but asserted backdrop.hidden (always correctly true); never read getComputedStyle and never hit-tested a control"
+  }
+ },
+ "reproduction_before_any_edit": {
+  "target": "real launcher-started console, http://127.0.0.1:8780, workspace runs/T2/phase7",
+  "launcher": "production.phase7_owner_launcher ... start (SESSION7_14_LAUNCHER_READY, pid 15596)",
+  "driver": "Chrome DevTools Protocol, dependency-free",
+  "edge": {
+   "browser": "edge",
+   "browser_version": "Edg/150.0.4078.99",
+   "cache_disabled_hard_reload": false,
+   "served_vs_local_assets": {
+    "app_js_served_sha256": "97ed2180c47f99114e1b469cca274f701542fe7bab29371da83b7ab9b3df5f99",
+    "app_js_local_sha256": "97ed2180c47f99114e1b469cca274f701542fe7bab29371da83b7ab9b3df5f99",
+    "app_js_identical": true,
+    "app_js_served_bytes": 77552,
+    "app_js_local_bytes": 77552,
+    "styles_css_served_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+    "styles_css_local_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+    "styles_css_identical": true,
+    "index_html_served_sha256": "06b71df28a748aca4c6eb05879c73b3919ac011905e8ad479ce07113805664f7",
+    "index_html_local_sha256": "06b71df28a748aca4c6eb05879c73b3919ac011905e8ad479ce07113805664f7",
+    "index_html_identical": true,
+    "cache_control": "no-cache",
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+   },
+   "cta": {
+    "found": true,
+    "text": "Go to Analysis & Decisions",
+    "tag": "A",
+    "id": null,
+    "classes": "btn primary na-cta",
+    "data_act": "nav:analysis",
+    "data_action": null,
+    "data_page": null,
+    "data_destination": null,
+    "href": "#analysis",
+    "all_attrs": [
+     "class=btn primary na-cta",
+     "href=#analysis",
+     "data-act=nav:analysis"
+    ],
+    "rect": {
+     "x": 265.390625,
+     "y": 412.4375,
+     "w": 207.71875,
+     "h": 34.796875,
+     "cx": 369.25,
+     "cy": 429.8359375
+    },
+    "visible": true,
+    "pointer_events": "auto",
+    "elem_at_center": "DIV#modal-backdrop."
+   },
+   "modal_on_load": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "flex",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 1585,
+     "h": 1000
+    },
+    "backdrop_visible_to_owner": true,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": false,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": true
+   },
+   "route_on_load": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "route_after_click": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "modal_after_click": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "flex",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 1585,
+     "h": 1000
+    },
+    "backdrop_visible_to_owner": true,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": false,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": true
+   },
+   "requests_after_click": 0,
+   "prepare_calls_after_click": 0,
+   "execute_calls_after_click": 0,
+   "console_messages": 0,
+   "exceptions": 0,
+   "off_origin_requests": 0,
+   "hit_test": null,
+   "route_after_refresh": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   }
+  },
+  "edge_cache_disabled": {
+   "browser": "edge",
+   "browser_version": "Edg/150.0.4078.99",
+   "cache_disabled_hard_reload": true,
+   "served_vs_local_assets": {
+    "app_js_served_sha256": "97ed2180c47f99114e1b469cca274f701542fe7bab29371da83b7ab9b3df5f99",
+    "app_js_local_sha256": "97ed2180c47f99114e1b469cca274f701542fe7bab29371da83b7ab9b3df5f99",
+    "app_js_identical": true,
+    "app_js_served_bytes": 77552,
+    "app_js_local_bytes": 77552,
+    "styles_css_served_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+    "styles_css_local_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+    "styles_css_identical": true,
+    "index_html_served_sha256": "06b71df28a748aca4c6eb05879c73b3919ac011905e8ad479ce07113805664f7",
+    "index_html_local_sha256": "06b71df28a748aca4c6eb05879c73b3919ac011905e8ad479ce07113805664f7",
+    "index_html_identical": true,
+    "cache_control": "no-cache",
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+   },
+   "cta": {
+    "found": true,
+    "text": "Go to Analysis & Decisions",
+    "tag": "A",
+    "id": null,
+    "classes": "btn primary na-cta",
+    "data_act": "nav:analysis",
+    "data_action": null,
+    "data_page": null,
+    "data_destination": null,
+    "href": "#analysis",
+    "all_attrs": [
+     "class=btn primary na-cta",
+     "href=#analysis",
+     "data-act=nav:analysis"
+    ],
+    "rect": {
+     "x": 265.390625,
+     "y": 412.4375,
+     "w": 207.71875,
+     "h": 34.796875,
+     "cx": 369.25,
+     "cy": 429.8359375
+    },
+    "visible": true,
+    "pointer_events": "auto",
+    "elem_at_center": "DIV#modal-backdrop."
+   },
+   "modal_on_load": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "flex",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 1585,
+     "h": 1000
+    },
+    "backdrop_visible_to_owner": true,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": false,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": true
+   },
+   "route_on_load": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "route_after_click": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "modal_after_click": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "flex",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 1585,
+     "h": 1000
+    },
+    "backdrop_visible_to_owner": true,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": false,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": true
+   },
+   "requests_after_click": 0,
+   "prepare_calls_after_click": 0,
+   "execute_calls_after_click": 0,
+   "console_messages": 0,
+   "exceptions": 0,
+   "off_origin_requests": 0,
+   "hit_test": {
+    "total": 13,
+    "blocked": 13,
+    "blocked_by_backdrop": 13,
+    "sample": [
+     {
+      "text": "",
+      "act": "toggle:sidebar",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Overview",
+      "act": "nav:overview",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Manual Actions",
+      "act": "nav:manual-actions",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Follow-ups",
+      "act": "nav:followups",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Research1",
+      "act": "nav:research",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Watchlists",
+      "act": "nav:watchlists",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Alerts",
+      "act": "nav:alerts",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Notifications",
+      "act": "nav:notifications",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Backup & Recovery",
+      "act": "nav:backups",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "System Health",
+      "act": "nav:system",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Activity",
+      "act": "nav:activity",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Go to Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     }
+    ]
+   },
+   "route_after_refresh": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   }
+  },
+  "chrome": {
+   "browser": "chrome",
+   "browser_version": "Chrome/150.0.7871.187",
+   "cache_disabled_hard_reload": false,
+   "served_vs_local_assets": {
+    "app_js_served_sha256": "97ed2180c47f99114e1b469cca274f701542fe7bab29371da83b7ab9b3df5f99",
+    "app_js_local_sha256": "97ed2180c47f99114e1b469cca274f701542fe7bab29371da83b7ab9b3df5f99",
+    "app_js_identical": true,
+    "app_js_served_bytes": 77552,
+    "app_js_local_bytes": 77552,
+    "styles_css_served_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+    "styles_css_local_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+    "styles_css_identical": true,
+    "index_html_served_sha256": "06b71df28a748aca4c6eb05879c73b3919ac011905e8ad479ce07113805664f7",
+    "index_html_local_sha256": "06b71df28a748aca4c6eb05879c73b3919ac011905e8ad479ce07113805664f7",
+    "index_html_identical": true,
+    "cache_control": "no-cache",
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+   },
+   "cta": {
+    "found": true,
+    "text": "Go to Analysis & Decisions",
+    "tag": "A",
+    "id": null,
+    "classes": "btn primary na-cta",
+    "data_act": "nav:analysis",
+    "data_action": null,
+    "data_page": null,
+    "data_destination": null,
+    "href": "#analysis",
+    "all_attrs": [
+     "class=btn primary na-cta",
+     "href=#analysis",
+     "data-act=nav:analysis"
+    ],
+    "rect": {
+     "x": 265.390625,
+     "y": 412.4375,
+     "w": 207.71875,
+     "h": 34.796875,
+     "cx": 369.25,
+     "cy": 429.8359375
+    },
+    "visible": true,
+    "pointer_events": "auto",
+    "elem_at_center": "DIV#modal-backdrop."
+   },
+   "modal_on_load": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "flex",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 1585,
+     "h": 1000
+    },
+    "backdrop_visible_to_owner": true,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": false,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": true
+   },
+   "route_on_load": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "route_after_click": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "modal_after_click": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "flex",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 1585,
+     "h": 1000
+    },
+    "backdrop_visible_to_owner": true,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": false,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": true
+   },
+   "requests_after_click": 0,
+   "prepare_calls_after_click": 0,
+   "execute_calls_after_click": 0,
+   "console_messages": 0,
+   "exceptions": 0,
+   "off_origin_requests": 0,
+   "hit_test": {
+    "total": 13,
+    "blocked": 13,
+    "blocked_by_backdrop": 13,
+    "sample": [
+     {
+      "text": "",
+      "act": "toggle:sidebar",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Overview",
+      "act": "nav:overview",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Manual Actions",
+      "act": "nav:manual-actions",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Follow-ups",
+      "act": "nav:followups",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Research1",
+      "act": "nav:research",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Watchlists",
+      "act": "nav:watchlists",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Alerts",
+      "act": "nav:alerts",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Notifications",
+      "act": "nav:notifications",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Backup & Recovery",
+      "act": "nav:backups",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "System Health",
+      "act": "nav:system",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Activity",
+      "act": "nav:activity",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     },
+     {
+      "text": "Go to Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "DIV#modal-backdrop",
+      "reachable": false
+     }
+    ]
+   },
+   "route_after_refresh": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   }
+  },
+  "accepted_baseline_styles_css_sha256": "6155757fc2cdb5cf3d09fb10d53957a9066de76bd778242568a4e47443e8bf78",
+  "accepted_baseline_styles_css_matches_git_blob_b5324f8": true
+ },
+ "fix": {
+  "files": 3,
+  "backend_authority_touched": false,
+  "root_cause_fix": {
+   "file": "production/phase7_unified_owner_console_static/styles.css",
+   "declaration_added": "[hidden] { display: none !important; }",
+   "effect": "makes the hidden attribute authoritative for every element, so nothing the code hides can be seen, focused or clicked; also fixes the never-hidden Confirm button",
+   "modal_backdrop_rule_retained_unchanged": true
+  },
+  "served_markup_fail_closed": {
+   "file": "production/phase7_unified_owner_console_static/index.html",
+   "change": "#modal-execute now ships with the disabled attribute"
+  },
+  "front_end_hardening": {
+   "file": "production/phase7_unified_owner_console_static/app.js",
+   "control_classification": [
+    "nav/navigation",
+    "action",
+    "copy",
+    "download",
+    "disabled",
+    "modal",
+    "table",
+    "toggle",
+    "disclose"
+   ],
+   "start_action_refuses_navigation": "isNavigationAct(action) || viewById(action)",
+   "canonical_actions_vs_view_ids_collision": 0,
+   "required_preparation_fields": [
+    "action_token",
+    "canonical_action",
+    "readiness",
+    "expected_authority",
+    "expected_effect"
+   ],
+   "additional_validated": [
+    "target_ids non-empty",
+    "requires_confirmation present",
+    "confirmation_phrase when required",
+    "expires_in_seconds positive finite"
+   ],
+   "reset_modal_fails_closed": true,
+   "blocked_modal_clears_token_and_phrase": true,
+   "open_backdrop_refuses_empty_body": true,
+   "owner_facing_title_source": "derived client-side from the control label, falling back to humanize(canonical_action); no backend field invented"
+  }
+ },
+ "not_weakened": {
+  "session_protection": true,
+  "csrf": true,
+  "action_allowlist": true,
+  "preparation_token_validation": true,
+  "exact_phrase_gating": true,
+  "single_use_execution": true,
+  "duplicate_execution_lock": true,
+  "phase_7_12_live_send_double_gate": true,
+  "audit_chain": true,
+  "csp": true,
+  "host_validation": true,
+  "loopback_only_policy": true,
+  "amazon_boundaries": true,
+  "seller_central_zero_counters": true
+ },
+ "not_added": {
+  "innerHTML": false,
+  "outerHTML": false,
+  "eval": false,
+  "function_constructor": false,
+  "insertAdjacentHTML": false,
+  "document_write": false,
+  "external_library": false,
+  "cdn": false,
+  "external_browser_request": false,
+  "browser_storage_secrets": false,
+  "arbitrary_route": false,
+  "arbitrary_command": false,
+  "arbitrary_url": false
+ },
+ "files_changed": {
+  "count": 6,
+  "production": [
+   "production/phase7_unified_owner_console_static/app.js",
+   "production/phase7_unified_owner_console_static/index.html",
+   "production/phase7_unified_owner_console_static/styles.css"
+  ],
+  "tests": [
+   "tests/phase7_14_console_dom_harness.js",
+   "tests/phase7_14_browser_qa.js",
+   "tests/test_phase7_14_owner_usability_pilot_readiness.py"
+  ],
+  "backend_authority_modules": 0,
+  "launcher_scripts": 0,
+  "core": 0,
+  "docs": 0,
+  "numstat": [
+   {
+    "added": "106",
+    "deleted": "11",
+    "path": "production/phase7_unified_owner_console_static/app.js"
+   },
+   {
+    "added": "4",
+    "deleted": "1",
+    "path": "production/phase7_unified_owner_console_static/index.html"
+   },
+   {
+    "added": "10",
+    "deleted": "0",
+    "path": "production/phase7_unified_owner_console_static/styles.css"
+   },
+   {
+    "added": "252",
+    "deleted": "1",
+    "path": "tests/phase7_14_browser_qa.js"
+   },
+   {
+    "added": "396",
+    "deleted": "8",
+    "path": "tests/phase7_14_console_dom_harness.js"
+   },
+   {
+    "added": "341",
+    "deleted": "2",
+    "path": "tests/test_phase7_14_owner_usability_pilot_readiness.py"
+   }
+  ]
+ },
+ "files_created": [
+  "SESSION7_14-NEXT-ACTION-NAVIGATION-HOTFIX-REPORT.md",
+  "SESSION7_14-NEXT-ACTION-NAVIGATION-HOTFIX-PROOF.json"
+ ],
+ "source_sha256": {
+  "production/phase7_unified_owner_console_static/app.js": "bb002ceb1414b85ca793fd905671a54abb94c200098821c164df5caed0f02c0a",
+  "production/phase7_unified_owner_console_static/index.html": "b69ff8973feefadace0a837eeb55f70b0956a80169a3ef0dc97072dcfbc6f6d1",
+  "production/phase7_unified_owner_console_static/styles.css": "dbf5b062160b7b9126027bcce6ce8f8655058b4f889a6cea963a962ace306b7d",
+  "tests/phase7_14_console_dom_harness.js": "00738d7d314e6851e072fb88e81f90463b9cc204eef90528657da4c7f4eb8d50",
+  "tests/phase7_14_browser_qa.js": "49e3c2670c5c8cc069bac787a571b3f80d6eaf79f387da17d851e39c55b5a79a",
+  "tests/test_phase7_14_owner_usability_pilot_readiness.py": "c10f49c029f31e2038c371d97b0ab09f92d8c73c20c534e97193160d28436bf2"
+ },
+ "verification_after_fix": {
+  "edge": {
+   "browser": "edge",
+   "browser_version": "Edg/150.0.4078.99",
+   "checks_total": 70,
+   "checks_passed": 70,
+   "checks_failed": 0,
+   "ok": true,
+   "console_errors": 0,
+   "uncaught_exceptions": 0,
+   "off_origin_requests": 0,
+   "cta": {
+    "found": true,
+    "tag": "A",
+    "text": "Go to Analysis & Decisions",
+    "act": "nav:analysis",
+    "href": "#analysis",
+    "data_action": null,
+    "cx": 369.25,
+    "cy": 480.1328125,
+    "in_viewport": true,
+    "hit": "SPAN",
+    "click_reaches_cta": true,
+    "hash_before": "#overview"
+   },
+   "after_click": {
+    "hash": "#analysis",
+    "h1": "Analysis & Decisions",
+    "breadcrumb": "ConsoleOperationsAnalysis & Decisions",
+    "active": [
+     "#analysis"
+    ],
+    "modal_hidden": true,
+    "modal_display": "none"
+   },
+   "prepare_calls_on_cta_click": 0,
+   "hidden_css": {
+    "backdrop": {
+     "hidden_attr": true,
+     "hidden_prop": true,
+     "display": "none",
+     "visibility": "visible",
+     "rect": {
+      "w": 0,
+      "h": 0
+     }
+    },
+    "confirm_wrap": {
+     "hidden_attr": true,
+     "hidden_prop": true,
+     "display": "none",
+     "visibility": "visible",
+     "rect": {
+      "w": 0,
+      "h": 0
+     }
+    },
+    "toast": {
+     "hidden_attr": true,
+     "hidden_prop": true,
+     "display": "none",
+     "visibility": "visible",
+     "rect": {
+      "w": 0,
+      "h": 0
+     }
+    },
+    "center_element": "SECTION < SECTION#view-root < MAIN#content < DIV#shell < BODY < HTML"
+   },
+   "hit_test": {
+    "total": 8,
+    "blocked": 0
+   },
+   "phrase_gate": {
+    "wrong": true,
+    "case_folded": true,
+    "trailing_space": true,
+    "leading_space": true,
+    "exact": false
+   },
+   "failed_prepare": {
+    "session_status": 200,
+    "had_csrf": true,
+    "status": 400,
+    "error": "UNKNOWN_ACTION",
+    "readiness": "SESSION7_13_ACTION_BLOCKED",
+    "has_token": false,
+    "has_phrase": false
+   },
+   "destination_after_normal_refresh": {
+    "hash": "#analysis",
+    "h1": "Analysis & Decisions",
+    "modal_display": "none"
+   },
+   "destination_after_hard_refresh": {
+    "hash": "#analysis",
+    "h1": "Analysis & Decisions",
+    "modal_display": "none"
+   },
+   "failing_checks": []
+  },
+  "chrome": {
+   "browser": "chrome",
+   "browser_version": "Chrome/150.0.7871.187",
+   "checks_total": 70,
+   "checks_passed": 70,
+   "checks_failed": 0,
+   "ok": true,
+   "console_errors": 0,
+   "uncaught_exceptions": 0,
+   "off_origin_requests": 0,
+   "cta": {
+    "found": true,
+    "tag": "A",
+    "text": "Go to Analysis & Decisions",
+    "act": "nav:analysis",
+    "href": "#analysis",
+    "data_action": null,
+    "cx": 369.25,
+    "cy": 480.1328125,
+    "in_viewport": true,
+    "hit": "SPAN",
+    "click_reaches_cta": true,
+    "hash_before": "#overview"
+   },
+   "after_click": {
+    "hash": "#analysis",
+    "h1": "Analysis & Decisions",
+    "breadcrumb": "ConsoleOperationsAnalysis & Decisions",
+    "active": [
+     "#analysis"
+    ],
+    "modal_hidden": true,
+    "modal_display": "none"
+   },
+   "prepare_calls_on_cta_click": 0,
+   "hidden_css": {
+    "backdrop": {
+     "hidden_attr": true,
+     "hidden_prop": true,
+     "display": "none",
+     "visibility": "visible",
+     "rect": {
+      "w": 0,
+      "h": 0
+     }
+    },
+    "confirm_wrap": {
+     "hidden_attr": true,
+     "hidden_prop": true,
+     "display": "none",
+     "visibility": "visible",
+     "rect": {
+      "w": 0,
+      "h": 0
+     }
+    },
+    "toast": {
+     "hidden_attr": true,
+     "hidden_prop": true,
+     "display": "none",
+     "visibility": "visible",
+     "rect": {
+      "w": 0,
+      "h": 0
+     }
+    },
+    "center_element": "SECTION < SECTION#view-root < MAIN#content < DIV#shell < BODY < HTML"
+   },
+   "hit_test": {
+    "total": 8,
+    "blocked": 0
+   },
+   "phrase_gate": {
+    "wrong": true,
+    "case_folded": true,
+    "trailing_space": true,
+    "leading_space": true,
+    "exact": false
+   },
+   "failed_prepare": {
+    "session_status": 200,
+    "had_csrf": true,
+    "status": 400,
+    "error": "UNKNOWN_ACTION",
+    "readiness": "SESSION7_13_ACTION_BLOCKED",
+    "has_token": false,
+    "has_phrase": false
+   },
+   "destination_after_normal_refresh": {
+    "hash": "#analysis",
+    "h1": "Analysis & Decisions",
+    "modal_display": "none"
+   },
+   "destination_after_hard_refresh": {
+    "hash": "#analysis",
+    "h1": "Analysis & Decisions",
+    "modal_display": "none"
+   },
+   "failing_checks": []
+  },
+  "repro_driver_edge": {
+   "browser": "edge",
+   "browser_version": "Edg/150.0.4078.99",
+   "cache_disabled_hard_reload": false,
+   "served_vs_local_assets": {
+    "app_js_served_sha256": "bb002ceb1414b85ca793fd905671a54abb94c200098821c164df5caed0f02c0a",
+    "app_js_local_sha256": "bb002ceb1414b85ca793fd905671a54abb94c200098821c164df5caed0f02c0a",
+    "app_js_identical": true,
+    "app_js_served_bytes": 83566,
+    "app_js_local_bytes": 83566,
+    "styles_css_served_sha256": "dbf5b062160b7b9126027bcce6ce8f8655058b4f889a6cea963a962ace306b7d",
+    "styles_css_local_sha256": "dbf5b062160b7b9126027bcce6ce8f8655058b4f889a6cea963a962ace306b7d",
+    "styles_css_identical": true,
+    "index_html_served_sha256": "b69ff8973feefadace0a837eeb55f70b0956a80169a3ef0dc97072dcfbc6f6d1",
+    "index_html_local_sha256": "b69ff8973feefadace0a837eeb55f70b0956a80169a3ef0dc97072dcfbc6f6d1",
+    "index_html_identical": true,
+    "cache_control": "no-cache",
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+   },
+   "cta": {
+    "found": true,
+    "text": "Go to Analysis & Decisions",
+    "tag": "A",
+    "id": null,
+    "classes": "btn primary na-cta",
+    "data_act": "nav:analysis",
+    "data_action": null,
+    "data_page": null,
+    "data_destination": null,
+    "href": "#analysis",
+    "all_attrs": [
+     "class=btn primary na-cta",
+     "href=#analysis",
+     "data-act=nav:analysis"
+    ],
+    "rect": {
+     "x": 265.390625,
+     "y": 412.4375,
+     "w": 207.71875,
+     "h": 34.796875,
+     "cx": 369.25,
+     "cy": 429.8359375
+    },
+    "visible": true,
+    "pointer_events": "auto",
+    "elem_at_center": "SPAN#."
+   },
+   "modal_on_load": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "none",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 0,
+     "h": 0
+    },
+    "backdrop_visible_to_owner": false,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": true,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": false
+   },
+   "route_on_load": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "route_after_click": {
+    "hash": "#analysis",
+    "href": "http://127.0.0.1:8780/#analysis",
+    "breadcrumb": "ConsoleOperationsAnalysis & Decisions",
+    "h1": "Analysis & Decisions",
+    "active": [
+     "#analysis"
+    ]
+   },
+   "modal_after_click": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "none",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 0,
+     "h": 0
+    },
+    "backdrop_visible_to_owner": false,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": true,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": false
+   },
+   "requests_after_click": 2,
+   "prepare_calls_after_click": 0,
+   "execute_calls_after_click": 0,
+   "console_messages": 0,
+   "exceptions": 0,
+   "off_origin_requests": 0,
+   "hit_test": {
+    "total": 13,
+    "blocked": 0,
+    "blocked_by_backdrop": 0,
+    "sample": [
+     {
+      "text": "",
+      "act": "toggle:sidebar",
+      "hit": "use#",
+      "reachable": true
+     },
+     {
+      "text": "Overview",
+      "act": "nav:overview",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Manual Actions",
+      "act": "nav:manual-actions",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Follow-ups",
+      "act": "nav:followups",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Research1",
+      "act": "nav:research",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Watchlists",
+      "act": "nav:watchlists",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Alerts",
+      "act": "nav:alerts",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Notifications",
+      "act": "nav:notifications",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Backup & Recovery",
+      "act": "nav:backups",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "System Health",
+      "act": "nav:system",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Activity",
+      "act": "nav:activity",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Go to Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "SPAN#",
+      "reachable": true
+     }
+    ]
+   },
+   "route_after_refresh": {
+    "hash": "#analysis",
+    "href": "http://127.0.0.1:8780/#analysis",
+    "breadcrumb": "ConsoleOperationsAnalysis & Decisions",
+    "h1": "Analysis & Decisions",
+    "active": [
+     "#analysis"
+    ]
+   }
+  },
+  "repro_driver_chrome_cache_disabled": {
+   "browser": "chrome",
+   "browser_version": "Chrome/150.0.7871.187",
+   "cache_disabled_hard_reload": true,
+   "served_vs_local_assets": {
+    "app_js_served_sha256": "bb002ceb1414b85ca793fd905671a54abb94c200098821c164df5caed0f02c0a",
+    "app_js_local_sha256": "bb002ceb1414b85ca793fd905671a54abb94c200098821c164df5caed0f02c0a",
+    "app_js_identical": true,
+    "app_js_served_bytes": 83566,
+    "app_js_local_bytes": 83566,
+    "styles_css_served_sha256": "dbf5b062160b7b9126027bcce6ce8f8655058b4f889a6cea963a962ace306b7d",
+    "styles_css_local_sha256": "dbf5b062160b7b9126027bcce6ce8f8655058b4f889a6cea963a962ace306b7d",
+    "styles_css_identical": true,
+    "index_html_served_sha256": "b69ff8973feefadace0a837eeb55f70b0956a80169a3ef0dc97072dcfbc6f6d1",
+    "index_html_local_sha256": "b69ff8973feefadace0a837eeb55f70b0956a80169a3ef0dc97072dcfbc6f6d1",
+    "index_html_identical": true,
+    "cache_control": "no-cache",
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+   },
+   "cta": {
+    "found": true,
+    "text": "Go to Analysis & Decisions",
+    "tag": "A",
+    "id": null,
+    "classes": "btn primary na-cta",
+    "data_act": "nav:analysis",
+    "data_action": null,
+    "data_page": null,
+    "data_destination": null,
+    "href": "#analysis",
+    "all_attrs": [
+     "class=btn primary na-cta",
+     "href=#analysis",
+     "data-act=nav:analysis"
+    ],
+    "rect": {
+     "x": 265.390625,
+     "y": 412.4375,
+     "w": 207.71875,
+     "h": 34.796875,
+     "cx": 369.25,
+     "cy": 429.8359375
+    },
+    "visible": true,
+    "pointer_events": "auto",
+    "elem_at_center": "SPAN#."
+   },
+   "modal_on_load": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "none",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 0,
+     "h": 0
+    },
+    "backdrop_visible_to_owner": false,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": true,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": false
+   },
+   "route_on_load": {
+    "hash": "#overview",
+    "href": "http://127.0.0.1:8780/#overview",
+    "breadcrumb": "ConsoleOverview",
+    "h1": "Overview",
+    "active": [
+     "#overview"
+    ]
+   },
+   "route_after_click": {
+    "hash": "#analysis",
+    "href": "http://127.0.0.1:8780/#analysis",
+    "breadcrumb": "ConsoleOperationsAnalysis & Decisions",
+    "h1": "Analysis & Decisions",
+    "active": [
+     "#analysis"
+    ]
+   },
+   "modal_after_click": {
+    "backdrop_hidden_attr": true,
+    "backdrop_hidden_prop": true,
+    "backdrop_computed_display": "none",
+    "backdrop_computed_visibility": "visible",
+    "backdrop_client_rect": {
+     "w": 0,
+     "h": 0
+    },
+    "backdrop_visible_to_owner": false,
+    "title": "Confirm action",
+    "canonical": "",
+    "readiness": "",
+    "desc_text": "",
+    "desc_child_count": 0,
+    "desc_empty": true,
+    "confirm_wrap_hidden": true,
+    "phrase_required_text": "",
+    "result_text": "",
+    "execute_hidden": false,
+    "execute_disabled": true,
+    "execute_text": "Confirm & run",
+    "cancel_text": "Cancel",
+    "covers_viewport": false
+   },
+   "requests_after_click": 2,
+   "prepare_calls_after_click": 0,
+   "execute_calls_after_click": 0,
+   "console_messages": 0,
+   "exceptions": 0,
+   "off_origin_requests": 0,
+   "hit_test": {
+    "total": 13,
+    "blocked": 0,
+    "blocked_by_backdrop": 0,
+    "sample": [
+     {
+      "text": "",
+      "act": "toggle:sidebar",
+      "hit": "use#",
+      "reachable": true
+     },
+     {
+      "text": "Overview",
+      "act": "nav:overview",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Manual Actions",
+      "act": "nav:manual-actions",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Follow-ups",
+      "act": "nav:followups",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Research1",
+      "act": "nav:research",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Watchlists",
+      "act": "nav:watchlists",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Alerts",
+      "act": "nav:alerts",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Notifications",
+      "act": "nav:notifications",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Backup & Recovery",
+      "act": "nav:backups",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "System Health",
+      "act": "nav:system",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Activity",
+      "act": "nav:activity",
+      "hit": "SPAN#",
+      "reachable": true
+     },
+     {
+      "text": "Go to Analysis & Decisions",
+      "act": "nav:analysis",
+      "hit": "SPAN#",
+      "reachable": true
+     }
+    ]
+   },
+   "route_after_refresh": {
+    "hash": "#analysis",
+    "href": "http://127.0.0.1:8780/#analysis",
+    "breadcrumb": "ConsoleOperationsAnalysis & Decisions",
+    "h1": "Analysis & Decisions",
+    "active": [
+     "#analysis"
+    ]
+   }
+  }
+ },
+ "mutation_testing": {
+  "method": "each mutation applied in place to the real assets one at a time; originals restored from a byte-verified backup after every run",
+  "focused_gates_run_per_mutation": [
+   "TestHiddenActuallyHides",
+   "TestNextActionNavigationContract",
+   "TestDomRenderContract (195-check DOM harness)"
+  ],
+  "results": [
+   {
+    "mutation": "M0_control_unmutated",
+    "suite_passed": true,
+    "caught": false,
+    "tests_run": "27",
+    "failing_checks": ""
+   },
+   {
+    "mutation": "M1_cta_routed_to_startAction",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_311_cta_is_an_anchor_with_a_hash_route,test_200_to_220_dom_render_contract,12_na_cta_navigates,23_blocked_cta_real,109_cta_classified_navigation,110_cta_is_anchor_with_hash_href,111_cta_carries_no_action_attribute,112_cta_has_no_click_listener"
+   },
+   {
+    "mutation": "M2_hidden_guard_removed",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_302_every_hideable_element_computes_to_display_none,test_304_guard_cannot_be_outranked,test_308_no_hidden_element_is_left_clickable"
+   },
+   {
+    "mutation": "M3_guard_not_important",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_302_every_hideable_element_computes_to_display_none,test_304_guard_cannot_be_outranked,test_308_no_hidden_element_is_left_clickable"
+   },
+   {
+    "mutation": "M4_prepare_validation_removed",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_314_prepare_is_validated_before_the_modal_opens,test_200_to_220_dom_render_contract,133_missing_canonical_action,134_missing_expected_authority,135_missing_expected_effect,136_missing_readiness,137_missing_target_ids,138_missing_expiration,139_non_positive_expiration,140_phrase_required_but_absent"
+   },
+   {
+    "mutation": "M5_reset_enables_confirm",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_318_reset_fails_closed,test_200_to_220_dom_render_contract,156_reset_leaves_confirm_disabled"
+   },
+   {
+    "mutation": "M6_blank_modal_guard_removed",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_319_blank_modal_is_structurally_impossible,test_200_to_220_dom_render_contract,157_blank_body_becomes_an_explanation,158_blank_body_removes_confirm,160_blank_body_is_not_confirmable"
+   },
+   {
+    "mutation": "M7_nav_refusal_removed",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_313_navigation_can_never_be_prepared,test_200_to_220_dom_render_contract,128_navigation_route_never_prepared,129_navigation_route_has_no_token,130_navigation_route_confirm_not_runnable,131_nav_act_string_never_prepared"
+   },
+   {
+    "mutation": "M8_served_confirm_enabled",
+    "suite_passed": false,
+    "caught": true,
+    "tests_run": "27",
+    "failing_checks": "test_317_confirm_starts_disabled_in_the_served_markup"
+   }
+  ],
+  "sources_restored_byte_identical": true,
+  "survivors": [],
+  "browser_level": {
+   "baseline_harness_on_accepted_baseline_console": {
+    "total": 44,
+    "passed": 44,
+    "failed": 0,
+    "ok": true,
+    "expectation": "passes: the coverage gap",
+    "failing": []
+   },
+   "new_harness_on_accepted_baseline_console": {
+    "total": 70,
+    "passed": 57,
+    "failed": 13,
+    "ok": false,
+    "expectation": "fails: catches the defect",
+    "failing": [
+     "confirm_starts_disabled",
+     "hidden_modal_computes_to_display_none",
+     "hidden_modal_occupies_no_space",
+     "page_centre_is_not_the_modal",
+     "every_control_is_clickable",
+     "cta_receives_the_owner_click",
+     "cta_navigates_to_analysis",
+     "cta_destination_content_visible",
+     "cta_updates_active_nav",
+     "cta_updates_breadcrumb",
+     "cta_opens_no_modal",
+     "destination_survives_normal_refresh",
+     "destination_survives_hard_refresh"
+    ]
+   },
+   "method": "styles.css and index.html reverted in place to the accepted baseline blobs, the real console restarted so it served those bytes, both harnesses run in real Edge, then both files restored and verified byte-identical to the hotfix version",
+   "assets_restored_byte_identical": true,
+   "significance": "The accepted Phase 7.14 browser-QA harness passes 44/44 against the accepted-baseline console that carries the defect. That is precisely why this reached a pilot: the gate asserted backdrop.hidden (always correctly true) and never the computed style, the hit-testability of a control, or the outcome of a real click. The rebuilt harness fails 13 checks against the same console."
+  }
+ },
+ "test_gates": {
+  "interpreter": "CPython 3.12.10 (project baseline; matches committed __pycache__)",
+  "1_new_focused_navigation_modal_tests": {
+   "ran": 26,
+   "seconds": 0.025,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "2_phase_7_14_focused_suite": {
+   "ran": 465,
+   "seconds": 3.529,
+   "failures": 1,
+   "errors": 0,
+   "skipped": 0,
+   "result": "FAILED",
+   "non_passing_nodes": [
+    "test_199e_no_acceptance_tag_yet"
+   ]
+  },
+  "3_phase_7_14_dom_harness": {
+   "checks": 195,
+   "failed": 0,
+   "baseline_checks": 103,
+   "delta": 92
+  },
+  "4_phase_7_14_browser_qa": {
+   "edge": "70/70",
+   "chrome": "70/70"
+  },
+  "5_phase_7_13_focused_suite": {
+   "ran": 269,
+   "seconds": 95.473,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "6_phase_7_13_modal_dom_harness": {
+   "ran": 3,
+   "seconds": 0.763,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "7_phase_7_12_regression": {
+   "ran": 234,
+   "seconds": 34.407,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "8_connectivity_scanners": {
+   "ran": 53,
+   "seconds": 3.7,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "9_network_policy_scanners": {
+   "ran": 5,
+   "seconds": 0.001,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "10_prohibited_integration_scan": {
+   "ran": 26,
+   "seconds": 0.002,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "10b_connected_phase_network_suites": {
+   "ran": 519,
+   "seconds": 39.485,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 2,
+   "result": "OK",
+   "non_passing_nodes": []
+  },
+  "11_full_suite_in_place": {
+   "ran": 4630,
+   "seconds": 950.266,
+   "failures": 1,
+   "errors": 1,
+   "skipped": 4,
+   "result": "FAILED",
+   "non_passing_nodes": [
+    "test_199e_no_acceptance_tag_yet",
+    "test_52_request_size_bounded"
+   ]
+  },
+  "12_compileall": {
+   "command": "python -m compileall -q production core tests",
+   "exit": 0
+  }
+ },
+ "full_suite_in_place": {
+  "ran": 4630,
+  "seconds": 950.266,
+  "failures": 1,
+  "errors": 1,
+  "skipped": 4,
+  "result": "FAILED",
+  "non_passing_nodes": [
+   "test_199e_no_acceptance_tag_yet",
+   "test_52_request_size_bounded"
+  ],
+  "command": "python -m unittest discover -s tests",
+  "scope": "primary working copy, full discovery",
+  "phase_7_14_stop_hotfix_accepted_record": {
+   "ran": 4604,
+   "failures": 1,
+   "errors": 1,
+   "skipped": 4
+  },
+  "delta_tests": 26,
+  "skip_count_unchanged": true,
+  "non_passing_accounted_for": [
+   {
+    "node": "test_phase7_14_owner_usability_pilot_readiness.TestFreshTreeAndEvidence.test_199e_no_acceptance_tag_yet",
+    "kind": "failure",
+    "caused_by_this_hotfix": false,
+    "explanation": "pre-acceptance self-guard asserting no Phase 7.14 acceptance tag exists; the independent audit legitimately created it. Fails identically on the untouched baseline worktree.",
+    "disposition": "retire or re-scope separately; deliberately not touched here"
+   },
+   {
+    "node": "test_phase7_13_unified_owner_console.TestBody.test_52_request_size_bounded",
+    "kind": "error",
+    "exception": "ConnectionAbortedError: [WinError 10053] An established connection was aborted by the software in your host machine",
+    "caused_by_this_hotfix": false,
+    "evidence": {
+     "code_diff_vs_baseline": "empty for both tests/test_phase7_13_unified_owner_console.py and production/phase7_unified_owner_console.py",
+     "isolated_rerun_10x": {
+      "pass": 10,
+      "fail": 0
+     },
+     "passed_in_both_fresh_worktree_full_runs": true
+    },
+    "explanation": "known Windows loopback race, same WinError 10053 signature recorded by the Phase 7.14 audit and the Stop-message hotfix proof as an environment flake"
+   }
+  ]
+ },
+ "fresh_worktree_differential": {
+  "method": "two fresh worktrees run concurrently with each other and nothing else, full discovery and full output captured on both sides, same interpreter",
+  "baseline": {
+   "ran": 4602,
+   "seconds": 540.143,
+   "failures": 2,
+   "errors": 14,
+   "skipped": 329,
+   "result": "FAILED",
+   "non_passing_nodes": [
+    "test_18_t2_contains_no_identified_junk_terms",
+    "test_18b_t2_is_byte_safe_and_semantically_clean",
+    "test_199e_no_acceptance_tag_yet",
+    "test_19_t2_is_deterministic",
+    "test_19b_t2_preserves_specialty_phrases",
+    "test_25_t2_contains_none_of_the_unsupported_terms",
+    "test_25b_t2_preserves_complete_specialty_phrases",
+    "test_26_t2_is_deterministic",
+    "test_authoritative_copy_paste_pair_is_written",
+    "test_certification_does_not_mutate_repository_runs",
+    "test_copy_ready_and_manual_plan_are_deterministic",
+    "test_five_bullets_generated",
+    "test_keyword_source_is_lean_with_expected_tiers",
+    "test_no_wrong_audience_or_occasion_leakage",
+    "test_section_hashes_match_across_two_generations",
+    "test_t2_stays_safe_draft"
+   ],
+   "commit": "b5324f8"
+  },
+  "feature": {
+   "ran": 4628,
+   "seconds": 540.141,
+   "failures": 2,
+   "errors": 14,
+   "skipped": 329,
+   "result": "FAILED",
+   "non_passing_nodes": [
+    "test_18_t2_contains_no_identified_junk_terms",
+    "test_18b_t2_is_byte_safe_and_semantically_clean",
+    "test_199e_no_acceptance_tag_yet",
+    "test_19_t2_is_deterministic",
+    "test_19b_t2_preserves_specialty_phrases",
+    "test_25_t2_contains_none_of_the_unsupported_terms",
+    "test_25b_t2_preserves_complete_specialty_phrases",
+    "test_26_t2_is_deterministic",
+    "test_authoritative_copy_paste_pair_is_written",
+    "test_certification_does_not_mutate_repository_runs",
+    "test_copy_ready_and_manual_plan_are_deterministic",
+    "test_five_bullets_generated",
+    "test_keyword_source_is_lean_with_expected_tiers",
+    "test_no_wrong_audience_or_occasion_leakage",
+    "test_section_hashes_match_across_two_generations",
+    "test_t2_stays_safe_draft"
+   ],
+   "commit": "af443b5"
+  },
+  "delta_tests": 26,
+  "failure_error_skip_counts_identical": true,
+  "non_passing_node_sets_identical": true,
+  "non_passing_node_count": 16,
+  "hotfix_tests_among_non_passing_nodes": 0,
+  "why_nonzero": "runs/T2 is gitignored, so 14 errors + 1 failure are T2-data-dependent tests that cannot find their inputs in a bare checkout; the 16th is the known-stale test_199e. The differential is judged relatively, not absolutely.",
+  "result": "FRESH_WORKTREE_FULL_SUITE_BASELINE_EQUIVALENT_NONZERO"
+ },
+ "source_immutability": {
+  "accepted_7_3_to_7_13_authorities_diff_vs_baseline": "",
+  "all_production_python_diff_vs_baseline": "",
+  "core_diff_vs_baseline": "",
+  "launcher_scripts_diff_vs_baseline": "",
+  "docs_diff_vs_baseline": "",
+  "verified_by": "git diff --stat b5324f8 HEAD reports exactly 6 files, 3 of them tests"
+ },
+ "known_stale_test": {
+  "node": "tests.test_phase7_14_owner_usability_pilot_readiness.TestFreshTreeAndEvidence.test_199e_no_acceptance_tag_yet",
+  "removed_skipped_or_weakened": false,
+  "classification": "BASELINE_EQUIVALENT",
+  "why_stale": "it asserts no Phase 7.14 acceptance tag exists; the independent audit legitimately created phase7-14-owner-usability-pilot-readiness-accepted-b3e357e",
+  "fails_identically_on_untouched_baseline": true,
+  "disposition": "retire or re-scope in a separate change; out of scope for this hotfix"
+ },
+ "environment_notes": [
+  {
+   "observation": "test_040b_workspace_root_escape_refused fails under CPython 3.14.6 and passes under CPython 3.12.10",
+   "caused_by_this_hotfix": false,
+   "reason": "this hotfix touches no launcher code; reproduced on the untouched baseline",
+   "action": "all recorded gate results use the 3.12 project baseline interpreter"
+  },
+  {
+   "observation": "start --no-browser still prints 'Your browser should now be open on the console.'",
+   "caused_by_this_hotfix": false,
+   "reason": "pre-existing; already recorded as backlog in the Stop-message hotfix proof",
+   "action": "out of scope"
+  }
+ ],
+ "seller_central_counters_all_zero": true,
+ "real_internet_used": false,
+ "network_requests_added": 0,
+ "browser_requests_all_loopback_same_origin": true,
+ "recommendation": "Independent hotfix acceptance audit before merge or pilot. Suggested focus: the [hidden] guard is the whole root-cause fix and cannot be outranked; the navigation contract is enforced behaviourally, not by string matching; the preparation validator is never stricter than UC.prepare_action; and the two accounted-for non-passing nodes are genuinely baseline-equivalent."
+}

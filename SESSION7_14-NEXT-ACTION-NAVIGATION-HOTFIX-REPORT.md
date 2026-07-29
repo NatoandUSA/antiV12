@@ -172,8 +172,9 @@ never-actually-hidden Confirm button.
    `missingPreparationFields()` validate `action_token`, `canonical_action`, `readiness`,
    `expected_authority`, `expected_effect`, a non-empty bounded `target_ids`, an internally
    consistent `requires_confirmation` / `confirmation_phrase` pair, and a positive finite
-   `expires_in_seconds`. Anything missing, malformed, non-200 or blocked routes to
-   `openModalBlocked()` — never to a confirmable dialog. Validated against the real server contract
+   `expires_in_seconds`. Anything missing, non-200 or blocked, and every malformed shape except the
+   two `target_ids` type-confusion cases in Known limitations item 7, routes to
+   `openModalBlocked()`. **No** input reaches a confirmable dialog. Validated against the real server contract
    (`UC.prepare_action`) by `test_316`, so it can never be stricter than what the authority returns.
    *On the owner-facing title:* the accepted server contract does not carry one — the dialog title is
    derived client-side from the triggering control’s label, falling back to
@@ -433,6 +434,18 @@ every run.
    Phase 7.13 acceptance, unchanged.
 6. Real-browser QA is a manually invoked harness: it needs a real browser binary and a running
    console, so it is not part of `unittest discover`.
+7. **`missingPreparationFields()` does not type-check `target_ids` before calling `.join()`.**
+   Found by the independent acceptance audit. If a prepare response returned `target_ids` as a
+   *string* or an array-*like* object, `prep.target_ids.join is not a function` is thrown
+   (`app.js:1251`) inside the `.then` fulfilment handler; the result is an uncaught promise
+   rejection and **no dialog at all**, rather than the intended `openModalBlocked()` explanation.
+   Confirm stays disabled, no token is held and **zero** execution requests are issued, so nothing
+   unsafe follows — but the owner gets no feedback for that one shape. It is **unreachable through
+   the accepted authority**: every return path of `_resolve_target()` in
+   `production/phase7_unified_owner_console.py` returns a list, so `target_ids` is always a JSON
+   array. It is also strictly safer than the accepted baseline, which for the same eight
+   malformed-type inputs presented an **enabled** Confirm over an empty body in all eight cases.
+   Fix separately: type-check `target_ids` before `.join()`.
 
 ---
 

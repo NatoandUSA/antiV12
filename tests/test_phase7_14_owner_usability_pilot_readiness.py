@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 import io
@@ -944,10 +945,18 @@ class TestStopOwnerMessage(LauncherBase):
 
     # ---- 3) timeout wording --------------------------------------------------------------------
     def test_h03_timeout_wording_is_accurate(self):
+        """Stop-exit-verification hotfix: this outcome proves the process is STILL RUNNING (the
+        injected alive seam is authoritative), so the owner is told exactly that. The accepted
+        baseline said "did not stop within the allowed time", which describes the launcher's clock
+        rather than the process, and read identically whether the process was alive or merely
+        unproven. readiness and error_code are unchanged."""
         res = self.stop_timeout()
         self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
         self.assertEqual(res["error_code"], "CONSOLE_DID_NOT_STOP")
-        self.assertIn("The toolkit did not stop within the allowed time.", res["owner_message"])
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_RUNNING)
+        self.assertEqual(res["owner_message"], L.STOP_STILL_RUNNING_MESSAGE)
+        self.assertIn("The Toolkit is still running.", res["owner_message"])
+        self.assertIn("Nothing else on this computer was stopped.", res["owner_message"])
 
     # ---- 4) identity refusal wording -----------------------------------------------------------
     def test_h04_identity_refusal_wording_is_accurate(self):
@@ -975,11 +984,16 @@ class TestStopOwnerMessage(LauncherBase):
             self.assertFalse(res["signalled"])
         self.assertEqual(self.terminated, [])
 
-    # ---- 7) a successful stop is byte-identical to the accepted baseline -----------------------
-    def test_h07_successful_stop_wording_unchanged(self):
+    # ---- 7) a successful stop states what was proven --------------------------------------------
+    def test_h07_successful_stop_wording_states_a_safe_stop(self):
+        """Stop-exit-verification hotfix: success is now reported only against a PROVEN exit, so the
+        sentence says so. readiness (SESSION7_14_LAUNCHER_STOPPED) and identity_verified are
+        unchanged; only the owner-facing sentence moved from "The toolkit has stopped." """
         res = self.stop_success()
         self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
-        self.assertEqual(res["owner_message"], "The toolkit has stopped.")
+        self.assertEqual(res["owner_message"], L.STOP_SUCCESS_MESSAGE)
+        self.assertEqual(res["owner_message"], "The Toolkit stopped safely.")
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
         self.assertTrue(res["identity_verified"])
 
     # ---- 8) start wording is untouched ---------------------------------------------------------
@@ -3199,6 +3213,606 @@ class TestDomRenderContract(unittest.TestCase):
         self.assertIn("FAILED 0", total[0])
         # the harness is substantial: it must actually be running its full contract
         self.assertGreaterEqual(int(total[0].split()[1]), 190, total[0])
+
+
+# ================================================================ 7c) stop EXIT VERIFICATION
+# Phase 7.14 stop-exit-verification hotfix.
+#
+# The accepted baseline proved "has it stopped?" with process_alive(), i.e. OpenProcess +
+# GetProcessTimes. On Windows that is only conclusive when it is FALSE: a terminated process object
+# stays addressable for as long as ANY handle to it is open, so the check keeps answering "alive"
+# about a process the kernel has already reported as exited. Every stop test in this file injected
+# the process-alive seam, so nothing ever exercised the real function against a real corpse — which
+# is why the defect reached the owner as `stop_seconds=15.03 CONSOLE_DID_NOT_STOP` for a process
+# that a read-only diagnostic then proved was gone.
+#
+# These tests use REAL Windows child processes of this test run. They spawn only
+# `python -c "import time; time.sleep(...)"`, they signal only PIDs they spawned themselves, and
+# every child is cleaned up. Nothing here touches the repository, the network or any other process.
+WINDOWS_ONLY = unittest.skipUnless(os.name == "nt", "Windows process-lifecycle proof")
+
+
+class RealProcessBase(unittest.TestCase):
+    """Spawns and reaps real children, so a failing assertion can never leak a process."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="p714-exit-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.ws = L.Workspace(self.tmp)
+        self.ws.ensure()
+        self._children = []
+
+    def spawn_child(self, seconds=300):
+        """One real child, spawned exactly the way the launcher spawns the console."""
+        kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                  "stderr": subprocess.DEVNULL, "close_fds": True}
+        if os.name == "nt":
+            kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
+                                       | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            kwargs["start_new_session"] = True
+        proc = subprocess.Popen([sys.executable, "-c", f"import time; time.sleep({seconds})"],
+                                **kwargs)
+        self._children.append(proc)
+        self.addCleanup(self._reap, proc)
+        return proc
+
+    def spawn_orphan_pid(self, seconds=300):
+        """A real child whose PID is held by NOBODY: the parent handle is released immediately, so
+        the process object is freed the moment the process itself goes away."""
+        proc = self.spawn_child(seconds)
+        pid = proc.pid
+        handle = getattr(proc, "_handle", None)
+        if handle is not None:
+            handle.Close()                       # release the only reference this test holds
+            proc.returncode = 0                  # keep Popen.__del__ quiet; we reap by PID below
+        self.addCleanup(L.terminate_process_result, pid, hard=True)
+        return pid
+
+    def _reap(self, proc):
+        try:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=10)
+        except Exception:                        # noqa: BLE001 — a reaped child is not a failure
+            pass
+
+
+class TestWindowsRealProcessExitProof(RealProcessBase):
+    """Requirements 1-5: what the OS actually reports for a real, genuinely terminated process."""
+
+    @WINDOWS_ONLY
+    def test_x01_real_child_exits_and_is_detected_as_exited(self):
+        """1 + 3 + 4: a real child is terminated; the handle is signalled and carries a real code."""
+        proc = self.spawn_child()
+        v = L.open_exit_verifier(proc.pid)
+        self.addCleanup(v.close)
+        self.assertTrue(v.usable, v.open_error)
+        before = v.state()
+        self.assertEqual(before["exit_state"], L.EXIT_STATE_RUNNING)
+        self.assertEqual(before["wait_name"], "WAIT_TIMEOUT")
+        self.assertTrue(before["still_active"])
+        self.assertEqual(before["exit_code"], 259)          # STILL_ACTIVE
+
+        res = L.terminate_process_result(proc.pid, hard=True)
+        self.assertTrue(res["ok"], res)
+        proc.wait(timeout=15)
+
+        after = v.state()
+        self.assertEqual(after["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(after["wait_name"], "WAIT_OBJECT_0")     # 3) handle is signalled
+        self.assertEqual(after["wait_result"], 0)
+        self.assertFalse(after["still_active"])                   # 4) non-STILL_ACTIVE exit code
+        self.assertNotEqual(after["exit_code"], 259)
+
+    @WINDOWS_ONLY
+    def test_x02_terminated_child_with_referenced_handle_is_still_openable(self):
+        """2 + THE ROOT CAUSE: while a handle is referenced, the OLD check calls a corpse alive.
+
+        This is the exact defect. The kernel says the process exited; process_alive() says it is
+        still there, for as long as any handle to the process object remains open."""
+        proc = self.spawn_child()
+        pid = proc.pid
+        v = L.open_exit_verifier(pid)                # this handle keeps the object addressable
+        self.addCleanup(v.close)
+        self.assertTrue(L.terminate_process_result(pid, hard=True)["ok"])
+        proc.wait(timeout=15)
+
+        # The kernel: definitively exited.
+        st = v.state()
+        self.assertEqual(st["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertFalse(st["still_active"])
+
+        # The accepted baseline's check, on that same definitively-exited process:
+        self.assertTrue(L.process_alive(pid),
+                        "expected the documented Windows behaviour: a terminated process object "
+                        "stays openable while a handle is referenced")
+        self.assertIsNotNone(L.process_start_token(pid))   # identity still resolves, unchanged
+
+        # ...and it stays wrong for as long as the handle is held, which is what produced the
+        # owner's 15-second false CONSOLE_DID_NOT_STOP.
+        for _ in range(8):
+            time.sleep(0.05)
+            self.assertTrue(L.process_alive(pid))
+            self.assertEqual(v.state()["exit_state"], L.EXIT_STATE_EXITED)
+
+    @WINDOWS_ONLY
+    def test_x03_process_alive_goes_false_once_every_handle_is_closed(self):
+        """2 (second half): the FALSE answer is the conclusive one, and it arrives on handle close.
+
+        Same process, same instant, two different answers depending only on whether a handle is
+        referenced — which is precisely why a handle-free liveness check cannot be trusted."""
+        pid = self.spawn_orphan_pid()
+        v = L.open_exit_verifier(pid)             # the ONLY remaining reference
+        self.addCleanup(v.close)
+        self.assertTrue(L.terminate_process_result(pid, hard=True)["ok"])
+        deadline = time.monotonic() + 10.0
+        while v.state()["exit_state"] != L.EXIT_STATE_EXITED and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(v.state()["exit_state"], L.EXIT_STATE_EXITED)
+
+        self.assertTrue(L.process_alive(pid))     # handle referenced -> reported alive
+        v.close()                                 # last reference released
+        deadline = time.monotonic() + 10.0
+        while L.process_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(L.process_alive(pid))    # only now is the old check correct
+        self.assertIsNone(L.process_start_token(pid))
+
+    @WINDOWS_ONLY
+    def test_x04_natural_exit_is_proven_without_any_termination(self):
+        """1: a child that exits on its own is proven exited — no signal is ever sent."""
+        proc = self.spawn_child(seconds=1)
+        v = L.open_exit_verifier(proc.pid)
+        self.addCleanup(v.close)
+        proc.wait(timeout=20)
+        st = v.state()
+        self.assertEqual(st["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(st["wait_name"], "WAIT_OBJECT_0")
+        self.assertEqual(st["exit_code"], 0)
+        self.assertFalse(st["still_active"])
+        # and the old check still reports it alive, because this test holds a handle
+        self.assertTrue(L.process_alive(proc.pid))
+
+    @WINDOWS_ONLY
+    def test_x05_terminate_result_is_captured_including_failure(self):
+        """5: TerminateProcess's answer is recorded, and a refused request reports the reason."""
+        proc = self.spawn_child()
+        ok = L.terminate_process_result(proc.pid, hard=True)
+        self.assertEqual(ok["api"], "TerminateProcess")
+        self.assertTrue(ok["ok"])
+        self.assertIsNone(ok["error"])
+        proc.wait(timeout=15)
+
+        # A PID that cannot be opened at all: the request FAILS and says so.
+        bad = L.terminate_process_result(0x7FFFFFF0, hard=True)
+        self.assertFalse(bad["ok"])
+        self.assertTrue(str(bad["error"]).startswith("OPEN_PROCESS_FAILED_"), bad)
+        for pid in (0, -1, "x", None):
+            r = L.terminate_process_result(pid, hard=True)
+            self.assertFalse(r["ok"])
+            self.assertEqual(r["error"], "INVALID_PID")
+
+    @WINDOWS_ONLY
+    def test_x06_verifier_pins_the_pid_against_reuse(self):
+        """The handle held across a stop is also what stops Windows recycling the PID mid-stop."""
+        proc = self.spawn_child()
+        pid = proc.pid
+        token_before = L.process_start_token(pid)
+        v = L.open_exit_verifier(pid)
+        self.addCleanup(v.close)
+        self.assertTrue(L.terminate_process_result(pid, hard=True)["ok"])
+        proc.wait(timeout=15)
+        self.assertEqual(L.process_start_token(pid), token_before)
+
+    def test_x07_verifier_is_windows_only_and_never_asks_for_terminate_rights(self):
+        src = read(LAUNCHER_PATH)
+        cls = src.split("class WindowsExitVerifier", 1)[1].split("\ndef open_exit_verifier", 1)[0]
+        self.assertIn("_WIN_SYNCHRONIZE | _WIN_PROCESS_QUERY_LIMITED_INFORMATION", cls)
+        self.assertNotIn("_WIN_PROCESS_TERMINATE", cls)
+        self.assertNotIn("TerminateProcess", cls)
+        if os.name != "nt":
+            self.assertIsNone(L.open_exit_verifier(os.getpid()))
+
+    @WINDOWS_ONLY
+    def test_x08_unopenable_pid_is_unproven_not_exited(self):
+        """A handle that cannot be opened must fail CLOSED, never report a convenient exit."""
+        v = L.WindowsExitVerifier(0x7FFFFFF0)
+        self.addCleanup(v.close)
+        self.assertFalse(v.usable)
+        st = v.state()
+        self.assertEqual(st["exit_state"], L.EXIT_STATE_UNPROVEN)
+        self.assertTrue(str(st["api_error"]).startswith("OPEN_PROCESS_FAILED_"), st)
+
+
+class TestStopExitVerificationContract(LauncherBase):
+    """Requirements 6-15: the stop RESULT the owner and the record actually receive."""
+
+    def stop_with(self, pid=7100, token=None, **kw):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": pid, "process_start_token": token or f"tok-{pid}",
+                           "host": "127.0.0.1", "port": 8780})
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        return self.launcher(**kw).stop()
+
+    # ---- 6) alive through the whole timeout ----------------------------------------------------
+    def test_x10_process_alive_through_timeout_reports_still_running(self):
+        res = self.stop_with(pid=7101, alive=lambda pid: True, stop_timeout=2.0,
+                             port_probe=lambda h, p: True)
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_RUNNING)
+        self.assertEqual(res["error_code"], "CONSOLE_DID_NOT_STOP")
+        self.assertEqual(res["stop_state"], L.STOP_STATE_ALIVE)
+        self.assertFalse(res["runtime_state_cleared"])
+        self.assertIsNotNone(self.ws.read_pid())      # 11) state kept: exit was NOT proven
+
+    # ---- 7) exits immediately, before the timeout ----------------------------------------------
+    def test_x11_process_exits_immediately_is_reported_as_exited(self):
+        alive = {"v": True}
+        res = self.stop_with(pid=7102, alive=lambda pid: alive["v"],
+                             terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1])
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(res["stop_state"], L.STOP_STATE_EXITED)
+        self.assertFalse(res["escalated"])
+        self.assertTrue(res["runtime_state_cleared"])
+
+    # ---- 8) exits just after a polling boundary -------------------------------------------------
+    def test_x12_exit_just_after_a_polling_boundary_is_still_an_exit(self):
+        """The state is re-read at the top of the loop BEFORE the budget is re-checked, so a process
+        that exits during the final sleep is reported as exited rather than as a timeout — even
+        though the budget has elapsed by the time the answer arrives."""
+        gone = {"v": False}
+
+        def alive(pid):
+            return not gone["v"]
+
+        def sleep(_seconds):
+            gone["v"] = True               # the process exits DURING the last sleep
+        res = self.stop_with(pid=7103, alive=alive, sleep=sleep, stop_timeout=0.3)
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(res["owner_message"], L.STOP_SUCCESS_MESSAGE)
+        self.assertFalse(res["escalated"])
+        # the answer arrived after the budget had already elapsed, and was still honoured
+        self.assertGreaterEqual(res["stop_seconds"], 0.3)
+
+    # ---- 9) port closed but the process is alive ------------------------------------------------
+    def test_x13_port_closed_but_process_alive_is_not_a_success(self):
+        res = self.stop_with(pid=7104, alive=lambda pid: True, stop_timeout=2.0,
+                             port_probe=lambda h, p: False)
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["stop_state"], L.STOP_STATE_PORT_CLOSED_ALIVE)
+        self.assertFalse(res["port_open_after_stop"])
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_RUNNING)
+        self.assertNotEqual(res["readiness"], L.LAUNCHER_STOPPED)
+
+    def test_x13b_a_closed_port_alone_never_authorizes_success(self):
+        """The port probe is a diagnostic. It may not turn an unproven state into a stop."""
+        res = self.stop_with(pid=7105, alive=lambda pid: True, stop_timeout=1.0,
+                             port_probe=lambda h, p: False,
+                             health=lambda h, p: dict(UNHEALTHY))
+        self.assertNotEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertIn(res["exit_state"], (L.EXIT_STATE_RUNNING, L.EXIT_STATE_UNPROVEN))
+
+    # ---- 10 + 11) runtime state ------------------------------------------------------------------
+    def test_x14_stale_runtime_state_after_a_proven_exit_is_reported(self):
+        alive = {"v": True}
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 7106, "process_start_token": "tok-7106"})
+        orig = self.ws.clear_pid
+        self.ws.clear_pid = lambda: False           # the record cannot be removed
+        self.addCleanup(setattr, self.ws, "clear_pid", orig)
+        res = self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                            terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1]).stop()
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(res["stop_state"], L.STOP_STATE_EXITED_STALE_STATE)
+        self.assertFalse(res["runtime_state_cleared"])
+
+    def test_x15_runtime_state_is_cleared_only_after_a_proven_exit(self):
+        for label, kw in (("running", {"alive": lambda pid: True, "stop_timeout": 1.0}),):
+            with self.subTest(label):
+                res = self.stop_with(pid=7107, **kw)
+                self.assertNotEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+                self.assertFalse(res["runtime_state_cleared"])
+                self.assertIsNotNone(self.ws.read_pid())
+        alive = {"v": True}
+        res = self.stop_with(pid=7108, alive=lambda pid: alive["v"],
+                             terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1])
+        self.assertTrue(res["runtime_state_cleared"])
+        self.assertIsNone(self.ws.read_pid())
+
+    # ---- termination-request failure --------------------------------------------------------------
+    def test_x16_failed_termination_request_never_reports_success(self):
+        res = self.stop_with(pid=7109, alive=lambda pid: True, stop_timeout=2.0,
+                             terminate=lambda pid, hard=False: {"ok": False, "api": "TerminateProcess",
+                                                                "error": "TERMINATE_PROCESS_FAILED_5"})
+        self.assertNotEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertTrue(res["termination_request_failed"])
+        self.assertEqual(res["stop_state"], L.STOP_STATE_TERMINATE_FAILED)
+        self.assertTrue(any(r["error"] == "TERMINATE_PROCESS_FAILED_5"
+                            for r in res["terminate_requests"]), res["terminate_requests"])
+
+    def test_x16b_terminate_results_are_captured_for_every_request(self):
+        res = self.stop_with(pid=7110, alive=lambda pid: True, stop_timeout=2.0)
+        self.assertGreaterEqual(len(res["terminate_requests"]), 2)
+        self.assertEqual([r["hard"] for r in res["terminate_requests"]][:2], [False, True])
+        for r in res["terminate_requests"]:
+            self.assertIn("ok", r)
+
+    def test_x16c_a_raising_terminate_seam_is_data_not_a_crash(self):
+        def boom(pid, hard=False):
+            raise OSError("refused")
+        res = self.stop_with(pid=7111, alive=lambda pid: True, stop_timeout=1.0, terminate=boom)
+        self.assertNotEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertTrue(res["termination_request_failed"])
+
+    # ---- unproven state ---------------------------------------------------------------------------
+    def test_x17_unproven_exit_state_is_reported_as_unproven(self):
+        class Unprovable:
+            usable = True
+
+            def state(self):
+                return {"source": "windows_process_handle", "exit_state": L.EXIT_STATE_UNPROVEN,
+                        "api_error": "WAIT_FAILED_5"}
+
+            def close(self):
+                pass
+        res = self.stop_with(pid=7112, stop_timeout=1.0, alive=lambda pid: True,
+                             exit_verifier=lambda pid: Unprovable())
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_UNPROVEN)
+        self.assertEqual(res["error_code"], "CONSOLE_EXIT_NOT_PROVEN")
+        self.assertEqual(res["stop_state"], L.STOP_STATE_UNPROVEN)
+        self.assertEqual(res["owner_message"], L.STOP_EXIT_UNPROVEN_MESSAGE)
+        self.assertFalse(res["runtime_state_cleared"])
+
+    def test_x17b_handle_backed_exit_beats_a_lying_alive_seam(self):
+        """The handle is authoritative: a process_alive() that still says "alive" cannot turn a
+        kernel-proven exit into a false CONSOLE_DID_NOT_STOP. This is the owner's defect, inverted."""
+        class Exited:
+            usable = True
+
+            def state(self):
+                return {"source": "windows_process_handle", "exit_state": L.EXIT_STATE_EXITED,
+                        "wait_name": "WAIT_OBJECT_0", "exit_code": 1, "still_active": False}
+
+            def close(self):
+                pass
+        res = self.stop_with(pid=7113, alive=lambda pid: True, stop_timeout=15.0,
+                             exit_verifier=lambda pid: Exited())
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(res["owner_message"], L.STOP_SUCCESS_MESSAGE)
+        self.assertLess(res["stop_seconds"], 15.0)
+        self.assertEqual(res["exit_verification"]["wait_name"], "WAIT_OBJECT_0")
+
+    def test_x18_bounded_timeout_is_not_extended(self):
+        self.assertEqual(L.STOP_TIMEOUT_SECONDS, 15.0)
+        res = self.stop_with(pid=7114, alive=lambda pid: True, stop_timeout=2.0)
+        self.assertLessEqual(res["stop_seconds"], 12.0)
+
+    # ---- 14 + 15) owner messages are truthful ----------------------------------------------------
+    def test_x19_owner_success_message_is_truthful(self):
+        alive = {"v": True}
+        res = self.stop_with(pid=7115, alive=lambda pid: alive["v"],
+                             terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1])
+        self.assertEqual(res["owner_message"], "The Toolkit stopped safely.")
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+
+    def test_x20_owner_failure_messages_are_truthful_and_scoped(self):
+        running = self.stop_with(pid=7116, alive=lambda pid: True, stop_timeout=1.0)
+        self.assertEqual(running["owner_message"], L.STOP_STILL_RUNNING_MESSAGE)
+        self.assertIn("Nothing else on this computer was stopped.", running["owner_message"])
+        self.assertIn("Open technical details", running["owner_message"])
+
+    def test_x21_owner_message_is_never_a_raw_error_code(self):
+        results = [
+            self.stop_with(pid=7117, alive=lambda pid: True, stop_timeout=1.0),
+            self.stop_with(pid=7118, alive=lambda pid: True, start_token=lambda pid: None),
+        ]
+        for res in results:
+            msg = res["owner_message"]
+            self.assertTrue(msg.endswith("."), msg)
+            for code in ("CONSOLE_DID_NOT_STOP", "CONSOLE_EXIT_NOT_PROVEN", "WAIT_FAILED",
+                         "TERMINATE_PROCESS_FAILED", "SESSION7_14_"):
+                self.assertNotIn(code, msg)
+
+    def test_x22_three_owner_sentences_cover_the_six_machine_states(self):
+        states = {L.STOP_STATE_EXITED, L.STOP_STATE_EXITED_STALE_STATE, L.STOP_STATE_ALIVE,
+                  L.STOP_STATE_PORT_CLOSED_ALIVE, L.STOP_STATE_TERMINATE_FAILED,
+                  L.STOP_STATE_UNPROVEN}
+        self.assertEqual(len(states), 6)
+        msgs = {L.STOP_SUCCESS_MESSAGE, L.STOP_STILL_RUNNING_MESSAGE, L.STOP_EXIT_UNPROVEN_MESSAGE}
+        self.assertEqual(len(msgs), 3)
+        for m in msgs:
+            self.assertTrue(m.startswith("The Toolkit"), m)
+        for m in (L.STOP_STILL_RUNNING_MESSAGE, L.STOP_EXIT_UNPROVEN_MESSAGE):
+            self.assertIn("Nothing else on this computer was stopped.", m)
+
+    # ---- command identity ------------------------------------------------------------------------
+    def test_x23_command_identity_is_not_claimed_when_health_is_unreachable(self):
+        """The accepted baseline recorded command_identity_verified=true whenever the health probe
+        failed to connect (`not http_status` is true for a transport error). The owner's
+        2026-07-30 record shows exactly that: health unreachable, identity reported "verified"."""
+        res = self.stop_with(pid=7119, alive=lambda pid: True, stop_timeout=1.0,
+                             health=lambda h, p: dict(UNHEALTHY))
+        self.assertFalse(res["command_identity_verified"])
+        self.assertEqual(res["command_identity_evidence"], "HEALTH_UNREACHABLE")
+
+    def test_x23b_command_identity_is_claimed_only_on_the_accepted_contract(self):
+        alive = {"v": True}
+        ok = self.stop_with(pid=7120, alive=lambda pid: alive["v"],
+                            terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1])
+        self.assertTrue(ok["command_identity_verified"])
+        self.assertEqual(ok["command_identity_evidence"], "ACCEPTED_HEALTH_CONTRACT")
+        foreign = self.stop_with(pid=7121, alive=lambda pid: True, stop_timeout=1.0,
+                                 health=lambda h, p: dict(FOREIGN))
+        self.assertFalse(foreign["command_identity_verified"])
+        self.assertEqual(foreign["command_identity_evidence"], "FOREIGN_HTTP_RESPONDER")
+
+    def test_x23c_command_identity_never_authorizes_anything(self):
+        """It is diagnostic. An unreachable health probe must not change which process is signalled
+        or whether the stop succeeds."""
+        alive = {"v": True}
+        res = self.stop_with(pid=7122, alive=lambda pid: alive["v"],
+                             health=lambda h, p: dict(UNHEALTHY),
+                             terminate=lambda pid, hard=False: (self.terminated.append((pid, hard)),
+                                                                alive.update(v=False), True)[-1])
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertFalse(res["command_identity_verified"])
+        self.assertEqual({pid for pid, _ in self.terminated}, {7122})
+
+
+class TestStopNeverTouchesAnUnrelatedProcess(RealProcessBase):
+    """Requirements 12 + 13, against REAL processes rather than seams."""
+
+    def launcher_for(self, **kw):
+        kw.setdefault("root", ROOT)
+        kw.setdefault("workspace", self.ws)
+        kw.setdefault("health", lambda h, p: dict(UNHEALTHY))
+        kw.setdefault("port_probe", lambda h, p: False)
+        kw.setdefault("browser", lambda url: True)
+        kw.setdefault("stop_timeout", 2.0)
+        return L.Launcher(**kw)
+
+    def test_x30_start_token_mismatch_refuses_to_terminate_a_real_process(self):
+        """12 + 13: a real, live, unrelated process whose PID is in the record is NEVER signalled."""
+        proc = self.spawn_child()
+        self.ws.write_pid({"pid": proc.pid, "process_start_token": "tok-FROM-A-DIFFERENT-BOOT",
+                           "host": "127.0.0.1", "port": 8780})
+        res = self.launcher_for().stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PID_REUSED_BY_ANOTHER_PROCESS")
+        self.assertFalse(res["signalled"])
+        # the real process is untouched
+        self.assertIsNone(proc.poll(), "an unrelated process was terminated")
+        self.assertTrue(L.process_alive(proc.pid))
+
+    def test_x31_unproven_identity_refuses_to_terminate_a_real_process(self):
+        proc = self.spawn_child()
+        self.ws.write_pid({"pid": proc.pid, "process_start_token": "tok-x",
+                           "host": "127.0.0.1", "port": 8780})
+        res = self.launcher_for(start_token=lambda pid: None).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
+        self.assertFalse(res["signalled"])
+        self.assertIsNone(proc.poll())
+
+    @WINDOWS_ONLY
+    def test_x32_only_the_recorded_process_is_stopped_end_to_end(self):
+        """The full real stop path: the recorded child stops, a bystander child does not."""
+        target = self.spawn_child()
+        bystander = self.spawn_child()
+        self.ws.write_pid({"pid": target.pid,
+                           "process_start_token": L.process_start_token(target.pid),
+                           "host": "127.0.0.1", "port": 8780})
+        res = self.launcher_for(stop_timeout=15.0).stop()
+
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED, res.get("error_code"))
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(res["owner_message"], "The Toolkit stopped safely.")
+        self.assertEqual(res["exit_verification"]["source"], "windows_process_handle")
+        self.assertEqual(res["exit_verification"]["wait_name"], "WAIT_OBJECT_0")
+        self.assertFalse(res["exit_verification"]["still_active"])
+        self.assertTrue(res["runtime_state_cleared"])
+        self.assertIsNone(self.ws.read_pid())
+        target.wait(timeout=15)
+        self.assertIsNotNone(target.poll())
+        # 13) the bystander is untouched
+        self.assertIsNone(bystander.poll(), "an unrelated process was stopped")
+
+    @WINDOWS_ONLY
+    def test_x33_real_stop_is_fast_and_does_not_burn_the_whole_budget(self):
+        """The owner's defect, end to end: a real terminated console used to hold the launcher for
+        the full 15-second budget and then report CONSOLE_DID_NOT_STOP."""
+        target = self.spawn_child()
+        self.ws.write_pid({"pid": target.pid,
+                           "process_start_token": L.process_start_token(target.pid),
+                           "host": "127.0.0.1", "port": 8780})
+        res = self.launcher_for(stop_timeout=15.0).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertLess(res["stop_seconds"], 12.0, res)
+        self.assertNotEqual(res.get("error_code"), "CONSOLE_DID_NOT_STOP")
+
+
+class TestStopExitVerificationBoundary(LauncherBase):
+    """Requirements 16 + 17: nothing else moved."""
+
+    def test_x40_start_and_open_are_unchanged(self):
+        started = self.launcher(health=self._health_after(2), port_probe=lambda h, p: False).start()
+        self.assertEqual(started["readiness"], L.LAUNCHER_READY)
+        self.assertTrue(started["browser_opened"])
+        self.assertNotIn("exit_state", started)
+        self.assertNotIn("stop_state", started)
+        opened = self.launcher(health=lambda h, p: dict(HEALTHY)).open()
+        self.assertEqual(opened["readiness"], L.LAUNCHER_ALREADY_RUNNING)
+        self.assertFalse(opened["started_a_server"])
+        self.assertEqual(opened["owner_message"],
+                         "The toolkit was already running, so a second copy was not started.")
+        not_running = self.launcher(health=lambda h, p: dict(UNHEALTHY)).open()
+        self.assertEqual(not_running["readiness"], L.LAUNCHER_NOT_RUNNING)
+        self.assertEqual(not_running["owner_message"],
+                         "The toolkit is not running yet. Run Start-AMZ-Toolkit first.")
+
+    def _health_after(self, n):
+        box = {"n": 0}
+
+        def health(h, p):
+            box["n"] += 1
+            return dict(HEALTHY) if box["n"] >= n else dict(UNHEALTHY)
+        return health
+
+    def test_x41_validate_only_still_has_zero_side_effects(self):
+        res = L.validate_only(root=ROOT)
+        for k in ("files_written", "directories_created", "processes_spawned", "processes_signalled",
+                  "browsers_opened", "network_requests", "ports_probed", "locks_taken"):
+            self.assertEqual(res[k], 0, k)
+
+    def test_x42_seller_central_counters_remain_zero_on_every_stop_path(self):
+        alive = {"v": True}
+        outcomes = [
+            self.stop_result(pid=7200, alive=lambda pid: alive["v"],
+                             terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1]),
+            self.stop_result(pid=7201, alive=lambda pid: True, stop_timeout=1.0),
+            self.stop_result(pid=7202, alive=lambda pid: True, start_token=lambda pid: None),
+        ]
+        for res in outcomes:
+            self.assertEqual(res["seller_central_counters"], dict(L.SELLER_CENTRAL_COUNTERS))
+            self.assertTrue(all(v == 0 for v in res["seller_central_counters"].values()))
+            for flag in ("connects_to_seller_central", "uses_a_seller_api_or_advertising_api",
+                         "downloads_a_seller_report", "drives_a_seller_browser",
+                         "kills_a_process_it_did_not_start", "kills_every_python_process"):
+                self.assertTrue(res["launcher_never"][flag], flag)
+
+    def stop_result(self, pid, **kw):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": pid, "process_start_token": f"tok-{pid}"})
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        return self.launcher(**kw).stop()
+
+    def test_x43_no_image_name_kill_and_no_broad_python_termination(self):
+        src = read(LAUNCHER_PATH)
+        for banned in ("taskkill", "/IM ", "pkill", "killall", "psutil", "process_iter",
+                       "CreateToolhelp32Snapshot", "Process32", "WMIC", "Get-Process",
+                       "os.system", "shell=True"):
+            self.assertNotIn(banned, src, banned)
+        self.assertEqual(src.count("TerminateProcess("), 1)
+
+    def test_x44_stop_path_makes_no_amazon_request(self):
+        src = read(LAUNCHER_PATH)
+        for banned in ("sellercentral", "seller-central", "amazon.com", "sp-api", "advertising-api",
+                       "webservices.amazon"):
+            self.assertNotIn(banned, src.lower(), banned)
+
+    def test_x45_exit_verification_record_is_bounded_and_secret_free(self):
+        res = self.stop_result(pid=7203, alive=lambda pid: True, stop_timeout=1.0)
+        blob = json.dumps(res)
+        self.assertLess(len(json.dumps(res["exit_verification"])), 600)
+        self.assertLess(len(json.dumps(res["terminate_requests"])), 600)
+        for marker in ("C:\\\\", "Authorization", "csrf", "cookie"):
+            self.assertNotIn(marker, blob)
 
 
 if __name__ == "__main__":

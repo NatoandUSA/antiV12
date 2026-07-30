@@ -77,6 +77,22 @@ LAUNCHER_NOT_RUNNING = "SESSION7_14_LAUNCHER_NOT_RUNNING"
 LAUNCHER_BROWSER_UNAVAILABLE = "SESSION7_14_LAUNCHER_BROWSER_UNAVAILABLE"
 LAUNCHER_FAILED = "SESSION7_14_LAUNCHER_FAILED"
 
+# ---------------------------------------------------------------- proven process exit states
+# What the launcher can actually PROVE about the process it asked to stop. "Not exited" and "still
+# running" are different claims, and only one of them may be reported as a running console.
+EXIT_STATE_EXITED = "EXITED"          # proven gone: the kernel reported a real exit
+EXIT_STATE_RUNNING = "RUNNING"        # proven alive: still executing
+EXIT_STATE_UNPROVEN = "UNPROVEN"      # neither could be proven — fail closed, never claim success
+
+# The six distinct stop situations the owner's record must be able to tell apart. They map onto the
+# three owner-facing sentences below; the machine record keeps the full resolution.
+STOP_STATE_EXITED = "PROCESS_EXITED"
+STOP_STATE_EXITED_STALE_STATE = "PROCESS_EXITED_RUNTIME_STATE_STALE"
+STOP_STATE_ALIVE = "PROCESS_STILL_ALIVE"
+STOP_STATE_PORT_CLOSED_ALIVE = "PORT_CLOSED_PROCESS_ALIVE"
+STOP_STATE_TERMINATE_FAILED = "TERMINATION_REQUEST_FAILED"
+STOP_STATE_UNPROVEN = "PROCESS_STATE_UNPROVEN"
+
 # ---------------------------------------------------------------- pilot readiness of this checkout
 PILOT_READY = "SESSION7_14_PILOT_READY"
 PILOT_REQUIRED = "SESSION7_14_PILOT_REQUIRED"
@@ -276,7 +292,18 @@ def redact(text):
 
 # ================================================================ process identity (stdlib + ctypes)
 def process_alive(pid):
-    """True when a process with this PID currently exists. Never matches by name."""
+    """True when a process object with this PID still exists. Never matches by name.
+
+    WINDOWS LIMITATION, measured and proven by the Phase 7.14 real-process tests: this answer is
+    conclusive only when it is FALSE. Windows keeps a terminated process's object — and therefore its
+    PID — addressable for as long as ANY handle to it is open, so OpenProcess + GetProcessTimes keep
+    succeeding after the process has demonstrably exited (WaitForSingleObject signalled,
+    GetExitCodeProcess reporting a real exit code). A True answer therefore means "not yet freed",
+    which is NOT the same as "still running".
+
+    Stop must never infer a running console from this function alone; it proves exit through a handle
+    it holds itself (see WindowsExitVerifier). False remains conclusive: the object is only freed once
+    the process has exited and every handle to it is closed."""
     try:
         pid = int(pid)
     except (TypeError, ValueError):
@@ -350,42 +377,187 @@ def process_start_token(pid):
         return None
 
 
-def terminate_process(pid, *, hard=False):
-    """Signal ONE already-identity-verified process. Callers must verify identity first; this
-    function never searches for a process, never matches a name and never touches a process tree."""
+# ---------------------------------------------------------------- Windows exit proof
+_WIN_SYNCHRONIZE = 0x00100000
+_WIN_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_WIN_PROCESS_TERMINATE = 0x0001
+_WIN_STILL_ACTIVE = 259
+_WIN_WAIT_OBJECT_0 = 0x00000000
+_WIN_WAIT_TIMEOUT = 0x00000102
+_WIN_WAIT_FAILED = 0xFFFFFFFF
+_WIN_WAIT_NAMES = {_WIN_WAIT_OBJECT_0: "WAIT_OBJECT_0", _WIN_WAIT_TIMEOUT: "WAIT_TIMEOUT",
+                   _WIN_WAIT_FAILED: "WAIT_FAILED", 0x00000080: "WAIT_ABANDONED"}
+
+
+def _win_kernel32():
+    """kernel32 with the exact signatures this module uses. Stdlib ctypes only, no dependency."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.TerminateProcess.restype = wintypes.BOOL
+    k32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    k32.WaitForSingleObject.restype = wintypes.DWORD
+    k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.GetExitCodeProcess.restype = wintypes.BOOL
+    k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return ctypes, wintypes, k32
+
+
+class WindowsExitVerifier:
+    """Authoritative exit proof for ONE already-identity-verified process on Windows.
+
+    It opens a single read/synchronise handle (SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION —
+    never PROCESS_TERMINATE) BEFORE the process is asked to stop, and answers from the kernel:
+
+        WaitForSingleObject(handle, 0) == WAIT_OBJECT_0   -> the process object is signalled
+        GetExitCodeProcess(handle) != STILL_ACTIVE        -> and it carries a real exit code
+
+    Both must agree before an exit is reported. WAIT_TIMEOUT means "not yet proven exited", and a
+    failed API call means UNPROVEN — never success.
+
+    Holding this handle for the whole stop is what makes the answer trustworthy, and it also closes a
+    race the accepted baseline left open: Windows cannot recycle a PID while a handle to it is open,
+    so the PID this launcher terminates is provably still the PID whose identity it verified.
+    """
+
+    def __init__(self, pid):
+        self.pid = pid
+        self.handle = None
+        self.usable = False
+        self.open_error = None
+        try:
+            pid_i = int(pid)
+        except (TypeError, ValueError):
+            self.open_error = "INVALID_PID"
+            return
+        if pid_i <= 0:
+            self.open_error = "INVALID_PID"
+            return
+        try:
+            ctypes, wintypes, k32 = _win_kernel32()
+        except Exception:                        # noqa: BLE001 — never crash the launcher
+            self.open_error = "KERNEL32_UNAVAILABLE"
+            return
+        self._ctypes, self._wintypes, self._k32 = ctypes, wintypes, k32
+        handle = k32.OpenProcess(_WIN_SYNCHRONIZE | _WIN_PROCESS_QUERY_LIMITED_INFORMATION,
+                                 False, pid_i)
+        if not handle:
+            self.open_error = f"OPEN_PROCESS_FAILED_{ctypes.get_last_error()}"
+            return
+        self.handle = handle
+        self.usable = True
+
+    def state(self):
+        """The kernel's answer, as a bounded, secret-free diagnostic record."""
+        base = {"source": "windows_process_handle", "handle_held": bool(self.usable)}
+        if not self.usable:
+            base.update({"exit_state": EXIT_STATE_UNPROVEN, "api_error": self.open_error})
+            return base
+        ctypes, wintypes, k32 = self._ctypes, self._wintypes, self._k32
+        wait = int(k32.WaitForSingleObject(wintypes.HANDLE(self.handle), 0))
+        base["wait_result"] = wait
+        base["wait_name"] = _WIN_WAIT_NAMES.get(wait, f"WAIT_OTHER_{wait}")
+        if wait == _WIN_WAIT_FAILED:
+            base.update({"exit_state": EXIT_STATE_UNPROVEN,
+                         "api_error": f"WAIT_FAILED_{ctypes.get_last_error()}"})
+            return base
+        code = wintypes.DWORD(0)
+        got = bool(k32.GetExitCodeProcess(wintypes.HANDLE(self.handle), ctypes.byref(code)))
+        base["get_exit_code_ok"] = got
+        if not got:
+            base.update({"exit_state": EXIT_STATE_UNPROVEN,
+                         "api_error": f"GET_EXIT_CODE_FAILED_{ctypes.get_last_error()}"})
+            return base
+        base["exit_code"] = int(code.value)
+        base["still_active"] = int(code.value) == _WIN_STILL_ACTIVE
+        if wait == _WIN_WAIT_OBJECT_0 and not base["still_active"]:
+            base["exit_state"] = EXIT_STATE_EXITED
+        elif wait == _WIN_WAIT_TIMEOUT and base["still_active"]:
+            base["exit_state"] = EXIT_STATE_RUNNING
+        else:
+            # The two sources disagree (a signalled object still reporting STILL_ACTIVE, or the
+            # reverse). Nothing is proven, so nothing is claimed.
+            base["exit_state"] = EXIT_STATE_UNPROVEN
+            base["api_error"] = "WAIT_AND_EXIT_CODE_DISAGREE"
+        return base
+
+    def close(self):
+        if self.handle:
+            try:
+                self._k32.CloseHandle(self.handle)
+            except Exception:                    # noqa: BLE001
+                pass
+        self.handle = None
+        self.usable = False
+
+
+def open_exit_verifier(pid):
+    """A handle-backed exit verifier on Windows; None elsewhere (POSIX needs no such proof)."""
+    if os.name != "nt":
+        return None
+    return WindowsExitVerifier(pid)
+
+
+def terminate_process_result(pid, *, hard=False):
+    """Signal ONE already-identity-verified process and REPORT what the OS actually said.
+
+    Callers must verify identity first; this function never searches for a process, never matches a
+    name and never touches a process tree. The return value is a record, not a guess: a refused
+    request is visible to the caller instead of being discarded."""
+    out = {"ok": False, "hard": bool(hard), "api": None, "error": None}
     try:
         pid = int(pid)
     except (TypeError, ValueError):
-        return False
+        out["error"] = "INVALID_PID"
+        return out
     if pid <= 0:
-        return False
+        out["error"] = "INVALID_PID"
+        return out
     if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
         if not hard:
             # Graceful: the console is spawned as its own process-group leader, so a console
             # break reaches exactly that process and it shuts the server down cleanly.
+            out["api"] = "GenerateConsoleCtrlEvent"
             try:
                 os.kill(pid, signal.CTRL_BREAK_EVENT)
-                return True
-            except (OSError, AttributeError, ValueError):
-                return False
-        PROCESS_TERMINATE = 0x0001
-        k32.OpenProcess.restype = wintypes.HANDLE
-        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        handle = k32.OpenProcess(PROCESS_TERMINATE, False, pid)
-        if not handle:
-            return False
+                out["ok"] = True
+            except (OSError, AttributeError, ValueError) as e:
+                out["error"] = type(e).__name__
+            return out
+        out["api"] = "TerminateProcess"
         try:
-            return bool(k32.TerminateProcess(handle, 1))
+            ctypes, _wintypes, k32 = _win_kernel32()
+        except Exception:                        # noqa: BLE001
+            out["error"] = "KERNEL32_UNAVAILABLE"
+            return out
+        handle = k32.OpenProcess(_WIN_PROCESS_TERMINATE, False, pid)
+        if not handle:
+            out["error"] = f"OPEN_PROCESS_FAILED_{ctypes.get_last_error()}"
+            return out
+        try:
+            ctypes.set_last_error(0)
+            ok = bool(k32.TerminateProcess(handle, 1))
+            out["ok"] = ok
+            if not ok:
+                out["error"] = f"TERMINATE_PROCESS_FAILED_{ctypes.get_last_error()}"
         finally:
             k32.CloseHandle(handle)
+        return out
+    out["api"] = "SIGKILL" if hard else "SIGTERM"
     try:
         os.kill(pid, signal.SIGKILL if hard else signal.SIGTERM)
-        return True
-    except OSError:
-        return False
+        out["ok"] = True
+    except OSError as e:
+        out["error"] = type(e).__name__
+    return out
+
+
+def terminate_process(pid, *, hard=False):
+    """Boolean form of terminate_process_result, kept for the accepted call signature."""
+    return terminate_process_result(pid, hard=hard)["ok"]
 
 
 # ================================================================ preflight checks
@@ -742,7 +914,8 @@ class Launcher:
                  stop_timeout=STOP_TIMEOUT_SECONDS, open_browser_on_start=True,
                  workspace=None, clock=time.monotonic, sleep=time.sleep,
                  health=None, port_probe=None, spawn=None, browser=None,
-                 alive=None, start_token=None, terminate=None, python_exe=None):
+                 alive=None, start_token=None, terminate=None, python_exe=None,
+                 exit_verifier=None):
         self.root = os.path.abspath(root or repo_root())
         self.host = host
         self.port = port
@@ -760,7 +933,19 @@ class Launcher:
         self._browser = browser
         self._alive = alive or process_alive
         self._start_token = start_token or process_start_token
-        self._terminate = terminate or terminate_process
+        self._terminate = terminate or terminate_process_result
+        # Injecting `alive` replaces the whole process layer, handle-based half included: a test that
+        # declares process existence through a seam must not have a real Windows handle opened
+        # against its stand-in PID. Without an injected seam the real verifier is used.
+        self._exit_verifier = exit_verifier or ((lambda pid: None) if alive is not None
+                                                else open_exit_verifier)
+        # Where an exit answer comes from, and whether a True process_alive() may be believed. On
+        # POSIX it may (a PID that no longer resolves is gone, and one that does is running). On real
+        # Windows it may NOT: see process_alive.__doc__.
+        self._alive_authoritative = bool(alive is not None or os.name != "nt")
+        self._exit_source = "process_alive_seam" if alive is not None else (
+            "process_alive_posix" if os.name != "nt" else "process_alive_windows")
+        self.terminate_requests = []
         self.browser_opened = False
         self.browser_attempted = False
 
@@ -1019,44 +1204,130 @@ class Launcher:
                 owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PID_REUSED_BY_ANOTHER_PROCESS",
                                              "", phase="stop")))
 
-        # Command identity, where practical: the console still answering on the recorded port with
-        # the accepted health contract is the strongest evidence available without a dependency.
+        # Command identity, where practical. DIAGNOSTIC ONLY: it authorizes nothing. The accepted
+        # health contract answering on the recorded port is the strongest evidence available without
+        # a new dependency — and it is the ONLY positive evidence. The accepted baseline also
+        # reported "verified" whenever the probe failed to connect at all (`not http_status` is true
+        # for a transport error), so an unreachable console was recorded as an identity proof; the
+        # owner's 2026-07-30 record shows exactly that. Silence proves nothing and is no longer
+        # counted as proof.
         health = self._health(rec.get("host") or self.host, rec.get("port") or self.port)
-        command_verified = bool(health.get("ok")) or not health.get("http_status")
+        command_verified = bool(health.get("ok"))
+        command_evidence = ("ACCEPTED_HEALTH_CONTRACT" if command_verified else
+                            ("FOREIGN_HTTP_RESPONDER" if health.get("http_status")
+                             else "HEALTH_UNREACHABLE"))
 
-        self._terminate(pid, hard=False)
-        self.ws.log("stop.signalled", pid=_s(pid), hard=False)
-        waited, stopped = self._await_exit(pid, min(STOP_GRACE_SECONDS, self.stop_timeout))
-        escalated = False
-        if not stopped:
-            escalated = True
-            self._terminate(pid, hard=True)
-            self.ws.log("stop.escalated", pid=_s(pid), hard=True)
-            more, stopped = self._await_exit(pid, max(0.0, self.stop_timeout - waited))
-            waited += more
+        # The exit handle is opened BEFORE anything is signalled. It is what proves the outcome, and
+        # while it is held Windows cannot recycle this PID onto an unrelated program.
+        self.terminate_requests = []
+        verifier = self._exit_verifier(pid)
+        try:
+            self._request_terminate(pid, hard=False)
+            self.ws.log("stop.signalled", pid=_s(pid), hard=False,
+                        requested=self.terminate_requests[-1]["ok"])
+            waited, exit_state, evidence = self._await_exit(
+                pid, min(STOP_GRACE_SECONDS, self.stop_timeout), verifier)
+            escalated = False
+            hard_ok = None
+            if exit_state != EXIT_STATE_EXITED:
+                escalated = True
+                hard_ok = self._request_terminate(pid, hard=True)
+                self.ws.log("stop.escalated", pid=_s(pid), hard=True, requested=hard_ok)
+                more, exit_state, evidence = self._await_exit(
+                    pid, max(0.0, self.stop_timeout - waited), verifier)
+                waited += more
+        finally:
+            if verifier is not None:
+                verifier.close()
 
-        if stopped:
-            self.ws.clear_pid()
-            self.ws.log("stop.stopped", pid=_s(pid), waited=round(waited, 2), escalated=escalated)
+        # Supporting diagnostics only. Neither may authorize a termination or a success: a closed
+        # port does not prove a stopped process, and an open one does not prove a running console.
+        port_open = bool(self._port_probe(self.host, self.port))
+        after_health = self._health(self.host, self.port)
+        terminate_failed = bool(hard_ok is False)
+        common = dict(
+            pid=pid, signalled=True, identity_verified=True,
+            command_identity_verified=command_verified, command_identity_evidence=command_evidence,
+            escalated=escalated, stop_seconds=round(waited, 2), exit_state=exit_state,
+            exit_verification=evidence, terminate_requests=list(self.terminate_requests),
+            termination_request_failed=terminate_failed,
+            port_open_after_stop=port_open,
+            health_reachable_after_stop=bool(after_health.get("http_status") is not None),
+        )
+
+        if exit_state == EXIT_STATE_EXITED:
+            # Runtime state is cleared ONLY here, on the proven-exit path.
+            cleared = self.ws.clear_pid()
+            stop_state = STOP_STATE_EXITED if cleared else STOP_STATE_EXITED_STALE_STATE
+            self.ws.log("stop.stopped", pid=_s(pid), waited=round(waited, 2), escalated=escalated,
+                        exit_state=exit_state, stop_state=stop_state)
             return self._finish(self._result(
-                LAUNCHER_STOPPED, phase="stop", pid=pid, signalled=True, identity_verified=True,
-                command_identity_verified=command_verified, escalated=escalated,
-                stop_seconds=round(waited, 2),
+                LAUNCHER_STOPPED, phase="stop", stop_state=stop_state,
+                runtime_state_cleared=cleared, **common,
                 owner_message=_owner_message(LAUNCHER_STOPPED, "", "", phase="stop")))
-        self.ws.log("stop.still_running", pid=_s(pid), waited=round(waited, 2))
-        return self._finish(self._result(
-            LAUNCHER_FAILED, phase="stop", pid=pid, signalled=True, identity_verified=True,
-            command_identity_verified=command_verified, escalated=escalated,
-            stop_seconds=round(waited, 2), error_code="CONSOLE_DID_NOT_STOP",
-            owner_message=_owner_message(LAUNCHER_FAILED, "CONSOLE_DID_NOT_STOP", "", phase="stop")))
 
-    def _await_exit(self, pid, budget):
+        # Not proven exited: the PID record is deliberately LEFT IN PLACE so the next Stop still
+        # knows exactly which process it may signal, and nothing else is ever touched.
+        if exit_state == EXIT_STATE_RUNNING:
+            code = "CONSOLE_DID_NOT_STOP"
+            stop_state = (STOP_STATE_TERMINATE_FAILED if terminate_failed else
+                          (STOP_STATE_PORT_CLOSED_ALIVE if not port_open else STOP_STATE_ALIVE))
+            self.ws.log("stop.still_running", pid=_s(pid), waited=round(waited, 2),
+                        stop_state=stop_state)
+        else:
+            code = "CONSOLE_EXIT_NOT_PROVEN"
+            stop_state = STOP_STATE_TERMINATE_FAILED if terminate_failed else STOP_STATE_UNPROVEN
+            self.ws.log("stop.exit_unproven", pid=_s(pid), waited=round(waited, 2),
+                        stop_state=stop_state, reason=_s(evidence.get("api_error")))
+        return self._finish(self._result(
+            LAUNCHER_FAILED, phase="stop", stop_state=stop_state, runtime_state_cleared=False,
+            error_code=code, **common,
+            owner_message=_owner_message(LAUNCHER_FAILED, code, "", phase="stop")))
+
+    def _request_terminate(self, pid, hard):
+        """Ask the OS to stop ONE identity-verified process and RECORD what it answered.
+
+        The accepted baseline discarded this result, so a refused request was indistinguishable from
+        an accepted one. Both dict-returning and bool-returning seams are accepted."""
+        try:
+            res = self._terminate(pid, hard=hard)
+        except Exception as e:                   # noqa: BLE001 — a refusal is data, not a crash
+            res = {"ok": False, "error": type(e).__name__}
+        if isinstance(res, dict):
+            record = {"hard": bool(hard), "ok": bool(res.get("ok")),
+                      "api": res.get("api"), "error": res.get("error")}
+        else:
+            record = {"hard": bool(hard), "ok": bool(res), "api": None, "error": None}
+        self.terminate_requests.append(record)
+        return record["ok"]
+
+    def _exit_state(self, pid, verifier):
+        """What can be PROVEN about this process right now: EXITED, RUNNING or UNPROVEN."""
+        if verifier is not None and getattr(verifier, "usable", False):
+            ev = verifier.state()
+            return ev.get("exit_state", EXIT_STATE_UNPROVEN), ev
+        if not self._alive(pid):
+            # Conclusive on every platform: the PID no longer resolves to a process object at all.
+            return EXIT_STATE_EXITED, {"source": self._exit_source, "process_alive": False}
+        if self._alive_authoritative:
+            return EXIT_STATE_RUNNING, {"source": self._exit_source, "process_alive": True}
+        # Real Windows with no usable handle: "still openable" is not proof of life. Fail closed.
+        return EXIT_STATE_UNPROVEN, {"source": self._exit_source, "process_alive": True,
+                                     "api_error": "OPEN_PROCESS_TRUE_IS_NOT_PROOF_OF_LIFE"}
+
+    def _await_exit(self, pid, budget, verifier=None):
+        """Poll for a PROVEN exit under a bounded budget. Returns (waited, exit_state, evidence).
+
+        The loop is bounded by the owner's budget and never extended to hide an unproven state. An
+        exit that lands during the final sleep is still reported as an exit, because the state is
+        re-read at the top of the loop before the budget is re-checked."""
         started = self.clock()
         while True:
-            if not self._alive(pid):
-                return self.clock() - started, True
+            state, evidence = self._exit_state(pid, verifier)
+            if state == EXIT_STATE_EXITED:
+                return self.clock() - started, EXIT_STATE_EXITED, evidence
             if (self.clock() - started) >= budget:
-                return self.clock() - started, False
+                return self.clock() - started, state, evidence
             self.sleep(STOP_POLL_INTERVAL)
 
     # ---------------------------------------------------------------- open
@@ -1125,9 +1396,19 @@ _OWNER_MESSAGES = {
 # alone cannot name the operation. The machine-readable contract is untouched — readiness and
 # error_code keep the exact values the accepted Phase 7.14 baseline records, and only the sentence
 # the owner reads is phase-accurate. Nothing here changes what stop does.
+#
+# Phase 7.14 stop-exit-verification hotfix: the owner reads what was PROVEN, never a raw code. Three
+# sentences cover the six machine states — stopped, still running, and "could not confirm".
+STOP_SUCCESS_MESSAGE = "The Toolkit stopped safely."
+STOP_STILL_RUNNING_MESSAGE = ("The Toolkit is still running. Nothing else on this computer was "
+                              "stopped. Open technical details for the recorded reason.")
+STOP_EXIT_UNPROVEN_MESSAGE = ("The Toolkit could not confirm that the local server stopped safely. "
+                              "Nothing else on this computer was stopped. Open technical details "
+                              "for the recorded reason.")
+
 _STOP_OWNER_MESSAGES = {
-    "CONSOLE_DID_NOT_STOP": ("The toolkit did not stop within the allowed time. Nothing else on this "
-                             "computer was stopped. See the launcher log for the recorded reason."),
+    "CONSOLE_DID_NOT_STOP": STOP_STILL_RUNNING_MESSAGE,
+    "CONSOLE_EXIT_NOT_PROVEN": STOP_EXIT_UNPROVEN_MESSAGE,
     "PROCESS_IDENTITY_UNPROVEN": ("The toolkit was not stopped because the launcher could not safely "
                                   "verify the process identity. Nothing on this computer was stopped."),
     "PID_REUSED_BY_ANOTHER_PROCESS": ("The process was not stopped because it was not started by this "
@@ -1146,6 +1427,8 @@ def _owner_message(readiness, code, detail, phase=None):
         specific = _STOP_OWNER_MESSAGES.get(code)
         if specific:
             return specific
+        if readiness == LAUNCHER_STOPPED:
+            return STOP_SUCCESS_MESSAGE
         if readiness == LAUNCHER_FAILED:
             return STOP_FAILED_MESSAGE
     base = _OWNER_MESSAGES.get(readiness, "")
@@ -1218,7 +1501,7 @@ def build_arg_parser():
 
 
 _PRINT_KEYS = ("readiness", "console_url", "pid", "startup_seconds", "stop_seconds",
-               "browser_opened", "already_running", "error_code")
+               "browser_opened", "already_running", "exit_state", "stop_state", "error_code")
 
 
 def main(argv=None):

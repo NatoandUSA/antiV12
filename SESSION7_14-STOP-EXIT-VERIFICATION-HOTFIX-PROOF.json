@@ -1,0 +1,751 @@
+{
+  "amazon_boundary": {
+    "all_counters_zero": true,
+    "connectivity_scan": {
+      "active_amazon_account_paths": 0,
+      "artifact_regenerated_but_restored_not_committed": true,
+      "exit": 0,
+      "files_scanned": 96
+    },
+    "launcher_never": {
+      "binds_a_non_loopback_address": true,
+      "connects_to_seller_central": true,
+      "downloads_a_seller_report": true,
+      "drives_a_seller_browser": true,
+      "imports_an_arbitrary_module": true,
+      "kills_a_process_it_did_not_start": true,
+      "kills_every_python_process": true,
+      "logs_a_secret_value": true,
+      "opens_an_arbitrary_url": true,
+      "registers_a_service_or_scheduler": true,
+      "runs_an_arbitrary_command": true,
+      "selects_a_random_port": true,
+      "starts_with_windows": true,
+      "uses_a_seller_api_or_advertising_api": true,
+      "uses_shell_true": true
+    },
+    "network_code_added_by_this_hotfix": "NONE (ctypes / process lifecycle only)",
+    "policy_tests": {
+      "test_amazon_boundary + test_network_policy + test_connectivity_policy": "47 ran, OK, exit 0"
+    },
+    "seller_central_counters": {
+      "advertising_api_calls": 0,
+      "buyer_messages_sent": 0,
+      "review_requests_sent": 0,
+      "seller_account_mutations": 0,
+      "seller_api_calls": 0,
+      "seller_browser_automation_actions": 0,
+      "seller_bulk_uploads": 0,
+      "seller_central_connections": 0,
+      "seller_credential_store_count": 0,
+      "seller_report_downloads": 0
+    },
+    "tests": [
+      "test_x42",
+      "test_x44"
+    ]
+  },
+  "baseline_commit": "a68c1473ab904ff7b3fb26be0f7eaee73a7c7cf6",
+  "before_after_process_state_evidence": {
+    "AFTER_hotfix_handle_proof": {
+      "exit_code": 1,
+      "exit_state": "EXITED",
+      "launcher_would_report": "SESSION7_14_LAUNCHER_STOPPED",
+      "mechanism": "WaitForSingleObject + GetExitCodeProcess",
+      "still_active": false,
+      "wait_name": "WAIT_OBJECT_0",
+      "waited_seconds": 0.0
+    },
+    "BEFORE_accepted_baseline_process_alive_loop": {
+      "launcher_would_report": "SESSION7_14_LAUNCHER_FAILED / CONSOLE_DID_NOT_STOP",
+      "mechanism": "OpenProcess + GetProcessTimes (process_alive)",
+      "reported_stopped": false,
+      "waited_seconds": 15.05
+    },
+    "handle_state_before_signal": {
+      "exit_code": 259,
+      "exit_state": "RUNNING",
+      "get_exit_code_ok": true,
+      "handle_held": true,
+      "source": "windows_process_handle",
+      "still_active": true,
+      "wait_name": "WAIT_TIMEOUT",
+      "wait_result": 258
+    },
+    "pid": 13684,
+    "process_really_gone": true,
+    "process_start_token": "win-create-134299015828850980",
+    "terminate_process_result": {
+      "api": "TerminateProcess",
+      "error": null,
+      "hard": true,
+      "ok": true
+    }
+  },
+  "branch": "hotfix-phase7-14-stop-exit-verification",
+  "checkpoint_tag": "phase7-14-stop-exit-verification-checkpoint-a68c147",
+  "command_identity_verified_correction": {
+    "authorizes_anything": false,
+    "baseline_expression": "bool(health.ok) or not health.http_status",
+    "companion_field": "command_identity_evidence",
+    "corrected": true,
+    "defect": "a transport error carries no http_status, so an UNREACHABLE console was recorded as an identity proof",
+    "hotfix_expression": "bool(health.ok)",
+    "owner_record_showing_it": {
+      "command_identity_verified": true,
+      "health_reachable": false
+    },
+    "tests": [
+      "test_x23",
+      "test_x23b",
+      "test_x23c"
+    ],
+    "values": [
+      "ACCEPTED_HEALTH_CONTRACT",
+      "FOREIGN_HTTP_RESPONDER",
+      "HEALTH_UNREACHABLE"
+    ]
+  },
+  "end_to_end_differential": {
+    "baseline_a68c147": {
+      "command_identity_evidence": null,
+      "command_identity_verified": true,
+      "error_code": "CONSOLE_DID_NOT_STOP",
+      "escalated": true,
+      "exit_state": null,
+      "exit_verification": null,
+      "ground_truth_exit_code": 1,
+      "ground_truth_process_actually_exited": true,
+      "leg": "BASELINE_a68c147",
+      "owner_message": "The toolkit did not stop within the allowed time. Nothing else on this computer was stopped. See the launcher log for the recorded reason.",
+      "pid": 18940,
+      "pid_record_remaining": true,
+      "readiness": "SESSION7_14_LAUNCHER_FAILED",
+      "repo_root_head": "a68c147",
+      "runtime_state_cleared": null,
+      "stop_seconds": 15.01,
+      "stop_state": null,
+      "terminate_requests": null,
+      "third_party_handle_held_during_stop": true
+    },
+    "head": {
+      "command_identity_evidence": "HEALTH_UNREACHABLE",
+      "command_identity_verified": false,
+      "error_code": null,
+      "escalated": true,
+      "exit_state": "EXITED",
+      "exit_verification": {
+        "exit_code": 1,
+        "exit_state": "EXITED",
+        "get_exit_code_ok": true,
+        "handle_held": true,
+        "source": "windows_process_handle",
+        "still_active": false,
+        "wait_name": "WAIT_OBJECT_0",
+        "wait_result": 0
+      },
+      "ground_truth_exit_code": 1,
+      "ground_truth_process_actually_exited": true,
+      "leg": "HEAD_569a72d",
+      "owner_message": "The Toolkit stopped safely.",
+      "pid": 9124,
+      "pid_record_remaining": false,
+      "readiness": "SESSION7_14_LAUNCHER_STOPPED",
+      "repo_root_head": "569a72d",
+      "runtime_state_cleared": true,
+      "stop_seconds": 3.25,
+      "stop_state": "PROCESS_EXITED",
+      "terminate_requests": [
+        {
+          "api": "GenerateConsoleCtrlEvent",
+          "error": null,
+          "hard": false,
+          "ok": true
+        },
+        {
+          "api": "TerminateProcess",
+          "error": null,
+          "hard": true,
+          "ok": true
+        }
+      ],
+      "third_party_handle_held_during_stop": true
+    },
+    "method": "Both legs run the REAL Launcher.stop() with the REAL process layer (no alive seam, no terminate seam), each against its own freshly spawned real child, under the proven triggering condition: a third party holds a handle to the process object. Baseline runs from a detached worktree at a68c147. Ground truth is measured independently by releasing the handle and reaping the child.",
+    "verdict": "Both processes had genuinely exited with code 1. BASELINE reported SESSION7_14_LAUNCHER_FAILED / CONSOLE_DID_NOT_STOP after 15.01 s and left the PID record in place; HEAD reported SESSION7_14_LAUNCHER_STOPPED / EXITED after 3.25 s with WAIT_OBJECT_0 + exit_code 1. The same run reproduces the command_identity_verified defect: baseline true on an unreachable console, HEAD false with HEALTH_UNREACHABLE."
+  },
+  "exit_states": [
+    "EXITED",
+    "RUNNING",
+    "UNPROVEN"
+  ],
+  "files_changed": [
+    {
+      "bytes": 74789,
+      "line_endings": "LF",
+      "path": "production/phase7_owner_launcher.py",
+      "sha256": "e7d7825678b30ad211edf434ac70979f89eb08be4806be600b7a7d690b3e5b45"
+    },
+    {
+      "bytes": 187978,
+      "line_endings": "LF",
+      "path": "tests/test_phase7_14_owner_usability_pilot_readiness.py",
+      "sha256": "643e584a0f335efdee43636447aadff085b5ba14b3ff548d395b945fb98f10b1"
+    }
+  ],
+  "files_not_changed": [
+    "CAPABILITIES.json",
+    "docs/**",
+    "Start-AMZ-Toolkit.*",
+    "Stop-AMZ-Toolkit.*",
+    "Open-AMZ-Toolkit.*",
+    "production/phase7_unified_owner_console.py",
+    "production/phase7_unified_owner_console_static/**",
+    "any accepted business authority"
+  ],
+  "generated_at": "2026-07-30T17:20:00Z",
+  "get_exit_code_process_evidence": {
+    "after_natural_exit": {
+      "exit_code": 0,
+      "still_active": false
+    },
+    "after_terminate": {
+      "exit_code": 1,
+      "still_active": false
+    },
+    "both_sources_must_agree_before_exit_is_reported": true,
+    "running": {
+      "exit_code": 259,
+      "still_active": true
+    }
+  },
+  "head_commit": "569a72d2f6978e6498671755ade38d96e8e08412",
+  "hotfix": "STOP EXIT VERIFICATION",
+  "known_limitations": [
+    "The specific handle holder on the owner's machine is UNPROVEN; the fix is correct under either surviving explanation.",
+    "process_alive() remains true-but-not-conclusive on Windows; it is retained only where False is the load-bearing answer, and its docstring records the limitation.",
+    "An unproven stop deliberately leaves the PID record in place, so a genuinely-exited console whose exit was unprovable is re-signalled by the next Stop, still fully identity-gated.",
+    "PROCESS_EXITED_RUNTIME_STATE_STALE still reports success to the owner because the process did stop; the stale record is carried in runtime_state_cleared=false.",
+    "The graceful console-break is still expected to fail for a detached child on Windows, so a healthy stop costs about 3.3 s via escalation. Unchanged baseline behaviour.",
+    "The committed suite uses stand-in child processes rather than the console itself, to stay offline and port-free; a live launcher run is recorded in live_launcher_run."
+  ],
+  "live_launcher_run": {
+    "comparison_to_owner_incident": {
+      "historical_healthy_stop_seconds": 3.26,
+      "hotfix_error_code": null,
+      "hotfix_stop_seconds": 3.27,
+      "owner_error_code": "CONSOLE_DID_NOT_STOP",
+      "owner_stop_seconds": 15.03
+    },
+    "description": "Real end-to-end launcher run on the owner port 8780 against the real accepted Phase 7.13 console.",
+    "launcher_log_lines": [
+      "2026-07-30T16:15:33Z stop.signalled hard=False pid=17696 requested=False",
+      "2026-07-30T16:15:36Z stop.escalated hard=True pid=17696 requested=True",
+      "2026-07-30T16:15:39Z stop.stopped escalated=True exit_state=EXITED pid=17696 stop_state=PROCESS_EXITED waited=3.27",
+      "2026-07-30T16:15:55Z stop.already_stopped"
+    ],
+    "post_conditions": {
+      "console_process_gone": true,
+      "listening_socket_on_8780": false,
+      "time_wait_sockets_only": true,
+      "unrelated_process_stopped": false
+    },
+    "start": {
+      "browser": "--no-browser (not opened by choice, to avoid opening a window unprompted)",
+      "exit": 0,
+      "pid": 17696,
+      "readiness": "SESSION7_14_LAUNCHER_READY",
+      "startup_seconds": 0.55
+    },
+    "stop": {
+      "command_identity_evidence": "ACCEPTED_HEALTH_CONTRACT",
+      "command_identity_verified": true,
+      "escalated": true,
+      "exit": 0,
+      "exit_state": "EXITED",
+      "exit_verification": {
+        "exit_code": 1,
+        "get_exit_code_ok": true,
+        "handle_held": true,
+        "source": "windows_process_handle",
+        "still_active": false,
+        "wait_name": "WAIT_OBJECT_0",
+        "wait_result": 0
+      },
+      "graceful_refusal_is_expected_for_a_detached_child": true,
+      "health_reachable_after_stop": false,
+      "owner_message": "The Toolkit stopped safely.",
+      "pid": 17696,
+      "port_open_after_stop": false,
+      "readiness": "SESSION7_14_LAUNCHER_STOPPED",
+      "runtime_state_cleared": true,
+      "stop_seconds": 3.27,
+      "stop_state": "PROCESS_EXITED",
+      "terminate_requests": [
+        {
+          "api": "GenerateConsoleCtrlEvent",
+          "error": "OSError",
+          "hard": false,
+          "ok": false
+        },
+        {
+          "api": "TerminateProcess",
+          "error": null,
+          "hard": true,
+          "ok": true
+        }
+      ],
+      "termination_request_failed": false
+    },
+    "stop_again": {
+      "exit": 0,
+      "owner_message": "The toolkit was not running, so there was nothing to stop.",
+      "readiness": "SESSION7_14_LAUNCHER_ALREADY_STOPPED",
+      "wording_unchanged_from_accepted_baseline": true
+    }
+  },
+  "out_of_scope_confirmed_untouched": {
+    "amazon_authority_added": false,
+    "broad_launcher_rewrite": false,
+    "capabilities_json_changed": false,
+    "demo": false,
+    "owner_home": false,
+    "phase_8": false,
+    "ppc": false,
+    "seller_central_boundary_changed": false,
+    "slice_1_2_3": false,
+    "target_ids_fixed": false,
+    "test_199e_retired": false
+  },
+  "owner_messages": {
+    "accepted_assertions_updated": [
+      {
+        "now": "The Toolkit is still running. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
+        "test": "test_h03",
+        "was": "The toolkit did not stop within the allowed time.",
+        "why": "described the launcher clock, not the process; read identically whether the process was alive or merely unproven"
+      },
+      {
+        "now": "The Toolkit stopped safely.",
+        "test": "test_h07",
+        "was": "The toolkit has stopped.",
+        "why": "success is now reported only against a kernel-proven exit"
+      }
+    ],
+    "failure_process_still_running": "The Toolkit is still running. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
+    "failure_unproven_state": "The Toolkit could not confirm that the local server stopped safely. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
+    "raw_error_code_shown_as_primary_message": false,
+    "success": "The Toolkit stopped safely.",
+    "technical_details_fields": [
+      "exit_state",
+      "stop_state",
+      "exit_verification",
+      "terminate_requests",
+      "termination_request_failed",
+      "command_identity_evidence",
+      "port_open_after_stop",
+      "health_reachable_after_stop",
+      "runtime_state_cleared"
+    ],
+    "unchanged_non_stop_messages_still_asserted": [
+      "test_h06",
+      "test_h08",
+      "test_x40"
+    ]
+  },
+  "owner_observation": {
+    "browser_opened": false,
+    "command_identity_verified_reported": true,
+    "console_url": "http://127.0.0.1:8780",
+    "earlier_successful_stops_waited": 3.26,
+    "error_code": "CONSOLE_DID_NOT_STOP",
+    "independent_read_only_diagnostic": {
+      "health_reachable": false,
+      "listener_count": 0,
+      "reported_pid_exists": false,
+      "working_tree_clean": true
+    },
+    "log_timeline": {
+      "elapsed_seconds_process_reported_alive_after_termination": 52,
+      "still_reported_alive_at": "2026-07-30T14:49:08Z",
+      "terminated_hard_at": "2026-07-28..2026-07-30 14:48:16Z"
+    },
+    "occurrences": [
+      "stop.still_running pid=14360 waited=15.04",
+      "stop.still_running pid=14360 waited=15.03"
+    ],
+    "pid": 14360,
+    "readiness": "SESSION7_14_LAUNCHER_FAILED",
+    "source": "runs/T2/phase7/7.14/launcher/launcher_status.json + launcher.log",
+    "stop_seconds": 15.03
+  },
+  "platform": {
+    "os": "Windows 11 Pro 10.0.26200",
+    "python": "3.12.10"
+  },
+  "preserved_contracts": {
+    "bounded_timeout": true,
+    "command_identity_validation": true,
+    "exact_pid_validation": true,
+    "fail_safe_default": true,
+    "infinite_loop": false,
+    "kills_all_python": false,
+    "launcher_audit_log_behaviour": true,
+    "no_broad_python_termination": true,
+    "no_unrelated_process_termination": true,
+    "open_contract": true,
+    "pid_pinned_against_reuse_while_handle_held": true,
+    "port_or_health_authorizes_termination_or_success": false,
+    "process_start_token_validation": true,
+    "runtime_state_cleanup_only_after_proven_exit": true,
+    "start_contract": true,
+    "stop_timeout_seconds": 15.0,
+    "taskkill_by_image_name": false,
+    "timeout_extended_to_hide_defect": false
+  },
+  "regression": {
+    "accepted_baseline_reference": {
+      "duration_seconds": 879.9,
+      "errors": 0,
+      "exit_code": 1,
+      "failures": 1,
+      "ran": 4630,
+      "skipped": 4,
+      "source": "SESSION7_14-NEXT-ACTION-NAVIGATION-HOTFIX-ACCEPTANCE-REPORT.md finding 106 (HEAD 5fcbf6f)"
+    },
+    "baseline_equivalence": {
+      "delta_errors": 0,
+      "delta_failures": 0,
+      "delta_ran": 38,
+      "delta_skipped": 0,
+      "explanation": "+38 ran is exactly the 38 tests this hotfix adds. The failure set, error count and skip count are unchanged. The suite is NOT green and is not reported as green.",
+      "verdict": "BASELINE_EQUIVALENT_NONZERO"
+    },
+    "compile_checks": {
+      "compileall production/ tests/": "exit 0",
+      "py_compile changed files": "OK"
+    },
+    "full_in_place_suite": {
+      "command": "python -m unittest discover -s tests",
+      "duration_seconds": 1129.77,
+      "errors": 0,
+      "exit_code": 1,
+      "failures": 1,
+      "only_failure": "test_199e_no_acceptance_tag_yet",
+      "ran": 4668,
+      "skipped": 4
+    },
+    "known_stale_failure": {
+      "classification": "STALE_BASELINE_EQUIVALENT",
+      "observed_assertion": "AssertionError: 'checkpoint' not found in 'phase7-14-next-action-navigation-hotfix-accepted-a68c147'",
+      "proof": [
+        "It asserts that every phase7-14-* git tag contains 'checkpoint', i.e. that no Phase 7.14 acceptance tag exists.",
+        "Three acceptance tags exist: phase7-14-owner-usability-pilot-readiness-accepted-b3e357e, phase7-14-stop-owner-message-hotfix-accepted-b5324f8, phase7-14-next-action-navigation-hotfix-accepted-a68c147.",
+        "git merge-base --is-ancestor proves ALL THREE are ancestors of the baseline commit a68c147, so they existed before this hotfix began.",
+        "The test reads repo-global git tag state, not working-tree content; this hotfix created no tag.",
+        "git diff a68c147..HEAD -- tests/ contains zero references to 199e: the test is byte-identical to baseline.",
+        "Therefore the failure reproduces identically on the untouched baseline."
+      ],
+      "retired_or_skipped_or_weakened": false,
+      "test": "test_199e_no_acceptance_tag_yet"
+    },
+    "policy_scanner": {
+      "active_amazon_account_paths": 0,
+      "artifact_regenerated_but_restored_not_committed": true,
+      "command": "python scripts/connectivity_scan.py",
+      "exit_code": 0,
+      "files_scanned": 96,
+      "findings": 83
+    },
+    "policy_tests": {
+      "command": "python -m unittest tests.test_amazon_boundary tests.test_network_policy tests.test_connectivity_policy",
+      "exit_code": 0,
+      "ran": 47,
+      "result": "OK"
+    }
+  },
+  "root_cause": {
+    "mechanism": "OpenProcess + GetProcessTimes succeed on a terminated, handle-referenced process object; Windows frees the object only after exit AND full handle release.",
+    "proven_by": [
+      "probe_win_exit case A",
+      "probe_real_topology case 2",
+      "before_after",
+      "tests test_x02",
+      "tests test_x03"
+    ],
+    "statement": "process_alive() is not an exit test on Windows. It answers 'is this PID still addressable?', which remains true for an already-exited process for as long as ANY handle to the process object is open. _await_exit() polled exactly that, so a console the kernel had already reported as terminated was reported to the owner as still running, and the full 15 s budget was consumed before CONSOLE_DID_NOT_STOP.",
+    "unproven_and_declared": {
+      "surviving_explanations": [
+        "third-party handle holder (AV / indexer / WMI / conhost)",
+        "genuinely slow kernel-side process teardown"
+      ],
+      "which_component_held_the_handle_on_the_owner_machine": "UNPROVEN",
+      "why_it_does_not_matter": "The launcher's own topology releases in 0.25 s on this machine (probe_real_topology case 1), so a third party held the reference, or the kernel teardown was genuinely slow. The accepted baseline cannot distinguish those two, and that inability IS the defect. Exit is now proven through a handle the launcher holds itself, so neither explanation can produce a false CONSOLE_DID_NOT_STOP."
+    },
+    "verdict": "PROVEN"
+  },
+  "schema_version": "phase7-14-stop-exit-verification-proof-v1",
+  "stage_id": "7.14",
+  "status": {
+    "acceptance_tag_created": false,
+    "branch_pushed": true,
+    "independent_audit_requested": true,
+    "main_modified": false,
+    "merged": false
+  },
+  "stop_states": {
+    "port_closed_but_process_alive": "PORT_CLOSED_PROCESS_ALIVE",
+    "process_definitely_exited": "PROCESS_EXITED",
+    "process_gone_but_runtime_state_stale": "PROCESS_EXITED_RUNTIME_STATE_STALE",
+    "process_state_could_not_be_proven": "PROCESS_STATE_UNPROVEN",
+    "process_still_alive": "PROCESS_STILL_ALIVE",
+    "termination_request_failed": "TERMINATION_REQUEST_FAILED"
+  },
+  "terminate_process_evidence": {
+    "baseline_behaviour": "return value discarded; a refused request was indistinguishable from an accepted one",
+    "failed_request_can_reach_success_path": false,
+    "graceful_request_failure_counts_toward_termination_request_failed": false,
+    "hotfix_behaviour": "terminate_process_result() returns {ok, hard, api, error} with the Windows error code folded into error; every request recorded in terminate_requests",
+    "observed_failure_invalid_pid": {
+      "error": "INVALID_PID",
+      "ok": false
+    },
+    "observed_failure_open_process": {
+      "open_last_error": 87,
+      "opened": false,
+      "terminate_last_error": null,
+      "terminate_returned": null
+    },
+    "observed_success": {
+      "api": "TerminateProcess",
+      "error": null,
+      "hard": true,
+      "ok": true
+    }
+  },
+  "tests": {
+    "accepted_assertions_updated": [
+      "test_h03",
+      "test_h07"
+    ],
+    "focused_phase7_14_suite": {
+      "added": 38,
+      "baseline_ran": 465,
+      "command": "python -m unittest tests.test_phase7_14_owner_usability_pilot_readiness",
+      "errors": 0,
+      "failures": 1,
+      "head_ran": 503,
+      "only_failure": "test_199e_no_acceptance_tag_yet",
+      "skipped": 0
+    },
+    "new_stop_exit_classes_only": {
+      "command": "python -m unittest -v ...TestWindowsRealProcessExitProof ...TestStopNeverTouchesAnUnrelatedProcess ...TestStopExitVerificationContract ...TestStopExitVerificationBoundary",
+      "errors": 0,
+      "failures": 0,
+      "ran": 38,
+      "result": "OK",
+      "skipped": 0,
+      "windows_real_lifecycle_tests_skipped": 0
+    },
+    "requirement_coverage": {
+      "10_exited_but_stale_runtime_state": [
+        "test_x14"
+      ],
+      "11_state_cleaned_only_after_proven_exit": [
+        "test_x15",
+        "test_x10"
+      ],
+      "12_pid_start_token_mismatch_refuses": [
+        "test_x30",
+        "test_x31"
+      ],
+      "13_unrelated_process_never_stopped": [
+        "test_x30",
+        "test_x32"
+      ],
+      "14_owner_success_message_truthful": [
+        "test_x19",
+        "test_h07"
+      ],
+      "15_owner_failure_message_truthful": [
+        "test_x20",
+        "test_x21",
+        "test_x22",
+        "test_h03"
+      ],
+      "16_start_open_equivalent": [
+        "test_x40",
+        "test_x41"
+      ],
+      "17_seller_central_counters_zero": [
+        "test_x42",
+        "test_x44"
+      ],
+      "1_real_child_exits_detected_as_exited": [
+        "test_x01",
+        "test_x04"
+      ],
+      "2_terminated_child_handle_referenced": [
+        "test_x02",
+        "test_x03"
+      ],
+      "3_process_handle_is_signaled": [
+        "test_x01",
+        "test_x32"
+      ],
+      "4_get_exit_code_non_still_active": [
+        "test_x01",
+        "test_x04",
+        "test_x32"
+      ],
+      "5_terminate_process_returns_failure": [
+        "test_x05",
+        "test_x16",
+        "test_x16c"
+      ],
+      "6_process_alive_through_timeout": [
+        "test_x10"
+      ],
+      "7_exits_immediately_before_timeout": [
+        "test_x11"
+      ],
+      "8_exits_after_a_polling_boundary": [
+        "test_x12"
+      ],
+      "9_port_closed_process_alive": [
+        "test_x13",
+        "test_x13b"
+      ]
+    },
+    "test_199e_retired": false
+  },
+  "wait_for_single_object_evidence": {
+    "exited_after_terminate": {
+      "wait_name": "WAIT_OBJECT_0",
+      "wait_result": 0
+    },
+    "exited_naturally": {
+      "wait_name": "WAIT_OBJECT_0",
+      "wait_result": 0
+    },
+    "handle_opened_before_any_signal": true,
+    "handle_rights_never_requested": "PROCESS_TERMINATE",
+    "handle_rights_requested": "SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION",
+    "running": {
+      "wait_name": "WAIT_TIMEOUT",
+      "wait_result": 258
+    },
+    "wait_failed_or_api_failure": "UNPROVEN (fail closed)"
+  },
+  "windows_real_process_probes": {
+    "probe_1_handle_conditions": {
+      "A_after_handles_closed": {
+        "alive_now": false,
+        "alive_poll": {
+          "alive_at_end": false,
+          "alive_at_start": false,
+          "first_false_at": 0.0,
+          "samples_taken": 9,
+          "true_for_whole_window": false,
+          "window_seconds": 2.0
+        },
+        "start_token_now": null
+      },
+      "A_handle_referenced": {
+        "alive_before_terminate": true,
+        "alive_poll_handle_open": {
+          "alive_at_end": true,
+          "alive_at_start": true,
+          "first_false_at": null,
+          "samples_taken": 17,
+          "true_for_whole_window": true,
+          "window_seconds": 4.0
+        },
+        "pid": 16948,
+        "start_token": "win-create-134299015570946878",
+        "terminate": {
+          "open_last_error": 0,
+          "opened": true,
+          "terminate_last_error": 0,
+          "terminate_returned": true
+        },
+        "wait_after_terminate_handle_open": {
+          "exit_code": 1,
+          "get_exit_code_ok": true,
+          "still_active": false,
+          "wait": 0,
+          "wait_name": "WAIT_OBJECT_0"
+        },
+        "wait_before_terminate": {
+          "exit_code": 259,
+          "get_exit_code_ok": true,
+          "still_active": true,
+          "wait": 258,
+          "wait_name": "WAIT_TIMEOUT"
+        }
+      },
+      "B_no_handle_referenced": {
+        "alive_before_terminate": true,
+        "alive_poll_no_handle": {
+          "alive_at_end": false,
+          "alive_at_start": true,
+          "first_false_at": 0.25,
+          "samples_taken": 17,
+          "true_for_whole_window": false,
+          "window_seconds": 4.0
+        },
+        "pid": 9876,
+        "start_token": "win-create-134299015644132662",
+        "terminate": {
+          "open_last_error": 0,
+          "opened": true,
+          "terminate_last_error": 0,
+          "terminate_returned": true
+        }
+      },
+      "C_natural_exit": {
+        "alive_after_handles_closed": false,
+        "alive_handle_open": true,
+        "pid": 19108,
+        "wait_after_natural_exit": {
+          "exit_code": 0,
+          "get_exit_code_ok": true,
+          "still_active": false,
+          "wait": 0,
+          "wait_name": "WAIT_OBJECT_0"
+        }
+      },
+      "D_terminate_impossible_pid": {
+        "open_last_error": 87,
+        "opened": false,
+        "terminate_last_error": null,
+        "terminate_returned": null
+      }
+    },
+    "probe_2_real_stop_topology": {
+      "alive_before_terminate": true,
+      "case1_no_handle": {
+        "first_false_at": 0.25,
+        "samples": 21,
+        "true_for_whole_window": false
+      },
+      "case2_after_handle_closed": {
+        "process_alive": false
+      },
+      "case2_stopper_holds_handle": {
+        "exit_code": 1,
+        "pid": 7076,
+        "process_alive_first_false_at": null,
+        "process_alive_true_for_whole_window": true,
+        "still_active": false,
+        "wait_for_single_object": 0,
+        "wait_is_signaled": true
+      },
+      "child_pid": 11708,
+      "open_for_terminate_ok": true,
+      "spawner_exited": true,
+      "terminate_last_error": 0,
+      "terminate_returned": true
+    }
+  }
+}

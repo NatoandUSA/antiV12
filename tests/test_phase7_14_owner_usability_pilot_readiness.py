@@ -955,7 +955,7 @@ class TestStopOwnerMessage(LauncherBase):
         self.assertEqual(res["error_code"], "CONSOLE_DID_NOT_STOP")
         self.assertEqual(res["exit_state"], L.EXIT_STATE_RUNNING)
         self.assertEqual(res["owner_message"], L.STOP_STILL_RUNNING_MESSAGE)
-        self.assertIn("The Toolkit is still running.", res["owner_message"])
+        self.assertIn("The toolkit is still running.", res["owner_message"])
         self.assertIn("Nothing else on this computer was stopped.", res["owner_message"])
 
     # ---- 4) identity refusal wording -----------------------------------------------------------
@@ -992,7 +992,7 @@ class TestStopOwnerMessage(LauncherBase):
         res = self.stop_success()
         self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
         self.assertEqual(res["owner_message"], L.STOP_SUCCESS_MESSAGE)
-        self.assertEqual(res["owner_message"], "The Toolkit stopped safely.")
+        self.assertEqual(res["owner_message"], "The toolkit stopped safely.")
         self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
         self.assertTrue(res["identity_verified"])
 
@@ -3552,6 +3552,8 @@ class TestStopExitVerificationContract(LauncherBase):
     def test_x17_unproven_exit_state_is_reported_as_unproven(self):
         class Unprovable:
             usable = True
+            start_token = "tok-7112"             # identity proven; only the EXIT state is unprovable
+            token_error = None
 
             def state(self):
                 return {"source": "windows_process_handle", "exit_state": L.EXIT_STATE_UNPROVEN,
@@ -3573,6 +3575,8 @@ class TestStopExitVerificationContract(LauncherBase):
         kernel-proven exit into a false CONSOLE_DID_NOT_STOP. This is the owner's defect, inverted."""
         class Exited:
             usable = True
+            start_token = "tok-7113"             # the pinned handle proves it is the recorded process
+            token_error = None
 
             def state(self):
                 return {"source": "windows_process_handle", "exit_state": L.EXIT_STATE_EXITED,
@@ -3598,7 +3602,7 @@ class TestStopExitVerificationContract(LauncherBase):
         alive = {"v": True}
         res = self.stop_with(pid=7115, alive=lambda pid: alive["v"],
                              terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1])
-        self.assertEqual(res["owner_message"], "The Toolkit stopped safely.")
+        self.assertEqual(res["owner_message"], "The toolkit stopped safely.")
         self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
 
     def test_x20_owner_failure_messages_are_truthful_and_scoped(self):
@@ -3619,17 +3623,108 @@ class TestStopExitVerificationContract(LauncherBase):
                          "TERMINATE_PROCESS_FAILED", "SESSION7_14_"):
                 self.assertNotIn(code, msg)
 
-    def test_x22_three_owner_sentences_cover_the_six_machine_states(self):
+    def test_x22_four_owner_sentences_cover_the_six_machine_states(self):
+        """A proven exit whose runtime record could NOT be cleaned up gets its own qualified
+        sentence: it is still a success, but not the same success, and the owner has to know before
+        starting again. One capitalization throughout, so a single Stop session never mixes forms."""
         states = {L.STOP_STATE_EXITED, L.STOP_STATE_EXITED_STALE_STATE, L.STOP_STATE_ALIVE,
                   L.STOP_STATE_PORT_CLOSED_ALIVE, L.STOP_STATE_TERMINATE_FAILED,
                   L.STOP_STATE_UNPROVEN}
         self.assertEqual(len(states), 6)
-        msgs = {L.STOP_SUCCESS_MESSAGE, L.STOP_STILL_RUNNING_MESSAGE, L.STOP_EXIT_UNPROVEN_MESSAGE}
-        self.assertEqual(len(msgs), 3)
+        msgs = {L.STOP_SUCCESS_MESSAGE, L.STOP_EXITED_STALE_STATE_MESSAGE,
+                L.STOP_STILL_RUNNING_MESSAGE, L.STOP_EXIT_UNPROVEN_MESSAGE}
+        self.assertEqual(len(msgs), 4)
         for m in msgs:
-            self.assertTrue(m.startswith("The Toolkit"), m)
-        for m in (L.STOP_STILL_RUNNING_MESSAGE, L.STOP_EXIT_UNPROVEN_MESSAGE):
+            self.assertTrue(m.startswith("The toolkit "), m)
+            self.assertNotIn("The Toolkit", m)
+        for m in (L.STOP_EXITED_STALE_STATE_MESSAGE, L.STOP_STILL_RUNNING_MESSAGE,
+                  L.STOP_EXIT_UNPROVEN_MESSAGE):
             self.assertIn("Nothing else on this computer was stopped.", m)
+
+    # ---- the pinned-handle ordering contract -----------------------------------------------------
+    def test_x57_pinned_handle_is_opened_before_health_and_held_to_the_very_end(self):
+        """Requirements 1, 5 and 8, as an observable ORDER.
+
+        The accepted implementation probed health -- up to HEALTH_REQUEST_TIMEOUT, 3.0 s -- while the
+        PID was unpinned, and only then opened the handle. The handle must now be the FIRST thing
+        that happens and the LAST thing released."""
+        order = []
+
+        class Pinned:
+            usable = True
+            start_token = "tok-7150"
+            token_error = None
+
+            def state(self):
+                return {"source": "windows_process_handle", "exit_state": L.EXIT_STATE_EXITED,
+                        "wait_name": "WAIT_OBJECT_0", "exit_code": 0, "still_active": False}
+
+            def close(self):
+                order.append("verifier_closed")
+
+        def verifier(pid):
+            order.append("verifier_opened")
+            return Pinned()
+
+        def health(h, p):
+            order.append("health")
+            return dict(HEALTHY)
+
+        res = self.stop_with(pid=7150, alive=lambda pid: True, exit_verifier=verifier,
+                             health=health)
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(order[0], "verifier_opened")
+        self.assertIn("health", order)
+        self.assertLess(order.index("verifier_opened"), order.index("health"))
+        self.assertEqual(order[-1], "verifier_closed")
+        self.assertEqual(res["process_identity"]["authorized_by"], "PINNED_HANDLE_TOKEN")
+        self.assertTrue(res["process_identity"]["handle_token_matches_recorded"])
+
+    def test_x58_identity_refusal_probes_no_health_and_signals_nothing(self):
+        """A refusal must not even reach the health probe: the decision is already made, and the
+        probe is what used to create the unpinned window."""
+        calls = []
+
+        class Pinned:
+            usable = True
+            start_token = "tok-DIFFERENT"
+            token_error = None
+
+            def state(self):
+                return {"source": "windows_process_handle", "exit_state": L.EXIT_STATE_RUNNING}
+
+            def close(self):
+                pass
+
+        res = self.stop_with(pid=7151, token="tok-RECORDED", alive=lambda pid: True,
+                             exit_verifier=lambda pid: Pinned(),
+                             health=lambda h, p: (calls.append(1), dict(HEALTHY))[-1])
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PID_REUSED_BY_ANOTHER_PROCESS")
+        self.assertEqual(calls, [], "health was probed after identity had already failed")
+        self.assertEqual(res["terminate_requests"], [])
+        self.assertEqual(self.terminated, [])
+        self.assertFalse(res["runtime_state_cleared"])
+        self.assertIsNotNone(self.ws.read_pid(), "a refusal cleared runtime state")
+
+    def test_x59_stale_runtime_record_gets_its_own_qualified_sentence(self):
+        """A proven exit whose runtime record could not be cleaned up must NOT read as the plain
+        success sentence: the owner has to know before starting again."""
+        alive = {"v": True}
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 7152, "process_start_token": "tok-7152"})
+        orig = self.ws.clear_pid
+        self.ws.clear_pid = lambda: False
+        self.addCleanup(setattr, self.ws, "clear_pid", orig)
+        res = self.launcher(alive=lambda pid: alive["v"], health=lambda h, p: dict(HEALTHY),
+                            terminate=lambda pid, hard=False: (alive.update(v=False), True)[-1]).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertEqual(res["stop_state"], L.STOP_STATE_EXITED_STALE_STATE)
+        self.assertFalse(res["runtime_state_cleared"])
+        self.assertEqual(res["owner_message"], L.STOP_EXITED_STALE_STATE_MESSAGE)
+        self.assertNotEqual(res["owner_message"], L.STOP_SUCCESS_MESSAGE)
+        self.assertIn("could not be cleaned up", res["owner_message"])
+        self.assertIn("Open technical details before starting it again.", res["owner_message"])
 
     # ---- command identity ------------------------------------------------------------------------
     def test_x23_command_identity_is_not_claimed_when_health_is_unreachable(self):
@@ -3712,7 +3807,7 @@ class TestStopNeverTouchesAnUnrelatedProcess(RealProcessBase):
 
         self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED, res.get("error_code"))
         self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
-        self.assertEqual(res["owner_message"], "The Toolkit stopped safely.")
+        self.assertEqual(res["owner_message"], "The toolkit stopped safely.")
         self.assertEqual(res["exit_verification"]["source"], "windows_process_handle")
         self.assertEqual(res["exit_verification"]["wait_name"], "WAIT_OBJECT_0")
         self.assertFalse(res["exit_verification"]["still_active"])
@@ -3735,6 +3830,167 @@ class TestStopNeverTouchesAnUnrelatedProcess(RealProcessBase):
         self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
         self.assertLess(res["stop_seconds"], 12.0, res)
         self.assertNotEqual(res.get("error_code"), "CONSOLE_DID_NOT_STOP")
+
+
+class TestStopProcessIdentityRace(RealProcessBase):
+    """The PID identity race, against REAL Windows processes.
+
+    The accepted implementation checked the recorded start token through a TRANSIENT handle, then
+    spent up to HEALTH_REQUEST_TIMEOUT (3.0 s) probing health with the PID unpinned, and only then
+    opened the verifier handle. Hard escalation opened a further handle by raw PID and terminated
+    through it without ever re-reading identity. An independent audit used that interval to have an
+    unrelated process terminated.
+
+    These tests prove the remediation on real process objects: the pinned handle is opened first,
+    identity is read back through that exact handle, the termination handle is validated separately,
+    and an unrelated replacement process survives untouched."""
+
+    def launcher_for(self, **kw):
+        kw.setdefault("root", ROOT)
+        kw.setdefault("workspace", self.ws)
+        kw.setdefault("health", lambda h, p: dict(UNHEALTHY))
+        kw.setdefault("port_probe", lambda h, p: False)
+        kw.setdefault("browser", lambda url: True)
+        kw.setdefault("stop_timeout", 2.0)
+        return L.Launcher(**kw)
+
+    @WINDOWS_ONLY
+    def test_x50_identity_is_read_through_the_exact_pinned_handle(self):
+        """The verifier answers identity from the handle it holds, not from the PID number."""
+        proc = self.spawn_child()
+        v = L.open_exit_verifier(proc.pid)
+        self.addCleanup(v.close)
+        self.assertTrue(v.usable, v.open_error)
+        self.assertIsNotNone(v.start_token)
+        self.assertIsNone(v.token_error)
+        # The handle-derived token and the raw-PID token agree for a process that has NOT been
+        # replaced -- which is what makes them comparable at all.
+        self.assertEqual(v.start_token, L.process_start_token(proc.pid))
+        self.assertTrue(v.start_token.startswith("win-create-"), v.start_token)
+        self.assertTrue(v.identity(v.start_token)["matches"])
+        self.assertTrue(v.identity(v.start_token)["handle_token_read"])
+        self.assertFalse(v.identity("win-create-1")["matches"])
+        self.assertFalse(v.identity(None)["matches"])
+
+    @WINDOWS_ONLY
+    def test_x51_termination_handle_refuses_a_mismatched_token_and_kills_nothing(self):
+        """Requirement 6, at the API boundary: a PROCESS_TERMINATE handle whose own creation token
+        does not match is never terminated through. The real process must survive."""
+        proc = self.spawn_child()
+        res = L.terminate_process_result(proc.pid, hard=True, expect_token="win-create-1")
+        self.assertFalse(res["ok"], res)
+        self.assertEqual(res["error"], "TERMINATION_IDENTITY_MISMATCH")
+        self.assertTrue(res["identity_checked"])
+        self.assertFalse(res["identity_verified"])
+        time.sleep(0.4)
+        self.assertIsNone(proc.poll(), "a process with a mismatched token was terminated")
+        self.assertTrue(L.process_alive(proc.pid))
+
+    @WINDOWS_ONLY
+    def test_x52_termination_handle_accepts_only_the_matching_token(self):
+        """The same gate must not block a legitimate stop: the matching token terminates."""
+        proc = self.spawn_child()
+        token = L.process_start_token(proc.pid)
+        res = L.terminate_process_result(proc.pid, hard=True, expect_token=token)
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(res["identity_checked"])
+        self.assertTrue(res["identity_verified"])
+        self.assertIsNone(res["error"])
+        proc.wait(timeout=15)
+        self.assertIsNotNone(proc.poll())
+
+    @WINDOWS_ONLY
+    def test_x53_an_unrelated_replacement_process_survives_the_whole_stop(self):
+        """Requirement 9 -- the auditor's scenario, end to end on the REAL stop path.
+
+        The recorded PID is live, but the process holding it is NOT the recorded one: its creation
+        token differs. That is exactly what a stop sees after Windows has handed the number to
+        something else. The replacement must be left completely alone."""
+        donor = self.spawn_child()                    # the console that "exited"
+        recorded_token = L.process_start_token(donor.pid)
+        self.assertIsNotNone(recorded_token)
+        L.terminate_process_result(donor.pid, hard=True, expect_token=recorded_token)
+        donor.wait(timeout=15)
+
+        replacement = self.spawn_child()              # the unrelated program now holding the PID
+        self.assertNotEqual(L.process_start_token(replacement.pid), recorded_token)
+        self.ws.write_pid({"pid": replacement.pid, "process_start_token": recorded_token,
+                           "host": "127.0.0.1", "port": 8780})
+
+        res = self.launcher_for(stop_timeout=15.0).stop()
+
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PID_REUSED_BY_ANOTHER_PROCESS")
+        self.assertFalse(res["signalled"])
+        self.assertFalse(res["identity_verified"])
+        # 4) no CTRL_BREAK_EVENT, no TerminateProcess -- nothing was asked of the OS at all.
+        self.assertEqual(res["terminate_requests"], [])
+        # 4) no runtime state cleared.
+        self.assertFalse(res["runtime_state_cleared"])
+        self.assertFalse(res["stale_pid_cleared"])
+        self.assertIsNotNone(self.ws.read_pid())
+        # the decision was made through the pinned handle, not through a raw-PID read
+        ident = res["process_identity"]
+        self.assertTrue(ident["handle_pinned"])
+        self.assertTrue(ident["handle_token_read"])
+        self.assertFalse(ident["handle_token_matches_recorded"])
+        self.assertIsNone(ident["authorized_by"])
+        # THE assertion: the unrelated process is still running.
+        time.sleep(0.5)
+        self.assertIsNone(replacement.poll(), "an unrelated process was terminated")
+        self.assertTrue(L.process_alive(replacement.pid))
+
+    @WINDOWS_ONLY
+    def test_x54_a_matching_real_process_is_still_stopped_and_all_tokens_agree(self):
+        """The gate must not break the normal path: recorded, pinned-handle and termination-handle
+        tokens all agree, so the recorded console stops and a bystander is untouched."""
+        target = self.spawn_child()
+        bystander = self.spawn_child()
+        recorded = L.process_start_token(target.pid)
+        self.ws.write_pid({"pid": target.pid, "process_start_token": recorded,
+                           "host": "127.0.0.1", "port": 8780})
+        res = self.launcher_for(stop_timeout=15.0).stop()
+
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED, res.get("error_code"))
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        self.assertEqual(res["process_identity"]["authorized_by"], "PINNED_HANDLE_TOKEN")
+        self.assertTrue(res["process_identity"]["handle_token_matches_recorded"])
+        hard = [r for r in res["terminate_requests"] if r["hard"]]
+        self.assertTrue(hard, res["terminate_requests"])
+        for r in hard:                                # the termination handle validated its own token
+            self.assertTrue(r["identity_checked"], r)
+            self.assertTrue(r["identity_verified"], r)
+        target.wait(timeout=15)
+        self.assertIsNotNone(target.poll())
+        self.assertIsNone(bystander.poll(), "an unrelated process was stopped")
+
+    def test_x55_no_handle_on_real_windows_fails_closed(self):
+        """Requirement 4: if the pinned handle cannot be obtained at all, there is nothing left but
+        a raw-PID read -- the very read this hotfix removes. It must refuse, not fall back."""
+        lau = self.launcher_for()
+        lau._handle_identity_required = True
+        code, token, ev = lau._pinned_identity(4321, "tok-recorded", None)
+        self.assertEqual(code, "PROCESS_IDENTITY_UNPROVEN")
+        self.assertIsNone(token)
+        self.assertFalse(ev["handle_pinned"])
+        self.assertIsNone(ev["authorized_by"])
+
+    def test_x56_unreadable_handle_token_fails_closed(self):
+        """A pinned handle whose GetProcessTimes call failed proves nothing and authorizes nothing."""
+        class Unreadable:
+            usable = True
+            start_token = None
+            token_error = "GET_PROCESS_TIMES_FAILED_5"
+
+            def close(self):
+                pass
+        lau = self.launcher_for()
+        code, token, ev = lau._pinned_identity(4322, "tok-recorded", Unreadable())
+        self.assertEqual(code, "PROCESS_IDENTITY_UNPROVEN")
+        self.assertIsNone(token)
+        self.assertFalse(ev["handle_token_read"])
+        self.assertEqual(ev["api_error"], "GET_PROCESS_TIMES_FAILED_5")
+        self.assertIsNone(ev["authorized_by"])
 
 
 class TestStopExitVerificationBoundary(LauncherBase):
@@ -3805,6 +4061,47 @@ class TestStopExitVerificationBoundary(LauncherBase):
         for banned in ("sellercentral", "seller-central", "amazon.com", "sp-api", "advertising-api",
                        "webservices.amazon"):
             self.assertNotIn(banned, src.lower(), banned)
+
+    def test_x46_the_hard_termination_is_handed_the_pinned_token(self):
+        """Requirement 7, as a source contract: the token the pinned handle proved is the same token
+        the termination handle must re-prove. Three tokens, one value."""
+        src = read(LAUNCHER_PATH)
+        stop = src.split("    def stop(self):", 1)[1].split("\n    def _pinned_identity", 1)[0]
+        self.assertIn("verifier = self._exit_verifier(pid)", stop)
+        self.assertIn("self._pinned_identity(pid, recorded, verifier)", stop)
+        self.assertIn("hard=True, expect_token=pinned_token", stop)
+        # Scoped to the part of stop() that HAS a recorded PID. The earlier probe belongs to the
+        # no-record branch, where there is no PID to pin and nothing can be signalled.
+        owned = stop.split("recorded = rec.get(", 1)[1]
+        self.assertLess(owned.index("verifier = self._exit_verifier(pid)"),
+                        owned.index("health = self._health("))
+        self.assertLess(owned.index("self._pinned_identity("), owned.index("health = self._health("))
+        # and the termination path re-reads identity through its own handle before killing
+        term = src.split("def terminate_process_result(", 1)[1].split("\ndef terminate_process(", 1)[0]
+        self.assertIn("_win_handle_start_token(ctypes, wintypes, k32, handle)", term)
+        self.assertLess(term.index("_win_handle_start_token"), term.index("k32.TerminateProcess("))
+        self.assertIn("TERMINATION_IDENTITY_MISMATCH", term)
+
+    def test_x47_no_unreachable_owner_copy_for_a_stopped_launcher(self):
+        """The LAUNCHER_STOPPED mapping entry is the same sentence stop actually prints, so there is
+        no second, unreachable success string to drift out of date."""
+        self.assertEqual(L._OWNER_MESSAGES[L.LAUNCHER_STOPPED], L.STOP_SUCCESS_MESSAGE)
+        self.assertNotIn("The toolkit has stopped.", read(LAUNCHER_PATH))
+        self.assertEqual(L._owner_message(L.LAUNCHER_STOPPED, "", "", phase="stop",
+                                          stop_state=L.STOP_STATE_EXITED), L.STOP_SUCCESS_MESSAGE)
+        self.assertEqual(L._owner_message(L.LAUNCHER_STOPPED, "", "", phase="stop",
+                                          stop_state=L.STOP_STATE_EXITED_STALE_STATE),
+                         L.STOP_EXITED_STALE_STATE_MESSAGE)
+
+    def test_x48_owner_capitalization_is_one_form_across_a_stop_session(self):
+        """D5: a single Stop session can print a new sentence and a baseline one back to back."""
+        src = read(LAUNCHER_PATH)
+        self.assertNotIn("The Toolkit", src)
+        session = [L.STOP_SUCCESS_MESSAGE, L.STOP_EXITED_STALE_STATE_MESSAGE,
+                   L.STOP_STILL_RUNNING_MESSAGE, L.STOP_EXIT_UNPROVEN_MESSAGE,
+                   L.STOP_FAILED_MESSAGE, L._OWNER_MESSAGES[L.LAUNCHER_ALREADY_STOPPED]]
+        for msg in session:
+            self.assertTrue(msg.startswith("The toolkit "), msg)
 
     def test_x45_exit_verification_record_is_bounded_and_secret_free(self):
         res = self.stop_result(pid=7203, alive=lambda pid: True, stop_timeout=1.0)

@@ -402,8 +402,35 @@ def _win_kernel32():
     k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     k32.GetExitCodeProcess.restype = wintypes.BOOL
     k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k32.GetProcessTimes.restype = wintypes.BOOL
+    k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
     k32.CloseHandle.argtypes = [wintypes.HANDLE]
     return ctypes, wintypes, k32
+
+
+def _win_handle_start_token(ctypes, wintypes, k32, handle):
+    """The creation-time identity token read through EXACTLY this handle. Returns (token, error).
+
+    This is the only identity read that cannot be answered by a DIFFERENT process. A raw-PID read
+    (`process_start_token`) re-resolves the number first, so it describes whatever process holds that
+    PID at the moment of the call; this call can only ever describe the one process object the given
+    handle already refers to. Every identity decision that authorizes a signal must come from here.
+
+    The token format is byte-identical to `process_start_token`'s, so a handle-derived token and a
+    recorded token compare directly."""
+    creation = wintypes.FILETIME()
+    exit_t = wintypes.FILETIME()
+    kernel_t = wintypes.FILETIME()
+    user_t = wintypes.FILETIME()
+    try:
+        ctypes.set_last_error(0)
+        ok = k32.GetProcessTimes(wintypes.HANDLE(handle), ctypes.byref(creation),
+                                 ctypes.byref(exit_t), ctypes.byref(kernel_t), ctypes.byref(user_t))
+    except Exception:                            # noqa: BLE001 — an API failure is data, not a crash
+        return None, "GET_PROCESS_TIMES_RAISED"
+    if not ok:
+        return None, f"GET_PROCESS_TIMES_FAILED_{ctypes.get_last_error()}"
+    return f"win-create-{(creation.dwHighDateTime << 32) | creation.dwLowDateTime}", None
 
 
 class WindowsExitVerifier:
@@ -418,9 +445,12 @@ class WindowsExitVerifier:
     Both must agree before an exit is reported. WAIT_TIMEOUT means "not yet proven exited", and a
     failed API call means UNPROVEN — never success.
 
-    Holding this handle for the whole stop is what makes the answer trustworthy, and it also closes a
-    race the accepted baseline left open: Windows cannot recycle a PID while a handle to it is open,
-    so the PID this launcher terminates is provably still the PID whose identity it verified.
+    It is ALSO the identity authority. The handle is opened before any delay and before anything is
+    signalled, and the process creation token is read back through that same handle immediately, so
+    the caller can prove that this handle refers to the recorded process before it authorizes
+    anything. Windows cannot recycle a PID while a handle to it is open, so from the moment this
+    handle is open and its token has matched, the pinned PID cannot become a different process for
+    the remainder of the stop. The guarantee starts at handle acquisition — never earlier.
     """
 
     def __init__(self, pid):
@@ -428,6 +458,8 @@ class WindowsExitVerifier:
         self.handle = None
         self.usable = False
         self.open_error = None
+        self.start_token = None
+        self.token_error = None
         try:
             pid_i = int(pid)
         except (TypeError, ValueError):
@@ -446,9 +478,25 @@ class WindowsExitVerifier:
                                  False, pid_i)
         if not handle:
             self.open_error = f"OPEN_PROCESS_FAILED_{ctypes.get_last_error()}"
+            self.token_error = self.open_error
             return
         self.handle = handle
         self.usable = True
+        # Read identity through the handle we just pinned, before returning to the caller and
+        # therefore before any probe, delay or signal can intervene.
+        self.start_token, self.token_error = _win_handle_start_token(ctypes, wintypes, k32, handle)
+
+    def identity(self, recorded):
+        """Whether the process THIS handle refers to is the recorded one, as a bounded record.
+
+        `matches` is True only when a token was actually read through this handle and it equals the
+        recorded token. An unreadable token, an absent handle and a mismatch are all reported as
+        not-matching, so every failure direction is fail-closed."""
+        return {"source": "windows_process_handle", "handle_held": bool(self.usable),
+                "handle_token_read": self.start_token is not None,
+                "matches": bool(self.usable and self.start_token is not None and recorded
+                                and self.start_token == recorded),
+                "api_error": self.token_error}
 
     def state(self):
         """The kernel's answer, as a bounded, secret-free diagnostic record."""
@@ -501,13 +549,19 @@ def open_exit_verifier(pid):
     return WindowsExitVerifier(pid)
 
 
-def terminate_process_result(pid, *, hard=False):
+def terminate_process_result(pid, *, hard=False, expect_token=None):
     """Signal ONE already-identity-verified process and REPORT what the OS actually said.
 
     Callers must verify identity first; this function never searches for a process, never matches a
     name and never touches a process tree. The return value is a record, not a guess: a refused
-    request is visible to the caller instead of being discarded."""
-    out = {"ok": False, "hard": bool(hard), "api": None, "error": None}
+    request is visible to the caller instead of being discarded.
+
+    `expect_token` closes the last raw-PID gap on the hard path. Terminating needs its own handle,
+    and opening one by PID re-resolves that number — so when a token is supplied, the creation token
+    is read back through THAT EXACT handle and must equal it before the kill is issued. A missing or
+    mismatched token means no kill is issued at all: the request is refused and says why."""
+    out = {"ok": False, "hard": bool(hard), "api": None, "error": None,
+           "identity_checked": expect_token is not None, "identity_verified": None}
     try:
         pid = int(pid)
     except (TypeError, ValueError):
@@ -529,15 +583,29 @@ def terminate_process_result(pid, *, hard=False):
             return out
         out["api"] = "TerminateProcess"
         try:
-            ctypes, _wintypes, k32 = _win_kernel32()
+            ctypes, wintypes, k32 = _win_kernel32()
         except Exception:                        # noqa: BLE001
             out["error"] = "KERNEL32_UNAVAILABLE"
             return out
-        handle = k32.OpenProcess(_WIN_PROCESS_TERMINATE, False, pid)
+        access = _WIN_PROCESS_TERMINATE
+        if expect_token is not None:
+            access |= _WIN_PROCESS_QUERY_LIMITED_INFORMATION      # to re-read identity through it
+        handle = k32.OpenProcess(access, False, pid)
         if not handle:
             out["error"] = f"OPEN_PROCESS_FAILED_{ctypes.get_last_error()}"
             return out
         try:
+            if expect_token is not None:
+                token, token_error = _win_handle_start_token(ctypes, wintypes, k32, handle)
+                if token is None:
+                    out["identity_verified"] = False
+                    out["error"] = token_error or "TERMINATION_IDENTITY_UNREADABLE"
+                    return out                   # nothing is killed on an unreadable identity
+                if token != expect_token:
+                    out["identity_verified"] = False
+                    out["error"] = "TERMINATION_IDENTITY_MISMATCH"
+                    return out                   # this handle is a DIFFERENT process: refuse
+                out["identity_verified"] = True
             ctypes.set_last_error(0)
             ok = bool(k32.TerminateProcess(handle, 1))
             out["ok"] = ok
@@ -934,11 +1002,19 @@ class Launcher:
         self._alive = alive or process_alive
         self._start_token = start_token or process_start_token
         self._terminate = terminate or terminate_process_result
+        # Handle-validated termination exists only on the REAL process layer; an injected terminate
+        # seam keeps the accepted two-argument signature and is never handed a token it cannot check.
+        self._terminate_validates_identity = terminate is None
         # Injecting `alive` replaces the whole process layer, handle-based half included: a test that
         # declares process existence through a seam must not have a real Windows handle opened
         # against its stand-in PID. Without an injected seam the real verifier is used.
         self._exit_verifier = exit_verifier or ((lambda pid: None) if alive is not None
                                                 else open_exit_verifier)
+        # On real Windows the pinned handle is MANDATORY identity evidence. Without it the only
+        # remaining answer is a raw-PID read, which is exactly the unpinned read that let a stop
+        # reach a process it had never verified — so a missing handle fails closed instead.
+        self._handle_identity_required = bool(os.name == "nt" and alive is None
+                                              and exit_verifier is None)
         # Where an exit answer comes from, and whether a True process_alive() may be believed. On
         # POSIX it may (a PID that no longer resolves is gone, and one that does is running). On real
         # Windows it may NOT: see process_alive.__doc__.
@@ -1183,46 +1259,54 @@ class Launcher:
                 owner_message=_owner_message(LAUNCHER_ALREADY_STOPPED, "", "", phase="stop")))
 
         recorded = rec.get("process_start_token")
-        current = self._start_token(pid)
-        # "cannot prove it" is checked BEFORE "does not match", so an unreadable identity is never
-        # misreported as PID reuse — and either way nothing is signalled.
-        if recorded and current is None:
-            self.ws.log("stop.refused_identity_unproven", pid=_s(pid))
-            return self._finish(self._result(
-                LAUNCHER_STOP_REFUSED, phase="stop", pid=pid, signalled=False,
-                identity_verified=False, error_code="PROCESS_IDENTITY_UNPROVEN",
-                owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PROCESS_IDENTITY_UNPROVEN", "",
-                                             phase="stop")))
-        if recorded and current != recorded:
-            # The PID is alive but it is a DIFFERENT process now (PID reuse). Never signal it.
-            self.ws.clear_pid()
-            self.ws.log("stop.refused_pid_reused", pid=_s(pid))
-            return self._finish(self._result(
-                LAUNCHER_STOP_REFUSED, phase="stop", pid=pid, signalled=False,
-                identity_verified=False, error_code="PID_REUSED_BY_ANOTHER_PROCESS",
-                stale_pid_cleared=True,
-                owner_message=_owner_message(LAUNCHER_STOP_REFUSED, "PID_REUSED_BY_ANOTHER_PROCESS",
-                                             "", phase="stop")))
 
-        # Command identity, where practical. DIAGNOSTIC ONLY: it authorizes nothing. The accepted
-        # health contract answering on the recorded port is the strongest evidence available without
-        # a new dependency — and it is the ONLY positive evidence. The accepted baseline also
-        # reported "verified" whenever the probe failed to connect at all (`not http_status` is true
-        # for a transport error), so an unreachable console was recorded as an identity proof; the
-        # owner's 2026-07-30 record shows exactly that. Silence proves nothing and is no longer
-        # counted as proof.
-        health = self._health(rec.get("host") or self.host, rec.get("port") or self.port)
-        command_verified = bool(health.get("ok"))
-        command_evidence = ("ACCEPTED_HEALTH_CONTRACT" if command_verified else
-                            ("FOREIGN_HTTP_RESPONDER" if health.get("http_status")
-                             else "HEALTH_UNREACHABLE"))
-
-        # The exit handle is opened BEFORE anything is signalled. It is what proves the outcome, and
-        # while it is held Windows cannot recycle this PID onto an unrelated program.
+        # ---- the pinned handle is opened FIRST -------------------------------------------------
+        # Before the health probe, before any other delay and before anything at all is signalled.
+        # Everything below reasons about the process object this handle refers to, never about
+        # whatever process the raw PID happens to resolve to later. The accepted baseline opened it
+        # only after the identity check AND after the health probe, leaving that whole interval
+        # unpinned; the independent audit used exactly that interval to have an unrelated process
+        # terminated. The handle is held until this method returns.
         self.terminate_requests = []
         verifier = self._exit_verifier(pid)
         try:
-            self._request_terminate(pid, hard=False)
+            code, pinned_token, identity = self._pinned_identity(pid, recorded, verifier)
+            if code:
+                # Fail closed. Nothing is signalled, nothing is terminated, and NO runtime state is
+                # cleared: a refusal must not destroy the record the next Stop needs, and clearing
+                # it here would act on an identity that was never proven. Start's stale-PID sweep
+                # is what reclaims a genuinely stale record.
+                self.ws.log("stop.refused_pid_reused"
+                            if code == "PID_REUSED_BY_ANOTHER_PROCESS"
+                            else "stop.refused_identity_unproven", pid=_s(pid))
+                return self._finish(self._result(
+                    LAUNCHER_STOP_REFUSED, phase="stop", pid=pid, signalled=False,
+                    identity_verified=False, error_code=code, process_identity=identity,
+                    stale_pid_cleared=False, runtime_state_cleared=False,
+                    # Recorded empty, so "nothing was asked of the OS" is provable from the record
+                    # itself rather than inferred from the absence of a field.
+                    terminate_requests=list(self.terminate_requests),
+                    owner_message=_owner_message(LAUNCHER_STOP_REFUSED, code, "", phase="stop")))
+
+            # Command identity, where practical. DIAGNOSTIC ONLY: it authorizes nothing. The accepted
+            # health contract answering on the recorded port is the strongest evidence available
+            # without a new dependency — and it is the ONLY positive evidence. The accepted baseline
+            # also reported "verified" whenever the probe failed to connect at all (`not http_status`
+            # is true for a transport error), so an unreachable console was recorded as an identity
+            # proof; the owner's 2026-07-30 record shows exactly that. Silence proves nothing and is
+            # no longer counted as proof.
+            #
+            # This probe runs AFTER the pinned identity check, never before it. It can block for
+            # HEALTH_REQUEST_TIMEOUT (3.0 s) — longest precisely when the console is unhealthy or
+            # unresponsive, i.e. when the recorded process is most likely to be exiting — and in the
+            # baseline order that delay sat between the identity check and the handle.
+            health = self._health(rec.get("host") or self.host, rec.get("port") or self.port)
+            command_verified = bool(health.get("ok"))
+            command_evidence = ("ACCEPTED_HEALTH_CONTRACT" if command_verified else
+                                ("FOREIGN_HTTP_RESPONDER" if health.get("http_status")
+                                 else "HEALTH_UNREACHABLE"))
+
+            self._request_terminate(pid, hard=False, expect_token=pinned_token)
             self.ws.log("stop.signalled", pid=_s(pid), hard=False,
                         requested=self.terminate_requests[-1]["ok"])
             waited, exit_state, evidence = self._await_exit(
@@ -1231,73 +1315,134 @@ class Launcher:
             hard_ok = None
             if exit_state != EXIT_STATE_EXITED:
                 escalated = True
-                hard_ok = self._request_terminate(pid, hard=True)
+                hard_ok = self._request_terminate(pid, hard=True, expect_token=pinned_token)
                 self.ws.log("stop.escalated", pid=_s(pid), hard=True, requested=hard_ok)
                 more, exit_state, evidence = self._await_exit(
                     pid, max(0.0, self.stop_timeout - waited), verifier)
                 waited += more
+
+            # Supporting diagnostics only. Neither may authorize a termination or a success: a
+            # closed port does not prove a stopped process, and an open one does not prove a
+            # running console.
+            port_open = bool(self._port_probe(self.host, self.port))
+            after_health = self._health(self.host, self.port)
+            terminate_failed = bool(hard_ok is False)
+            common = dict(
+                pid=pid, signalled=True, identity_verified=True, process_identity=identity,
+                command_identity_verified=command_verified,
+                command_identity_evidence=command_evidence,
+                escalated=escalated, stop_seconds=round(waited, 2), exit_state=exit_state,
+                exit_verification=evidence, terminate_requests=list(self.terminate_requests),
+                termination_request_failed=terminate_failed,
+                port_open_after_stop=port_open,
+                health_reachable_after_stop=bool(after_health.get("http_status") is not None),
+            )
+
+            if exit_state == EXIT_STATE_EXITED:
+                # Runtime state is cleared ONLY here, on the proven-exit path.
+                cleared = self.ws.clear_pid()
+                stop_state = STOP_STATE_EXITED if cleared else STOP_STATE_EXITED_STALE_STATE
+                self.ws.log("stop.stopped", pid=_s(pid), waited=round(waited, 2),
+                            escalated=escalated, exit_state=exit_state, stop_state=stop_state)
+                return self._finish(self._result(
+                    LAUNCHER_STOPPED, phase="stop", stop_state=stop_state,
+                    runtime_state_cleared=cleared, **common,
+                    owner_message=_owner_message(LAUNCHER_STOPPED, "", "", phase="stop",
+                                                 stop_state=stop_state)))
+
+            # Not proven exited: the PID record is deliberately LEFT IN PLACE so the next Stop still
+            # knows exactly which process it may signal, and nothing else is ever touched.
+            if exit_state == EXIT_STATE_RUNNING:
+                code = "CONSOLE_DID_NOT_STOP"
+                stop_state = (STOP_STATE_TERMINATE_FAILED if terminate_failed else
+                              (STOP_STATE_PORT_CLOSED_ALIVE if not port_open else STOP_STATE_ALIVE))
+                self.ws.log("stop.still_running", pid=_s(pid), waited=round(waited, 2),
+                            stop_state=stop_state)
+            else:
+                code = "CONSOLE_EXIT_NOT_PROVEN"
+                stop_state = STOP_STATE_TERMINATE_FAILED if terminate_failed else STOP_STATE_UNPROVEN
+                self.ws.log("stop.exit_unproven", pid=_s(pid), waited=round(waited, 2),
+                            stop_state=stop_state, reason=_s(evidence.get("api_error")))
+            return self._finish(self._result(
+                LAUNCHER_FAILED, phase="stop", stop_state=stop_state, runtime_state_cleared=False,
+                error_code=code, **common,
+                owner_message=_owner_message(LAUNCHER_FAILED, code, "", phase="stop")))
         finally:
+            # Held for the COMPLETE stop operation, so the pinned PID cannot be recycled onto an
+            # unrelated program at any point between identity validation and the final answer.
             if verifier is not None:
                 verifier.close()
 
-        # Supporting diagnostics only. Neither may authorize a termination or a success: a closed
-        # port does not prove a stopped process, and an open one does not prove a running console.
-        port_open = bool(self._port_probe(self.host, self.port))
-        after_health = self._health(self.host, self.port)
-        terminate_failed = bool(hard_ok is False)
-        common = dict(
-            pid=pid, signalled=True, identity_verified=True,
-            command_identity_verified=command_verified, command_identity_evidence=command_evidence,
-            escalated=escalated, stop_seconds=round(waited, 2), exit_state=exit_state,
-            exit_verification=evidence, terminate_requests=list(self.terminate_requests),
-            termination_request_failed=terminate_failed,
-            port_open_after_stop=port_open,
-            health_reachable_after_stop=bool(after_health.get("http_status") is not None),
-        )
+    def _pinned_identity(self, pid, recorded, verifier):
+        """Prove — through the handle held for the whole stop — that this PID is still the recorded
+        process. Returns (error_code_or_None, token_to_authorize_with, evidence).
 
-        if exit_state == EXIT_STATE_EXITED:
-            # Runtime state is cleared ONLY here, on the proven-exit path.
-            cleared = self.ws.clear_pid()
-            stop_state = STOP_STATE_EXITED if cleared else STOP_STATE_EXITED_STALE_STATE
-            self.ws.log("stop.stopped", pid=_s(pid), waited=round(waited, 2), escalated=escalated,
-                        exit_state=exit_state, stop_state=stop_state)
-            return self._finish(self._result(
-                LAUNCHER_STOPPED, phase="stop", stop_state=stop_state,
-                runtime_state_cleared=cleared, **common,
-                owner_message=_owner_message(LAUNCHER_STOPPED, "", "", phase="stop")))
+        Three tokens have to agree before anything may be signalled: the one RECORDED at start, the
+        one read back through the PINNED HANDLE, and (on the hard path) the one read through the
+        TERMINATION handle itself. This method settles the first two; `terminate_process_result`
+        settles the third against the token returned here.
 
-        # Not proven exited: the PID record is deliberately LEFT IN PLACE so the next Stop still
-        # knows exactly which process it may signal, and nothing else is ever touched.
-        if exit_state == EXIT_STATE_RUNNING:
-            code = "CONSOLE_DID_NOT_STOP"
-            stop_state = (STOP_STATE_TERMINATE_FAILED if terminate_failed else
-                          (STOP_STATE_PORT_CLOSED_ALIVE if not port_open else STOP_STATE_ALIVE))
-            self.ws.log("stop.still_running", pid=_s(pid), waited=round(waited, 2),
-                        stop_state=stop_state)
-        else:
-            code = "CONSOLE_EXIT_NOT_PROVEN"
-            stop_state = STOP_STATE_TERMINATE_FAILED if terminate_failed else STOP_STATE_UNPROVEN
-            self.ws.log("stop.exit_unproven", pid=_s(pid), waited=round(waited, 2),
-                        stop_state=stop_state, reason=_s(evidence.get("api_error")))
-        return self._finish(self._result(
-            LAUNCHER_FAILED, phase="stop", stop_state=stop_state, runtime_state_cleared=False,
-            error_code=code, **common,
-            owner_message=_owner_message(LAUNCHER_FAILED, code, "", phase="stop")))
+        Every failure direction is fail-closed, and "cannot prove it" is decided BEFORE "does not
+        match", so an unreadable identity is never misreported as PID reuse."""
+        pinned = bool(verifier is not None and getattr(verifier, "usable", False))
+        handle_token = getattr(verifier, "start_token", None) if pinned else None
+        handle_error = getattr(verifier, "token_error", None) if verifier is not None else None
+        process_token = self._start_token(pid)
+        ev = {"recorded_token_present": bool(recorded), "handle_pinned": pinned,
+              "handle_token_read": handle_token is not None,
+              "handle_token_matches_recorded": bool(recorded and handle_token == recorded),
+              "process_token_matches_recorded": bool(recorded and process_token == recorded),
+              "handle_identity_required": self._handle_identity_required,
+              "api_error": handle_error}
+        if not recorded:
+            # No recorded token to compare against: the accepted baseline behaviour, unchanged.
+            ev["authorized_by"] = "NO_RECORDED_TOKEN"
+            return None, handle_token, ev
+        if self._handle_identity_required and not pinned:
+            ev["authorized_by"] = None
+            return "PROCESS_IDENTITY_UNPROVEN", None, ev
+        if pinned and handle_token is None:
+            ev["authorized_by"] = None
+            return "PROCESS_IDENTITY_UNPROVEN", None, ev
+        if process_token is None:
+            ev["authorized_by"] = None
+            return "PROCESS_IDENTITY_UNPROVEN", None, ev
+        if pinned and handle_token != recorded:
+            # The handle we hold refers to a DIFFERENT process than the one recorded. Never signal.
+            ev["authorized_by"] = None
+            return "PID_REUSED_BY_ANOTHER_PROCESS", None, ev
+        if process_token != recorded:
+            ev["authorized_by"] = None
+            return "PID_REUSED_BY_ANOTHER_PROCESS", None, ev
+        ev["authorized_by"] = "PINNED_HANDLE_TOKEN" if pinned else "PROCESS_START_TOKEN"
+        return None, handle_token, ev
 
-    def _request_terminate(self, pid, hard):
+    def _request_terminate(self, pid, hard, expect_token=None):
         """Ask the OS to stop ONE identity-verified process and RECORD what it answered.
 
         The accepted baseline discarded this result, so a refused request was indistinguishable from
-        an accepted one. Both dict-returning and bool-returning seams are accepted."""
+        an accepted one. Both dict-returning and bool-returning seams are accepted.
+
+        `expect_token` is handed to the real process layer so the HARD path re-verifies identity
+        through its own termination handle before killing anything. The graceful path signals a
+        console process GROUP by number and has no handle form; it is safe because it is issued only
+        after the pinned handle is open and its token has matched, and Windows cannot recycle a PID
+        while that handle is held."""
+        kw = {"hard": hard}
+        if expect_token is not None and hard and self._terminate_validates_identity:
+            kw["expect_token"] = expect_token
         try:
-            res = self._terminate(pid, hard=hard)
+            res = self._terminate(pid, **kw)
         except Exception as e:                   # noqa: BLE001 — a refusal is data, not a crash
             res = {"ok": False, "error": type(e).__name__}
         if isinstance(res, dict):
             record = {"hard": bool(hard), "ok": bool(res.get("ok")),
-                      "api": res.get("api"), "error": res.get("error")}
+                      "api": res.get("api"), "error": res.get("error"),
+                      "identity_checked": bool(res.get("identity_checked")),
+                      "identity_verified": res.get("identity_verified")}
         else:
-            record = {"hard": bool(hard), "ok": bool(res), "api": None, "error": None}
+            record = {"hard": bool(hard), "ok": bool(res), "api": None, "error": None,
+                      "identity_checked": False, "identity_verified": None}
         self.terminate_requests.append(record)
         return record["ok"]
 
@@ -1366,11 +1511,36 @@ class Launcher:
 
 
 # ================================================================ owner-facing messages
+# Owner-facing text for the stop path, chosen by the canonical error_code. A stop that fails must
+# never describe itself as a start: LAUNCHER_FAILED is shared by both phases, so the readiness state
+# alone cannot name the operation. The machine-readable contract is untouched — readiness and
+# error_code keep the exact values the accepted Phase 7.14 baseline records, and only the sentence
+# the owner reads is phase-accurate. Nothing here changes what stop does.
+#
+# Phase 7.14 stop-exit-verification hotfix: the owner reads what was PROVEN, never a raw code. Four
+# sentences cover the six machine states — stopped, stopped-but-record-stale, still running, and
+# "could not confirm".
+#
+# Capitalization is deliberately ONE form, "The toolkit", matching every accepted owner sentence in
+# this module. A single Stop session can print a new sentence and a baseline one back to back (stop,
+# then stop again), so a second capitalization would be visible to the owner as an inconsistency.
+STOP_SUCCESS_MESSAGE = "The toolkit stopped safely."
+STOP_EXITED_STALE_STATE_MESSAGE = ("The toolkit stopped, but its local runtime record could not be "
+                                   "cleaned up. Nothing else on this computer was stopped. Open "
+                                   "technical details before starting it again.")
+STOP_STILL_RUNNING_MESSAGE = ("The toolkit is still running. Nothing else on this computer was "
+                              "stopped. Open technical details for the recorded reason.")
+STOP_EXIT_UNPROVEN_MESSAGE = ("The toolkit could not confirm that the local server stopped safely. "
+                              "Nothing else on this computer was stopped. Open technical details "
+                              "for the recorded reason.")
+
 _OWNER_MESSAGES = {
     LAUNCHER_STARTING: "The toolkit is starting. Waiting until it is ready before opening a browser.",
     LAUNCHER_READY: "The toolkit is running. Your browser should now be open on the console.",
     LAUNCHER_ALREADY_RUNNING: "The toolkit was already running, so a second copy was not started.",
-    LAUNCHER_STOPPED: "The toolkit has stopped.",
+    # Routed to the one canonical success sentence, so there is exactly one of them in the module
+    # and no unreachable duplicate can drift away from what stop actually prints.
+    LAUNCHER_STOPPED: STOP_SUCCESS_MESSAGE,
     LAUNCHER_ALREADY_STOPPED: "The toolkit was not running, so there was nothing to stop.",
     LAUNCHER_TIMEOUT: ("The toolkit started but did not become ready in time. Run Stop-AMZ-Toolkit, "
                        "then try Start-AMZ-Toolkit once more."),
@@ -1391,21 +1561,6 @@ _OWNER_MESSAGES = {
     LAUNCHER_FAILED: "The toolkit could not be started. See the launcher log for the recorded reason.",
 }
 
-# Owner-facing text for the stop path, chosen by the canonical error_code. A stop that fails must
-# never describe itself as a start: LAUNCHER_FAILED is shared by both phases, so the readiness state
-# alone cannot name the operation. The machine-readable contract is untouched — readiness and
-# error_code keep the exact values the accepted Phase 7.14 baseline records, and only the sentence
-# the owner reads is phase-accurate. Nothing here changes what stop does.
-#
-# Phase 7.14 stop-exit-verification hotfix: the owner reads what was PROVEN, never a raw code. Three
-# sentences cover the six machine states — stopped, still running, and "could not confirm".
-STOP_SUCCESS_MESSAGE = "The Toolkit stopped safely."
-STOP_STILL_RUNNING_MESSAGE = ("The Toolkit is still running. Nothing else on this computer was "
-                              "stopped. Open technical details for the recorded reason.")
-STOP_EXIT_UNPROVEN_MESSAGE = ("The Toolkit could not confirm that the local server stopped safely. "
-                              "Nothing else on this computer was stopped. Open technical details "
-                              "for the recorded reason.")
-
 _STOP_OWNER_MESSAGES = {
     "CONSOLE_DID_NOT_STOP": STOP_STILL_RUNNING_MESSAGE,
     "CONSOLE_EXIT_NOT_PROVEN": STOP_EXIT_UNPROVEN_MESSAGE,
@@ -1420,13 +1575,24 @@ _STOP_OWNER_MESSAGES = {
 }
 STOP_FAILED_MESSAGE = "The toolkit could not be stopped. See the launcher log for the recorded reason."
 
+# A proven exit is still a success, but it is not the SAME success when the launcher could not clean
+# up its own runtime record: the owner has to know before starting again, so that state gets its own
+# qualified sentence instead of the unqualified one.
+_STOP_STATE_OWNER_MESSAGES = {
+    STOP_STATE_EXITED: STOP_SUCCESS_MESSAGE,
+    STOP_STATE_EXITED_STALE_STATE: STOP_EXITED_STALE_STATE_MESSAGE,
+}
 
-def _owner_message(readiness, code, detail, phase=None):
+
+def _owner_message(readiness, code, detail, phase=None, stop_state=None):
     # Stop-specific text is scoped to the stop phase, so start and open wording cannot change.
     if phase == "stop":
         specific = _STOP_OWNER_MESSAGES.get(code)
         if specific:
             return specific
+        by_state = _STOP_STATE_OWNER_MESSAGES.get(stop_state)
+        if by_state:
+            return by_state
         if readiness == LAUNCHER_STOPPED:
             return STOP_SUCCESS_MESSAGE
         if readiness == LAUNCHER_FAILED:

@@ -106,6 +106,89 @@
       "HEALTH_UNREACHABLE"
     ]
   },
+  "documentation_corrections": {
+    "D1": {
+      "claimed_closed_only_because": [
+        "pinned handle opened before any delay or signal (test_x57, test_x46)",
+        "creation token read through that exact handle (test_x50)",
+        "handle-derived token matches the recorded token (test_x54, live run)",
+        "termination handle separately token-validated before TerminateProcess (test_x51, test_x52, test_x46)",
+        "an unrelated replacement process is proven to remain alive (test_x53)"
+      ],
+      "correction": "false claim withdrawn in report 2.1.1; the exact pre-remediation race and the measured exposure window are described; the guarantee is restated only for the period after handle acquisition and token match",
+      "finding": "the report claimed a whole-operation PID-pinning guarantee that was false for the pre-remediation implementation",
+      "report_section": "2.1.1 / 2.1.2",
+      "severity": "MATERIAL",
+      "status": "CORRECTED"
+    },
+    "D2": {
+      "auditor_measured_seconds": 3.031,
+      "correction": "'microsecond-scale' removed; the measured window is recorded; moving the health probe after pinned-handle identity validation is shown to remove the exposure (measured 0.0 s); no absence-of-residual-race claim is made beyond what handle-derived and termination-handle validation prove",
+      "dominated_by": "HEALTH_REQUEST_TIMEOUT = 3.0",
+      "finding": "the residual identity window was described as 'microsecond-scale'",
+      "largest_when": "the console is unhealthy or unresponsive",
+      "report_section": "7.6",
+      "reproduced_here_seconds": 3.063,
+      "severity": "MATERIAL",
+      "status": "CORRECTED"
+    },
+    "D3": {
+      "correction": "process_identity_race added with the independent reproduction, the ~3.031 s measured exposure, the remediation and the exact test evidence; the race is now the first entry in known_limitations; the pinning contract is narrowed to the exact period and the exact validated handle",
+      "finding": "the proof JSON omitted the PID identity race while asserting pid_pinned_against_reuse_while_handle_held: true",
+      "severity": "MATERIAL",
+      "status": "CORRECTED"
+    },
+    "D4": {
+      "correction": "the accepted baseline is a68c1473ab904ff7b3fb26be0f7eaee73a7c7cf6; 5fcbf6f is no longer called accepted, and the transferability of its counts is justified by identical trees rather than asserted",
+      "finding": "5fcbf6f was labelled 'Accepted baseline for comparison'",
+      "severity": "LOW",
+      "status": "CORRECTED",
+      "verified_tree_identity": {
+        "git_diff_name_only_5fcbf6f_a68c147": [
+          "SESSION7_14-NEXT-ACTION-NAVIGATION-HOTFIX-ACCEPTANCE-REPORT.md",
+          "SESSION7_14-NEXT-ACTION-NAVIGATION-HOTFIX-REPORT.md"
+        ],
+        "identical_at_5fcbf6f_and_a68c147": true,
+        "method": "git rev-parse <commit>^{tree}:<dir>",
+        "production_tree": "1cb44ddf80589ad0926f52d5f06070f656fe7463",
+        "tests_tree": "2c5995ddd3d961288ee3982b0b131bc5f3c993be"
+      }
+    },
+    "D5": {
+      "correction": "standardized on 'The toolkit', the form every accepted sentence already used, so no unrelated copy was changed; tests updated to the canonical wording",
+      "finding": "'The Toolkit' and 'The toolkit' both appeared in one Stop session",
+      "new_test": "test_x48_owner_capitalization_is_one_form_across_a_stop_session",
+      "severity": "LOW",
+      "status": "CORRECTED",
+      "tests_updated": [
+        "test_h03",
+        "test_h07",
+        "test_x19",
+        "test_x22",
+        "test_x32"
+      ]
+    },
+    "D6": {
+      "correction": "routed to STOP_SUCCESS_MESSAGE so the entry is the sentence stop actually prints; the distinct qualified message for PROCESS_EXITED_RUNTIME_STATE_STALE is preserved and no longer reads as the unqualified success",
+      "finding": "_OWNER_MESSAGES[LAUNCHER_STOPPED] was unreachable dead owner copy",
+      "preserved": {
+        "runtime_state_cleared": false,
+        "stop_state": "PROCESS_EXITED_RUNTIME_STATE_STALE"
+      },
+      "severity": "COSMETIC",
+      "status": "CORRECTED",
+      "tests": [
+        "test_x47_no_unreachable_owner_copy_for_a_stopped_launcher",
+        "test_x59_stale_runtime_record_gets_its_own_qualified_sentence"
+      ]
+    },
+    "additional_findings_invented": 0,
+    "applied_to": [
+      "SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-REPORT.md",
+      "SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-PROOF.json"
+    ],
+    "source": "independent audit of commit 0a71cd9"
+  },
   "end_to_end_differential": {
     "baseline_a68c147": {
       "command_identity_evidence": null,
@@ -171,7 +254,9 @@
       ],
       "third_party_handle_held_during_stop": true
     },
+    "measured_at_head": "569a72d2f6978e6498671755ade38d96e8e08412",
     "method": "Both legs run the REAL Launcher.stop() with the REAL process layer (no alive seam, no terminate seam), each against its own freshly spawned real child, under the proven triggering condition: a third party holds a handle to the process object. Baseline runs from a detached worktree at a68c147. Ground truth is measured independently by releasing the handle and reaping the child.",
+    "note_after_identity_race_remediation": "This differential was measured at HEAD 569a72d and is reported as measured. Two things have changed since and are NOT retro-fitted into the recorded values: the owner success sentence was standardized to 'The toolkit stopped safely.' (D5), and the stop path now pins and validates identity before probing health. The differential that covers the current tree is process_identity_race.measured_exposure_window.",
     "verdict": "Both processes had genuinely exited with code 1. BASELINE reported SESSION7_14_LAUNCHER_FAILED / CONSOLE_DID_NOT_STOP after 15.01 s and left the PID record in place; HEAD reported SESSION7_14_LAUNCHER_STOPPED / EXITED after 3.25 s with WAIT_OBJECT_0 + exit_code 1. The same run reproduces the command_identity_verified defect: baseline true on an unreachable console, HEAD false with HEALTH_UNREACHABLE."
   },
   "exit_states": [
@@ -181,16 +266,20 @@
   ],
   "files_changed": [
     {
-      "bytes": 74789,
-      "line_endings": "LF",
-      "path": "production/phase7_owner_launcher.py",
-      "sha256": "e7d7825678b30ad211edf434ac70979f89eb08be4806be600b7a7d690b3e5b45"
+      "change": "pinned-handle identity (GetProcessTimes through the verifier handle), _pinned_identity three-token gate, health probe moved after identity, handle held for the complete stop, termination-handle token revalidation, qualified stale-runtime-record owner message, owner capitalization standardized, LAUNCHER_STOPPED copy routed",
+      "file": "production/phase7_owner_launcher.py"
     },
     {
-      "bytes": 187978,
-      "line_endings": "LF",
-      "path": "tests/test_phase7_14_owner_usability_pilot_readiness.py",
-      "sha256": "643e584a0f335efdee43636447aadff085b5ba14b3ff548d395b945fb98f10b1"
+      "change": "+13 tests including real-Windows identity-race proofs (test_x50-x59, x46-x48); verifier doubles now model the identity half of the contract; owner-message assertions updated to the canonical wording",
+      "file": "tests/test_phase7_14_owner_usability_pilot_readiness.py"
+    },
+    {
+      "change": "D1/D2/D4/D5/D6",
+      "file": "SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-REPORT.md"
+    },
+    {
+      "change": "D3 + D1-D6 evidence",
+      "file": "SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-PROOF.json"
     }
   ],
   "files_not_changed": [
@@ -203,7 +292,8 @@
     "production/phase7_unified_owner_console_static/**",
     "any accepted business authority"
   ],
-  "generated_at": "2026-07-30T17:20:00Z",
+  "fix_commit": "4c5d362b236742c21ec49e50b39ba95c15658ea8",
+  "generated_at": "2026-07-31T04:10:00Z",
   "get_exit_code_process_evidence": {
     "after_natural_exit": {
       "exit_code": 0,
@@ -219,15 +309,17 @@
       "still_active": true
     }
   },
-  "head_commit": "569a72d2f6978e6498671755ade38d96e8e08412",
+  "head_commit": "4c5d362b236742c21ec49e50b39ba95c15658ea8",
   "hotfix": "STOP EXIT VERIFICATION",
   "known_limitations": [
+    "PID identity race (independent-audit acceptance blocker, commit 0a71cd9): the pre-remediation stop validated identity through a transient handle and left the PID unpinned for a measured ~3.031 s (reproduced here at 3.063 s) across the health probe, then signalled and terminated by raw PID. CLOSED by this remediation - see process_identity_race. Residual: the instant between the process object being freed and OpenProcess being called cannot be removed, but it is fail-closed, because the authorizing identity is read back through the pinned handle.",
     "The specific handle holder on the owner's machine is UNPROVEN; the fix is correct under either surviving explanation.",
     "process_alive() remains true-but-not-conclusive on Windows; it is retained only where False is the load-bearing answer, and its docstring records the limitation.",
     "An unproven stop deliberately leaves the PID record in place, so a genuinely-exited console whose exit was unprovable is re-signalled by the next Stop, still fully identity-gated.",
-    "PROCESS_EXITED_RUNTIME_STATE_STALE still reports success to the owner because the process did stop; the stale record is carried in runtime_state_cleared=false.",
+    "PROCESS_EXITED_RUNTIME_STATE_STALE reports a QUALIFIED success to the owner - the process did stop, but the launcher could not remove its own runtime record, and the owner is told so before starting again. runtime_state_cleared=false and the stop_state are preserved.",
     "The graceful console-break is still expected to fail for a detached child on Windows, so a healthy stop costs about 3.3 s via escalation. Unchanged baseline behaviour.",
-    "The committed suite uses stand-in child processes rather than the console itself, to stay offline and port-free; a live launcher run is recorded in live_launcher_run."
+    "The committed suite uses stand-in child processes rather than the console itself, to stay offline and port-free; a live launcher run is recorded in live_launcher_run.",
+    "An identity refusal clears NO runtime state, by design. A genuinely stale record is reclaimed by Start's stale-PID sweep, not by a Stop that could not prove what it was looking at."
   ],
   "live_launcher_run": {
     "comparison_to_owner_incident": {
@@ -237,12 +329,15 @@
       "owner_error_code": "CONSOLE_DID_NOT_STOP",
       "owner_stop_seconds": 15.03
     },
-    "description": "Real end-to-end launcher run on the owner port 8780 against the real accepted Phase 7.13 console.",
+    "cost_of_the_remediation": "stop_seconds 3.27, identical to the pre-remediation live run",
+    "description": "Real accepted Phase 7.13 console, real port 8780, real launcher CLI, re-run AFTER the identity-race remediation (2026-07-31). Started with --no-browser so no window was opened unprompted.",
+    "identity_gate_observed_live": "the hard TerminateProcess recorded identity_checked=true and identity_verified=true, i.e. the creation token was re-read through the termination handle and matched before the kill; the graceful request records identity_checked=false honestly, because CTRL_BREAK_EVENT has no handle form and is gated by the pinned handle instead",
     "launcher_log_lines": [
-      "2026-07-30T16:15:33Z stop.signalled hard=False pid=17696 requested=False",
-      "2026-07-30T16:15:36Z stop.escalated hard=True pid=17696 requested=True",
-      "2026-07-30T16:15:39Z stop.stopped escalated=True exit_state=EXITED pid=17696 stop_state=PROCESS_EXITED waited=3.27",
-      "2026-07-30T16:15:55Z stop.already_stopped"
+      "2026-07-31T03:44:15Z start.ready browser_opened=False pid=18760 port=8780 python=3.12.10 waited=0.55",
+      "2026-07-31T03:44:15Z stop.signalled hard=False pid=18760 requested=False",
+      "2026-07-31T03:44:18Z stop.escalated hard=True pid=18760 requested=True",
+      "2026-07-31T03:44:21Z stop.stopped escalated=True exit_state=EXITED pid=18760 stop_state=PROCESS_EXITED waited=3.27",
+      "2026-07-31T03:47:12Z stop.already_stopped"
     ],
     "post_conditions": {
       "console_process_gone": true,
@@ -251,9 +346,9 @@
       "unrelated_process_stopped": false
     },
     "start": {
-      "browser": "--no-browser (not opened by choice, to avoid opening a window unprompted)",
-      "exit": 0,
-      "pid": 17696,
+      "browser_opened": false,
+      "exit_code": 0,
+      "pid": 18760,
       "readiness": "SESSION7_14_LAUNCHER_READY",
       "startup_seconds": 0.55
     },
@@ -261,7 +356,7 @@
       "command_identity_evidence": "ACCEPTED_HEALTH_CONTRACT",
       "command_identity_verified": true,
       "escalated": true,
-      "exit": 0,
+      "exit_code": 0,
       "exit_state": "EXITED",
       "exit_verification": {
         "exit_code": 1,
@@ -272,11 +367,20 @@
         "wait_name": "WAIT_OBJECT_0",
         "wait_result": 0
       },
-      "graceful_refusal_is_expected_for_a_detached_child": true,
       "health_reachable_after_stop": false,
-      "owner_message": "The Toolkit stopped safely.",
-      "pid": 17696,
+      "owner_message": "The toolkit stopped safely.",
+      "pid": 18760,
       "port_open_after_stop": false,
+      "process_identity": {
+        "api_error": null,
+        "authorized_by": "PINNED_HANDLE_TOKEN",
+        "handle_identity_required": true,
+        "handle_pinned": true,
+        "handle_token_matches_recorded": true,
+        "handle_token_read": true,
+        "process_token_matches_recorded": true,
+        "recorded_token_present": true
+      },
       "readiness": "SESSION7_14_LAUNCHER_STOPPED",
       "runtime_state_cleared": true,
       "stop_seconds": 3.27,
@@ -286,22 +390,26 @@
           "api": "GenerateConsoleCtrlEvent",
           "error": "OSError",
           "hard": false,
+          "identity_checked": false,
+          "identity_verified": null,
           "ok": false
         },
         {
           "api": "TerminateProcess",
           "error": null,
           "hard": true,
+          "identity_checked": true,
+          "identity_verified": true,
           "ok": true
         }
       ],
       "termination_request_failed": false
     },
     "stop_again": {
-      "exit": 0,
+      "exit_code": 0,
       "owner_message": "The toolkit was not running, so there was nothing to stop.",
       "readiness": "SESSION7_14_LAUNCHER_ALREADY_STOPPED",
-      "wording_unchanged_from_accepted_baseline": true
+      "wording": "accepted baseline wording, unchanged"
     }
   },
   "out_of_scope_confirmed_untouched": {
@@ -320,26 +428,56 @@
   "owner_messages": {
     "accepted_assertions_updated": [
       {
-        "now": "The Toolkit is still running. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
+        "now": "The toolkit is still running. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
         "test": "test_h03",
         "was": "The toolkit did not stop within the allowed time.",
         "why": "described the launcher clock, not the process; read identically whether the process was alive or merely unproven"
       },
       {
-        "now": "The Toolkit stopped safely.",
+        "now": "The toolkit stopped safely.",
         "test": "test_h07",
         "was": "The toolkit has stopped.",
         "why": "success is now reported only against a kernel-proven exit"
+      },
+      {
+        "now": "four sentences: PROCESS_EXITED_RUNTIME_STATE_STALE no longer borrows the unqualified success sentence",
+        "test": "test_x22 (renamed four_owner_sentences)",
+        "was": "three sentences covered the six machine states",
+        "why": "D6"
+      },
+      {
+        "now": "The toolkit ...",
+        "test": "test_x19 / test_x32 / test_h03 / test_h07",
+        "was": "The Toolkit ...",
+        "why": "D5 - one owner-facing capitalization across a Stop session"
       }
     ],
-    "failure_process_still_running": "The Toolkit is still running. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
-    "failure_unproven_state": "The Toolkit could not confirm that the local server stopped safely. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
+    "capitalization": {
+      "canonical_form": "The toolkit",
+      "defect": "an earlier revision used 'The Toolkit' for the new stop sentences while every accepted sentence used 'The toolkit', so one Stop session could show both",
+      "resolution": "the NEW sentences were standardized onto the existing accepted form, so no unrelated accepted copy was changed",
+      "test": "test_x48_owner_capitalization_is_one_form_across_a_stop_session",
+      "the_toolkit_capitalized_occurrences_in_launcher": 0
+    },
+    "failure_process_still_running": "The toolkit is still running. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
+    "failure_unproven_state": "The toolkit could not confirm that the local server stopped safely. Nothing else on this computer was stopped. Open technical details for the recorded reason.",
     "raw_error_code_shown_as_primary_message": false,
-    "success": "The Toolkit stopped safely.",
+    "sentences_covering_the_six_machine_states": 4,
+    "stale_runtime_record": {
+      "owner_message_is_the_unqualified_success_sentence": false,
+      "readiness": "SESSION7_14_LAUNCHER_STOPPED",
+      "runtime_state_cleared": false,
+      "selected_by": "_STOP_STATE_OWNER_MESSAGES[stop_state]",
+      "stop_state": "PROCESS_EXITED_RUNTIME_STATE_STALE",
+      "test": "test_x59_stale_runtime_record_gets_its_own_qualified_sentence"
+    },
+    "success": "The toolkit stopped safely.",
+    "success_runtime_record_stale": "The toolkit stopped, but its local runtime record could not be cleaned up. Nothing else on this computer was stopped. Open technical details before starting it again.",
     "technical_details_fields": [
       "exit_state",
       "stop_state",
       "exit_verification",
+      "process_identity",
       "terminate_requests",
       "termination_request_failed",
       "command_identity_evidence",
@@ -351,7 +489,15 @@
       "test_h06",
       "test_h08",
       "test_x40"
-    ]
+    ],
+    "unreachable_copy_removed": {
+      "dead_string_present_in_source": false,
+      "entry": "_OWNER_MESSAGES[LAUNCHER_STOPPED]",
+      "problem": "the stop-phase selector always answered first, so this string could never be printed",
+      "resolution": "routed to the same STOP_SUCCESS_MESSAGE constant the stop path prints, so there is exactly one success sentence and no second copy that can drift",
+      "test": "test_x47_no_unreachable_owner_copy_for_a_stopped_launcher",
+      "was": "The toolkit has stopped."
+    }
   },
   "owner_observation": {
     "browser_opened": false,
@@ -388,55 +534,248 @@
     "command_identity_validation": true,
     "exact_pid_validation": true,
     "fail_safe_default": true,
+    "health_probed_only_after_pinned_identity_validation": true,
+    "identity_refusal_clears_runtime_state": false,
     "infinite_loop": false,
     "kills_all_python": false,
     "launcher_audit_log_behaviour": true,
     "no_broad_python_termination": true,
     "no_unrelated_process_termination": true,
     "open_contract": true,
-    "pid_pinned_against_reuse_while_handle_held": true,
+    "pid_pinned_against_reuse": {
+      "handle": "the single SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION verifier handle, held for the complete stop",
+      "note": "stated for exactly the period and exactly the validated handle for which it holds; it is NOT a whole-operation guarantee",
+      "termination_handle_separately_validated": true,
+      "true_before_handle_acquisition": false,
+      "true_from": "the instant the verifier handle is open AND its handle-derived creation token matches the recorded token",
+      "true_until": "stop() returns"
+    },
     "port_or_health_authorizes_termination_or_success": false,
+    "process_identity_validated_through_the_pinned_handle": true,
     "process_start_token_validation": true,
     "runtime_state_cleanup_only_after_proven_exit": true,
     "start_contract": true,
     "stop_timeout_seconds": 15.0,
     "taskkill_by_image_name": false,
+    "termination_handle_identity_revalidated_before_terminate": true,
     "timeout_extended_to_hide_defect": false
+  },
+  "process_identity_race": {
+    "audit_decision": "REMEDIATION_REQUIRED",
+    "defect": "Stop validated the recorded process start token through a TRANSIENT handle, then left the PID unpinned across the health probe, and only afterwards opened the verifier handle. Graceful signalling used the raw PID, and hard termination opened a SECOND handle by raw PID and terminated through it without validating the creation token through that exact handle. Between the identity read and the handle acquisition the process object could be freed and the PID reassigned, so a signal could reach a process that was never verified.",
+    "found_by": "independent audit of commit 0a71cd9",
+    "independent_reproduction": {
+      "auditor_measured_window_seconds": 3.031,
+      "finding": "an unrelated process was terminated",
+      "mechanism": "the recorded PID was released and reassigned during the unpinned interval; hard escalation then opened a PROCESS_TERMINATE handle on the replacement and terminated it",
+      "source": "independent audit of 0a71cd9"
+    },
+    "measured_exposure_window": {
+      "agreement": "same phenomenon, dominated by HEALTH_REQUEST_TIMEOUT = 3.0; the difference is scheduling jitter",
+      "auditor_measured_seconds": 3.031,
+      "both_legs_stop_result": "SESSION7_14_LAUNCHER_STOPPED / EXITED, stop_seconds 3.25 - the remediation changes the ORDER, not the outcome or the cost",
+      "harness": "matched worktrees, same machine, same script",
+      "method": "instrumented start_token and exit_verifier seams around a health endpoint that accepts the TCP connection and never answers, so the probe runs to the full HEALTH_REQUEST_TIMEOUT - the unhealthy/unresponsive console case",
+      "pre_remediation": {
+        "commit": "0a71cd91885e46b7ef7da4607e49b558494c18dd",
+        "handle_pinned_before_health": false,
+        "handle_pinned_before_identity_read": false,
+        "health_probe_seconds": 3.063,
+        "seam_order": [
+          "identity_read",
+          "health_start",
+          "health_end",
+          "handle_pinned",
+          "health_start",
+          "health_end"
+        ],
+        "unpinned_window_seconds": 3.063
+      },
+      "remediated": {
+        "handle_pinned_before_health": true,
+        "handle_pinned_before_identity_read": true,
+        "health_probe_seconds": 3.016,
+        "seam_order": [
+          "handle_pinned",
+          "identity_read",
+          "health_start",
+          "health_end",
+          "health_start",
+          "health_end"
+        ],
+        "tree": "hotfix-phase7-14-stop-exit-verification working tree",
+        "unpinned_window_seconds": 0.0
+      },
+      "reproduced_here_seconds": 3.063
+    },
+    "pinning_guarantee": {
+      "claim": "From the moment the verifier handle is open AND its handle-derived creation token has matched the recorded token, until stop() returns, that PID cannot become a different process.",
+      "does_not_cover": "any instant before the handle exists - nothing pins a PID before a handle to it is open",
+      "scope": "exactly that period, and exactly that validated handle",
+      "why_withdrawn": "the handle was opened after the identity check and after the health probe, so it did not cover the interval the sentence claimed, and hard escalation reopened a handle by raw PID",
+      "withdrawn_claim": "Windows cannot recycle that PID while the stop is in flight, so the escalation is guaranteed to reach the same process object whose identity was proven"
+    },
+    "pre_remediation_sequence": [
+      {
+        "action": "process_start_token(pid) via transient OpenProcess/CloseHandle",
+        "note": "identity read, handle immediately closed",
+        "pinned": false,
+        "step": 1
+      },
+      {
+        "action": "probe_health(host, port)",
+        "note": "THE EXPOSURE WINDOW - up to HEALTH_REQUEST_TIMEOUT = 3.0 s",
+        "pinned": false,
+        "step": 2
+      },
+      {
+        "action": "open_exit_verifier(pid)",
+        "note": "handle finally opened; pinning starts only here",
+        "pinned": true,
+        "step": 3
+      },
+      {
+        "action": "os.kill(pid, CTRL_BREAK_EVENT)",
+        "note": "graceful signal issued by raw PID",
+        "pinned": true,
+        "step": 4
+      },
+      {
+        "action": "OpenProcess(PROCESS_TERMINATE, pid) -> TerminateProcess",
+        "note": "SECOND handle opened by raw PID, terminated through with NO identity re-check",
+        "pinned": true,
+        "step": 5
+      }
+    ],
+    "remediation": {
+      "1_pinned_handle_opened_first": "open_exit_verifier(pid) runs before the health probe, before any other delay and before anything is signalled",
+      "2_token_read_through_that_exact_handle": "WindowsExitVerifier.__init__ calls GetProcessTimes(handle) on the handle it just opened and stores start_token",
+      "3_compared_with_recorded_token": "Launcher._pinned_identity compares recorded, handle-derived and raw-PID tokens",
+      "4_fail_closed_on_mismatch_or_api_failure": {
+        "ctrl_break_event_sent": false,
+        "error_codes": [
+          "PID_REUSED_BY_ANOTHER_PROCESS",
+          "PROCESS_IDENTITY_UNPROVEN"
+        ],
+        "readiness": "SESSION7_14_LAUNCHER_STOP_REFUSED",
+        "runtime_state_cleared": false,
+        "stale_pid_cleared": false,
+        "terminate_process_called": false,
+        "terminate_requests_recorded": []
+      },
+      "5_handle_held_for_the_complete_stop": "closed in a finally that wraps the whole operation, including the post-stop port and health diagnostics",
+      "6_termination_handle_validated_separately": "terminate_process_result(..., expect_token=) opens PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, re-reads the creation token through THAT handle, and returns TERMINATION_IDENTITY_MISMATCH without issuing any kill when it differs",
+      "7_all_three_tokens_must_match": [
+        "recorded",
+        "verifier_handle",
+        "termination_handle"
+      ],
+      "8_health_probe_moved_after_identity": true,
+      "graceful_signal_note": "CTRL_BREAK_EVENT signals a console process GROUP by number and has no handle form. It is issued only after the pinned handle is open and its token has matched; Windows cannot recycle a PID while that handle is held, which is what makes the number safe to use."
+    },
+    "residual": {
+      "description": "Between the kernel freeing a process object and OpenProcess being called there remains an instant in which the recorded PID could already belong to another process. No API opens a handle without naming the PID, so this cannot be removed.",
+      "proven_by": "test_x53_an_unrelated_replacement_process_survives_the_whole_stop",
+      "why_harmless": "nothing is signalled on the strength of the number. The handle is opened first and the authorizing identity is read back through it, so a reassigned PID yields a non-matching token and the stop refuses without signalling, terminating or clearing state.",
+      "worst_case_outcome": "a fail-closed refusal (SESSION7_14_LAUNCHER_STOP_REFUSED)"
+    },
+    "severity": "ACCEPTANCE_BLOCKER",
+    "status": "CLOSED_BY_REMEDIATION",
+    "test_evidence": {
+      "no_graceful_signal_to_a_replacement_process": [
+        "test_x53_an_unrelated_replacement_process_survives_the_whole_stop",
+        "test_x58_identity_refusal_probes_no_health_and_signals_nothing"
+      ],
+      "no_terminate_process_call_on_a_replacement_process": [
+        "test_x51_termination_handle_refuses_a_mismatched_token_and_kills_nothing",
+        "test_x53_an_unrelated_replacement_process_survives_the_whole_stop"
+      ],
+      "normal_path_still_works": "test_x54_a_matching_real_process_is_still_stopped_and_all_tokens_agree",
+      "pinned_handle_token_validation": [
+        "test_x50_identity_is_read_through_the_exact_pinned_handle",
+        "test_x57_pinned_handle_is_opened_before_health_and_held_to_the_very_end",
+        "test_x56_unreadable_handle_token_fails_closed",
+        "test_x55_no_handle_on_real_windows_fails_closed"
+      ],
+      "termination_handle_token_validation": [
+        "test_x51_termination_handle_refuses_a_mismatched_token_and_kills_nothing",
+        "test_x52_termination_handle_accepts_only_the_matching_token",
+        "test_x46_the_hard_termination_is_handed_the_pinned_token"
+      ],
+      "unrelated_process_remains_alive": {
+        "asserted": {
+          "error_code": "PID_REUSED_BY_ANOTHER_PROCESS",
+          "pid_record_still_present": true,
+          "process_identity.authorized_by": null,
+          "process_identity.handle_pinned": true,
+          "process_identity.handle_token_matches_recorded": false,
+          "process_identity.handle_token_read": true,
+          "readiness": "SESSION7_14_LAUNCHER_STOP_REFUSED",
+          "replacement_process_alive": true,
+          "replacement_process_poll_is_none": true,
+          "runtime_state_cleared": false,
+          "signalled": false,
+          "stale_pid_cleared": false,
+          "terminate_requests": []
+        },
+        "kind": "real Windows processes, real stop path, no alive/terminate/verifier seams",
+        "scenario": "a real live process holds the recorded PID but its creation token differs from the recorded one - what a stop sees after Windows reassigns the number",
+        "test": "test_x53_an_unrelated_replacement_process_survives_the_whole_stop"
+      }
+    }
   },
   "regression": {
     "accepted_baseline_reference": {
+      "5fcbf6f_is_the_accepted_baseline": false,
+      "accepted_baseline_commit": "a68c1473ab904ff7b3fb26be0f7eaee73a7c7cf6",
+      "accepted_tag": "phase7-14-next-action-navigation-hotfix-accepted-a68c147",
+      "counts_recorded_at": "5fcbf6f",
+      "counts_transfer_because": "production/ and tests/ trees at 5fcbf6f and a68c147 are byte-identical (tree hashes 1cb44ddf805... and 2c5995ddd3d...); git diff --name-only 5fcbf6f a68c147 lists two .md files only",
       "duration_seconds": 879.9,
       "errors": 0,
       "exit_code": 1,
       "failures": 1,
       "ran": 4630,
-      "skipped": 4,
-      "source": "SESSION7_14-NEXT-ACTION-NAVIGATION-HOTFIX-ACCEPTANCE-REPORT.md finding 106 (HEAD 5fcbf6f)"
+      "skipped": 4
     },
     "baseline_equivalence": {
+      "arithmetic": "4630 + 51 = 4681",
       "delta_errors": 0,
       "delta_failures": 0,
-      "delta_ran": 38,
+      "delta_ran": 51,
       "delta_skipped": 0,
-      "explanation": "+38 ran is exactly the 38 tests this hotfix adds. The failure set, error count and skip count are unchanged. The suite is NOT green and is not reported as green.",
+      "explanation": "+51 ran is exactly the tests this hotfix adds (38 exit-verification + 13 identity-race). The failure set, error count and skip count are unchanged. The suite is NOT green and is not reported as green.",
       "verdict": "BASELINE_EQUIVALENT_NONZERO"
     },
     "compile_checks": {
       "compileall production/ tests/": "exit 0",
       "py_compile changed files": "OK"
     },
+    "focused_suite_differential": {
+      "baseline_commit": "a68c1473ab904ff7b3fb26be0f7eaee73a7c7cf6",
+      "baseline_failures": 1,
+      "baseline_ran": 465,
+      "both_legs_measured": true,
+      "failing_test_both_legs": "test_199e_no_acceptance_tag_yet",
+      "head_failures": 1,
+      "head_ran": 516,
+      "note": "the accepted baseline fails exactly the same single test, which makes the STALE_BASELINE_EQUIVALENT classification a measurement rather than an argument"
+    },
     "full_in_place_suite": {
       "command": "python -m unittest discover -s tests",
-      "duration_seconds": 1129.77,
+      "duration_seconds": 931.408,
       "errors": 0,
       "exit_code": 1,
       "failures": 1,
+      "green": false,
       "only_failure": "test_199e_no_acceptance_tag_yet",
-      "ran": 4668,
+      "ran": 4681,
       "skipped": 4
     },
     "known_stale_failure": {
+      "byte_identical_to_baseline": true,
       "classification": "STALE_BASELINE_EQUIVALENT",
+      "git_diff_a68c147_head_tests_199e_hits": 0,
       "observed_assertion": "AssertionError: 'checkpoint' not found in 'phase7-14-next-action-navigation-hotfix-accepted-a68c147'",
       "proof": [
         "It asserts that every phase7-14-* git tag contains 'checkpoint', i.e. that no Phase 7.14 acceptance tag exists.",
@@ -462,7 +801,18 @@
       "exit_code": 0,
       "ran": 47,
       "result": "OK"
+    },
+    "source_claim_verification": {
+      "claims_checked": 17,
+      "claims_passed": 17,
+      "method": "mechanical re-check of every load-bearing report claim against the remediated source"
     }
+  },
+  "revision": {
+    "reason": "independent audit of 0a71cd9 -> REMEDIATION_REQUIRED (PID identity race) plus documentation defects D1-D6",
+    "remediation_scope": "bounded: Stop process identity only. No merge, no acceptance tag, main unchanged.",
+    "revision": 2,
+    "supersedes_commit": "0a71cd91885e46b7ef7da4607e49b558494c18dd"
   },
   "root_cause": {
     "mechanism": "OpenProcess + GetProcessTimes succeed on a terminated, handle-referenced process object; Windows frees the object only after exit AND full handle release.",
@@ -484,12 +834,13 @@
     },
     "verdict": "PROVEN"
   },
-  "schema_version": "phase7-14-stop-exit-verification-proof-v1",
+  "schema_version": "phase7-14-stop-exit-verification-proof-v2",
   "stage_id": "7.14",
   "status": {
     "acceptance_tag_created": false,
     "branch_pushed": true,
     "independent_audit_requested": true,
+    "independent_re_audit_requested": true,
     "main_modified": false,
     "merged": false
   },
@@ -526,23 +877,49 @@
   "tests": {
     "accepted_assertions_updated": [
       "test_h03",
-      "test_h07"
+      "test_h07",
+      "test_x19",
+      "test_x22 (renamed: three -> four sentences)",
+      "test_x32",
+      "test_x17 / test_x17b verifier doubles now model the identity half of the contract"
     ],
     "focused_phase7_14_suite": {
-      "added": 38,
+      "added": 51,
+      "added_for_exit_verification": 38,
+      "added_for_identity_race": 13,
+      "baseline_commit": "a68c1473ab904ff7b3fb26be0f7eaee73a7c7cf6",
+      "baseline_failures": 1,
+      "baseline_measured_not_carried_forward": true,
+      "baseline_only_failure": "test_199e_no_acceptance_tag_yet",
       "baseline_ran": 465,
       "command": "python -m unittest tests.test_phase7_14_owner_usability_pilot_readiness",
       "errors": 0,
+      "failure_set_identical_to_baseline": true,
       "failures": 1,
-      "head_ran": 503,
+      "head_ran": 516,
       "only_failure": "test_199e_no_acceptance_tag_yet",
       "skipped": 0
     },
+    "identity_race_tests_added": [
+      "test_x46_the_hard_termination_is_handed_the_pinned_token",
+      "test_x47_no_unreachable_owner_copy_for_a_stopped_launcher",
+      "test_x48_owner_capitalization_is_one_form_across_a_stop_session",
+      "test_x50_identity_is_read_through_the_exact_pinned_handle",
+      "test_x51_termination_handle_refuses_a_mismatched_token_and_kills_nothing",
+      "test_x52_termination_handle_accepts_only_the_matching_token",
+      "test_x53_an_unrelated_replacement_process_survives_the_whole_stop",
+      "test_x54_a_matching_real_process_is_still_stopped_and_all_tokens_agree",
+      "test_x55_no_handle_on_real_windows_fails_closed",
+      "test_x56_unreadable_handle_token_fails_closed",
+      "test_x57_pinned_handle_is_opened_before_health_and_held_to_the_very_end",
+      "test_x58_identity_refusal_probes_no_health_and_signals_nothing",
+      "test_x59_stale_runtime_record_gets_its_own_qualified_sentence"
+    ],
     "new_stop_exit_classes_only": {
-      "command": "python -m unittest -v ...TestWindowsRealProcessExitProof ...TestStopNeverTouchesAnUnrelatedProcess ...TestStopExitVerificationContract ...TestStopExitVerificationBoundary",
+      "command": "python -m unittest ...TestWindowsRealProcessExitProof ...TestStopNeverTouchesAnUnrelatedProcess ...TestStopProcessIdentityRace ...TestStopExitVerificationContract ...TestStopExitVerificationBoundary",
       "errors": 0,
       "failures": 0,
-      "ran": 38,
+      "ran": 51,
       "result": "OK",
       "skipped": 0,
       "windows_real_lifecycle_tests_skipped": 0
@@ -617,6 +994,7 @@
         "test_x13b"
       ]
     },
+    "test_199e_byte_identical_to_baseline": true,
     "test_199e_retired": false
   },
   "wait_for_single_object_evidence": {

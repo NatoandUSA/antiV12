@@ -138,6 +138,11 @@ HEALTH_POLL_INTERVAL = 0.5
 HEALTH_REQUEST_TIMEOUT = 3.0
 STOP_TIMEOUT_SECONDS = 15.0
 STOP_POLL_INTERVAL = 0.25
+# A child's identity is read immediately after spawn, through the handle this launcher already owns.
+# That read does not fail in normal operation, so the retry exists only to absorb a transient API
+# failure — it is bounded, and exhausting it fails CLOSED rather than recording an unverifiable child.
+START_TOKEN_READ_ATTEMPTS = 3
+START_TOKEN_RETRY_SECONDS = 0.1
 # A graceful console-break only reaches a process that shares the caller's console, which a detached
 # child never does on Windows. So the polite signal is still sent (it is what stops the console
 # cleanly on POSIX), but the owner waits a SHORT grace window, not the whole stop budget, before the
@@ -375,6 +380,46 @@ def process_start_token(pid):
         return f"posix-start-{after[19]}"
     except (ValueError, IndexError):
         return None
+
+
+def valid_identity_token(token):
+    """Whether this value may be used as identity evidence AT ALL. ONE rule, every site.
+
+    Every consumer of the recorded token previously tested it for truthiness inline, and each of
+    them read a falsy token as "skip the check" rather than "cannot verify". A null token therefore
+    authorized a termination in `_pinned_identity`, disabled the PID-reuse branch in
+    `_clear_stale_pid`, and produced an unverified `launcher_owned: true` in `status`.
+
+    This deliberately checks PRESENCE and SHAPE, not format. The accepted seams legitimately produce
+    tokens like `tok-4242`; a format gate here would reject the test process layer and silently
+    convert every seam-driven stop into a refusal, which is a different bug wearing this one's
+    clothes."""
+    return isinstance(token, str) and bool(token.strip())
+
+
+def process_start_token_from_popen(proc):
+    """The identity token of the child THIS `Popen` object owns, read through its own handle.
+
+    Returns (token, error). Start already holds a handle to the process it just created, and reading
+    identity by raw PID re-resolves that number against whatever the OS currently has there — the
+    same unpinned read the stop path was rewritten to eliminate. This closes it at the source.
+
+    Windows only, by necessity and not by omission: on POSIX the child stays unreaped for as long as
+    the `Popen` lives, so the kernel cannot recycle its PID and the /proc read is ALREADY pinned by
+    the same object. There is nothing to close there."""
+    if os.name != "nt":
+        return None, "NOT_WINDOWS"
+    handle = getattr(proc, "_handle", None)
+    if handle is None:
+        return None, "NO_POPEN_HANDLE"
+    try:
+        ctypes, wintypes, k32 = _win_kernel32()
+    except Exception:                            # noqa: BLE001 — never crash a start
+        return None, "KERNEL32_UNAVAILABLE"
+    try:
+        return _win_handle_start_token(ctypes, wintypes, k32, int(handle))
+    except (TypeError, ValueError):
+        return None, "NO_POPEN_HANDLE"
 
 
 # ---------------------------------------------------------------- Windows exit proof
@@ -983,7 +1028,7 @@ class Launcher:
                  workspace=None, clock=time.monotonic, sleep=time.sleep,
                  health=None, port_probe=None, spawn=None, browser=None,
                  alive=None, start_token=None, terminate=None, python_exe=None,
-                 exit_verifier=None):
+                 exit_verifier=None, child_token=None):
         self.root = os.path.abspath(root or repo_root())
         self.host = host
         self.port = port
@@ -1001,6 +1046,10 @@ class Launcher:
         self._browser = browser
         self._alive = alive or process_alive
         self._start_token = start_token or process_start_token
+        # Identity of a child THIS launcher owns, read through the spawn object's own handle. The
+        # raw-PID reader above stays as the fallback for platforms with no handle to read (POSIX,
+        # where an unreaped child already pins its own PID) and for injected spawn stand-ins.
+        self._child_token = child_token or process_start_token_from_popen
         self._terminate = terminate or terminate_process_result
         # Handle-validated termination exists only on the REAL process layer; an injected terminate
         # seam keeps the accepted two-argument signature and is never handed a token it cannot check.
@@ -1125,9 +1174,30 @@ class Launcher:
                 owner_message=_owner_message(LAUNCHER_FAILED, "CONSOLE_SPAWN_FAILED", "")))
 
         pid = getattr(proc, "pid", None)
-        token = self._start_token(pid)
+
+        # ---- identity of the child we just created, BEFORE anything is recorded ------------------
+        # A start that cannot say WHICH process it created must not write a record claiming it owns
+        # one. The accepted baseline read this token by raw PID, persisted whatever came back —
+        # including None — and reported READY; every downstream identity check then read that null
+        # as "nothing to verify" and waved itself through.
+        token, identity_source, token_error = self._child_identity(proc, pid)
+        if not valid_identity_token(token):
+            # Fail closed. The child is cleaned up through the spawn object THIS launcher holds, so
+            # no PID is ever re-resolved to reach it, and no runtime record is left behind.
+            cleaned = self._discard_child(proc)
+            self.ws.log("start.identity_unreadable", pid=_s(pid), reason=_s(token_error),
+                        child_cleaned_up=cleaned)
+            return self._finish(self._result(
+                LAUNCHER_FAILED, phase="start", preflight=pre, pid=pid,
+                error_code="CONSOLE_IDENTITY_UNREADABLE", error_detail=_s(token_error),
+                identity_source=identity_source, child_cleaned_up=cleaned,
+                stale_pid_cleared=stale_pid, runtime_state_written=False,
+                owner_message=_owner_message(LAUNCHER_FAILED, "CONSOLE_IDENTITY_UNREADABLE", "",
+                                             phase="start")))
+
         record = {
             "schema_version": PID_SCHEMA, "pid": pid, "process_start_token": token,
+            "identity_source": identity_source,
             "host": self.host, "port": validate_port(self.port),
             "command_fingerprint": command_fingerprint(cmd),
             "console_module": CONSOLE_MODULE,
@@ -1212,8 +1282,52 @@ class Launcher:
         if not self.browser_opened:
             self.ws.log("browser.open_failed")
 
+    def _child_identity(self, proc, pid):
+        """(token, source, error) for the child just spawned. Bounded retry, then fail closed.
+
+        The handle-backed read comes first because it is the only one that cannot describe a
+        different process. The raw-PID reader is the fallback for platforms and seams with no handle
+        to offer, and it is safe there: on POSIX the unreaped child pins its own PID."""
+        error = None
+        for attempt in range(START_TOKEN_READ_ATTEMPTS):
+            token, error = self._child_token(proc)
+            if valid_identity_token(token):
+                return token, "popen_handle", None
+            token = self._start_token(pid)
+            if valid_identity_token(token):
+                return token, "process_start_token", None
+            error = error or "IDENTITY_TOKEN_UNREADABLE"
+            if attempt + 1 < START_TOKEN_READ_ATTEMPTS:
+                self.sleep(START_TOKEN_RETRY_SECONDS)
+        return None, "unreadable", error
+
+    def _discard_child(self, proc):
+        """Stop a child whose identity could not be established, THROUGH the object that owns it.
+
+        No PID is re-resolved and no identity gate is needed: this object refers to exactly the one
+        process this launcher created, which is precisely the guarantee a PID lookup cannot give."""
+        try:
+            kill = getattr(proc, "kill", None)
+            if not callable(kill):
+                return False
+            kill()
+            wait = getattr(proc, "wait", None)
+            if callable(wait):
+                wait(timeout=STOP_GRACE_SECONDS)
+            return True
+        except Exception:                        # noqa: BLE001 — a failed cleanup is data, not a crash
+            return False
+
     def _clear_stale_pid(self):
-        """Drop a PID record whose process is gone or whose PID has been reused. Never signals."""
+        """Drop a PID record that is gone, unverifiable, or has been reused. Never signals.
+
+        Three distinct answers, where the baseline collapsed them into one truthiness test:
+          * the process is gone            -> stale, clear it;
+          * the RECORDED token is unusable -> no operation can ever verify this record, so keeping
+                                              it only strands the owner; clear it;
+          * the LIVE token cannot be read  -> proves nothing. The baseline treated this as PID reuse
+                                              (`None != recorded` is true) and destroyed the record
+                                              on exactly the reading that establishes nothing."""
         rec = self.ws.read_pid()
         if not rec:
             return False
@@ -1222,8 +1336,15 @@ class Launcher:
             self.ws.log("pid.stale_cleared", pid=_s(pid), reason="not_alive")
             self.ws.clear_pid()
             return True
+        recorded = rec.get("process_start_token")
+        if not valid_identity_token(recorded):
+            self.ws.log("pid.stale_cleared", pid=_s(pid), reason="unverifiable_record")
+            self.ws.clear_pid()
+            return True
         token = self._start_token(pid)
-        if rec.get("process_start_token") and token != rec.get("process_start_token"):
+        if not valid_identity_token(token):
+            return False                         # unreadable is not reused: keep the record
+        if token != recorded:
             self.ws.log("pid.stale_cleared", pid=_s(pid), reason="pid_reused")
             self.ws.clear_pid()
             return True
@@ -1388,23 +1509,29 @@ class Launcher:
         handle_token = getattr(verifier, "start_token", None) if pinned else None
         handle_error = getattr(verifier, "token_error", None) if verifier is not None else None
         process_token = self._start_token(pid)
-        ev = {"recorded_token_present": bool(recorded), "handle_pinned": pinned,
+        recorded_ok = valid_identity_token(recorded)
+        ev = {"recorded_token_present": bool(recorded), "recorded_token_valid": recorded_ok,
+              "handle_pinned": pinned,
               "handle_token_read": handle_token is not None,
-              "handle_token_matches_recorded": bool(recorded and handle_token == recorded),
-              "process_token_matches_recorded": bool(recorded and process_token == recorded),
+              "handle_token_matches_recorded": bool(recorded_ok and handle_token == recorded),
+              "process_token_matches_recorded": bool(recorded_ok and process_token == recorded),
               "handle_identity_required": self._handle_identity_required,
               "api_error": handle_error}
-        if not recorded:
-            # No recorded token to compare against: the accepted baseline behaviour, unchanged.
-            ev["authorized_by"] = "NO_RECORDED_TOKEN"
-            return None, handle_token, ev
+        if not recorded_ok:
+            # Nothing to compare against, so nothing can be proven. The accepted baseline returned
+            # AUTHORIZED here, which short-circuited every check below it — including the pinned
+            # handle — and let a stop terminate whatever the recorded PID currently pointed at. It
+            # also handed the live handle's own token to the hard path as `expect_token`, so the
+            # termination-handle check validated that handle against itself and passed.
+            ev["authorized_by"] = None
+            return "PROCESS_IDENTITY_UNPROVEN", None, ev
         if self._handle_identity_required and not pinned:
             ev["authorized_by"] = None
             return "PROCESS_IDENTITY_UNPROVEN", None, ev
-        if pinned and handle_token is None:
+        if pinned and not valid_identity_token(handle_token):
             ev["authorized_by"] = None
             return "PROCESS_IDENTITY_UNPROVEN", None, ev
-        if process_token is None:
+        if not valid_identity_token(process_token):
             ev["authorized_by"] = None
             return "PROCESS_IDENTITY_UNPROVEN", None, ev
         if pinned and handle_token != recorded:
@@ -1494,13 +1621,18 @@ class Launcher:
     def status(self):
         health = self._health(self.host, self.port)
         rec = self.ws.read_pid()
-        owned = bool(rec) and self._alive(rec.get("pid"))
-        if owned and rec.get("process_start_token"):
-            owned = self._start_token(rec.get("pid")) == rec.get("process_start_token")
+        # Ownership is a VERIFIED claim or it is not made. The baseline only compared tokens when
+        # the recorded one was truthy, so a null token reported `launcher_owned: true` — and a
+        # single session could then report the record owned here and refuse to stop it there.
+        recorded = (rec or {}).get("process_start_token")
+        verified = False
+        if rec and self._alive(rec.get("pid")) and valid_identity_token(recorded):
+            live = self._start_token(rec.get("pid"))
+            verified = valid_identity_token(live) and live == recorded
         readiness = LAUNCHER_ALREADY_RUNNING if health.get("ok") else LAUNCHER_NOT_RUNNING
         return self._finish(self._result(
-            readiness, phase="status", health=health, launcher_owned=owned,
-            pid=(rec or {}).get("pid"),
+            readiness, phase="status", health=health, launcher_owned=verified,
+            identity_verified=verified, pid=(rec or {}).get("pid"),
             owner_message=_owner_message(readiness, "", "")), write=False)
 
     def _finish(self, result, *, write=True):
@@ -1564,8 +1696,12 @@ _OWNER_MESSAGES = {
 _STOP_OWNER_MESSAGES = {
     "CONSOLE_DID_NOT_STOP": STOP_STILL_RUNNING_MESSAGE,
     "CONSOLE_EXIT_NOT_PROVEN": STOP_EXIT_UNPROVEN_MESSAGE,
-    "PROCESS_IDENTITY_UNPROVEN": ("The toolkit was not stopped because the launcher could not safely "
-                                  "verify the process identity. Nothing on this computer was stopped."),
+    # Recovery guidance lives HERE, in what Stop prints to the console window, and not in the web
+    # panel: the panel is unreachable in exactly the situation this sentence describes.
+    "PROCESS_IDENTITY_UNPROVEN": ("The toolkit was not stopped because the launcher could not confirm "
+                                  "which process it is. Nothing on this computer was stopped. Close "
+                                  "the toolkit window yourself, or end its task in Task Manager, then "
+                                  "run Start-AMZ-Toolkit again."),
     "PID_REUSED_BY_ANOTHER_PROCESS": ("The process was not stopped because it was not started by this "
                                       "launcher. The recorded process number now belongs to a "
                                       "different program, so nothing was stopped."),
@@ -1574,6 +1710,16 @@ _STOP_OWNER_MESSAGES = {
                            "so nothing was stopped."),
 }
 STOP_FAILED_MESSAGE = "The toolkit could not be stopped. See the launcher log for the recorded reason."
+
+# Start-phase text keyed by error code, mirroring the stop table. A start that cannot identify the
+# process it just created stops that process again, so the owner is told the machine was left clean
+# and given the one action that resolves it — never a code, and never a false "it is running".
+_START_OWNER_MESSAGES = {
+    "CONSOLE_IDENTITY_UNREADABLE": ("The toolkit could not be started safely: the launcher could not "
+                                    "confirm which process it had just created, so it closed that "
+                                    "process again. Nothing was left behind. Run Start-AMZ-Toolkit "
+                                    "once more."),
+}
 
 # A proven exit is still a success, but it is not the SAME success when the launcher could not clean
 # up its own runtime record: the owner has to know before starting again, so that state gets its own
@@ -1585,6 +1731,12 @@ _STOP_STATE_OWNER_MESSAGES = {
 
 
 def _owner_message(readiness, code, detail, phase=None, stop_state=None):
+    # Start-specific text is scoped the same way stop's is, so no existing start or open sentence
+    # changes: only a call that passes phase="start" AND a mapped code can reach this table.
+    if phase == "start":
+        specific = _START_OWNER_MESSAGES.get(code)
+        if specific:
+            return specific
     # Stop-specific text is scoped to the stop phase, so start and open wording cannot change.
     if phase == "stop":
         specific = _STOP_OWNER_MESSAGES.get(code)

@@ -138,12 +138,23 @@ class FakeProc:
         self._exit_after = exit_after
         self._exit_code = exit_code
         self.polls = 0
+        self.kills = 0
+        self.waits = 0
 
     def poll(self):
         self.polls += 1
         if self._exit_after is not None and self.polls > self._exit_after:
             return self._exit_code
         return None
+
+    def kill(self):
+        """The owned-child cleanup path: no PID is ever re-resolved to reach this process."""
+        self.kills += 1
+        self._exit_after = 0
+
+    def wait(self, timeout=None):
+        self.waits += 1
+        return self._exit_code
 
 
 HEALTHY = {"ok": True, "reason": "OK", "stage_id": "7.13",
@@ -960,11 +971,21 @@ class TestStopOwnerMessage(LauncherBase):
 
     # ---- 4) identity refusal wording -----------------------------------------------------------
     def test_h04_identity_refusal_wording_is_accurate(self):
+        """Null-start-token hotfix: this sentence gained the RECOVERY half it was missing.
+
+        The accepted baseline said only "could not safely verify the process identity", which is
+        true and completely unactionable — and it is printed in the one situation where the web
+        console cannot be used to do anything about it. The machine contract (readiness, error_code)
+        is unchanged; the owner is now told what state the computer is in and what to do next."""
         res = self.stop_identity_unproven()
         self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
         self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
-        self.assertIn("The toolkit was not stopped because the launcher could not safely verify "
-                      "the process identity.", res["owner_message"])
+        msg = res["owner_message"]
+        self.assertIn("The toolkit was not stopped because the launcher could not confirm which "
+                      "process it is.", msg)
+        self.assertIn("Nothing on this computer was stopped.", msg)
+        self.assertIn("Task Manager", msg)
+        self.assertIn("Start-AMZ-Toolkit", msg)
 
     # ---- 5) unrelated-process refusal wording --------------------------------------------------
     def test_h05_unrelated_process_wording_is_accurate(self):
@@ -4110,6 +4131,356 @@ class TestStopExitVerificationBoundary(LauncherBase):
         self.assertLess(len(json.dumps(res["terminate_requests"])), 600)
         for marker in ("C:\\\\", "Authorization", "csrf", "cookie"):
             self.assertNotIn(marker, blob)
+
+
+# ================================================================ 7d) IDENTITY TOKEN VALIDITY
+# Phase 7.14 null-start-token hotfix.
+#
+# The accepted stop-exit-verification hotfix added a three-token identity gate, but every consumer
+# of the recorded token treated a FALSY token as "skip the check" rather than "cannot verify":
+#
+#   _pinned_identity : `if not recorded: return None, ...`      -> AUTHORIZED a termination
+#   _clear_stale_pid : `if rec.get(...) and token != rec[...]`  -> the PID-reuse branch never ran
+#   status           : `if owned and rec.get(...)`              -> launcher_owned: true, unverified
+#
+# And the record those three read from is written by START, which reads the token by RAW PID from a
+# process it already owns a handle to, persists whatever comes back -- including None -- and then
+# reports SESSION7_14_LAUNCHER_READY. So the null token is not an inherited condition: Start
+# manufactures it, and the identity gate is bypassed from the moment the record is written.
+#
+# The invariant these tests encode: a missing, null, blank, malformed or unreadable token NEVER
+# authorizes a signal, a termination, an ownership claim, or a successful Start.
+class TestIdentityTokenValidator(unittest.TestCase):
+    """One rule, four sites. Presence and shape only -- never a format gate, because the accepted
+    test seams legitimately produce tokens like `tok-4242` that no real platform would emit."""
+
+    def test_x60_falsy_and_malformed_tokens_are_never_valid(self):
+        for bad in (None, "", "   ", "\t\n", 0, 1, 1.0, True, False, [], {}, (), b"win-create-1"):
+            self.assertFalse(L.valid_identity_token(bad), repr(bad))
+
+    def test_x60b_real_and_seam_tokens_are_valid(self):
+        for good in ("win-create-133742", "posix-start-9981", "tok-4242", "x"):
+            self.assertTrue(L.valid_identity_token(good), repr(good))
+
+    def test_x60c_every_identity_site_uses_the_one_validator(self):
+        """A second, hand-rolled truthiness test at any of the four sites is the defect returning."""
+        src = read(LAUNCHER_PATH)
+        for site in ("_pinned_identity", "_clear_stale_pid"):
+            body = src.split(f"def {site}", 1)[1].split("\n    def ", 1)[0]
+            self.assertIn("valid_identity_token", body, site)
+        self.assertNotIn("if not recorded:", src)
+        self.assertNotIn('if owned and rec.get("process_start_token")', src)
+
+
+class TestNullTokenNeverAuthorizes(LauncherBase):
+    """Site 1 -- `_pinned_identity`. The audit's finding: a null recorded token authorized a kill."""
+
+    def stop_with_recorded(self, recorded, pid=7300, **kw):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": pid, "process_start_token": recorded,
+                           "host": "127.0.0.1", "port": 8780})
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        kw.setdefault("alive", lambda p: True)
+        kw.setdefault("stop_timeout", 1.0)
+        return self.launcher(**kw).stop()
+
+    def test_x61_null_recorded_token_refuses_and_signals_nothing(self):
+        res = self.stop_with_recorded(None, pid=7301)
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
+        self.assertFalse(res["signalled"])
+        self.assertFalse(res["identity_verified"])
+        self.assertEqual(res["terminate_requests"], [])
+        self.assertEqual(self.terminated, [], "a null token authorized a termination")
+
+    def test_x61b_every_malformed_recorded_token_refuses(self):
+        for i, bad in enumerate((None, "", "   ", 0, 1234, True, [], {})):
+            res = self.stop_with_recorded(bad, pid=7310 + i)
+            self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED, repr(bad))
+            self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN", repr(bad))
+            self.assertEqual(res["terminate_requests"], [], repr(bad))
+        self.assertEqual(self.terminated, [])
+
+    def test_x61c_a_refusal_clears_no_state_and_probes_no_health(self):
+        """A refusal must not destroy the record the next attempt needs, and must not spend the
+        3.0 s health timeout with an unverifiable PID in hand."""
+        probes = []
+        res = self.stop_with_recorded(None, pid=7320,
+                                      health=lambda h, p: (probes.append((h, p)), dict(HEALTHY))[-1])
+        self.assertFalse(res["runtime_state_cleared"])
+        self.assertFalse(res["stale_pid_cleared"])
+        self.assertIsNotNone(self.ws.read_pid())
+        self.assertEqual(probes, [], "health was probed on an unverifiable identity")
+
+    def test_x61d_evidence_records_why_it_refused(self):
+        res = self.stop_with_recorded(None, pid=7330)
+        ident = res["process_identity"]
+        self.assertFalse(ident["recorded_token_valid"])
+        self.assertIsNone(ident["authorized_by"])
+        self.assertNotIn("NO_RECORDED_TOKEN", json.dumps(ident))
+
+    def test_x61e_owner_copy_says_what_to_do_next(self):
+        res = self.stop_with_recorded(None, pid=7340)
+        msg = res["owner_message"]
+        self.assertTrue(msg.startswith("The toolkit "), msg)
+        self.assertIn("Nothing on this computer was stopped.", msg)
+        self.assertIn("Task Manager", msg)
+        for code in ("PROCESS_IDENTITY_UNPROVEN", "SESSION7_14_", "process_start_token"):
+            self.assertNotIn(code, msg)
+
+    def test_x61f_a_valid_matching_token_still_stops(self):
+        """The gate must not block the legitimate path it exists to protect."""
+        alive = {"v": True}
+        res = self.stop_with_recorded("tok-7350", pid=7350, alive=lambda p: alive["v"],
+                                      start_token=lambda p: "tok-7350",
+                                      terminate=lambda pid, hard=False: (alive.update(v=False),
+                                                                         True)[-1])
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED)
+        self.assertTrue(res["identity_verified"])
+
+
+class TestUnverifiableRecordSweep(LauncherBase):
+    """Site 2 -- `_clear_stale_pid`. Unreadable is not reused, and unverifiable is not owned."""
+
+    def start_it(self, **kw):
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        kw.setdefault("spawn", lambda cmd, cwd: FakeProc(pid=99))
+        return self.launcher(**kw).start()
+
+    def test_x62_unverifiable_record_for_a_live_pid_is_cleared_not_kept(self):
+        """A record whose own token is null can never authorize anything, so keeping it only leaves
+        the owner with a PID record no operation will ever act on."""
+        self.ws.write_pid({"pid": 4242, "process_start_token": None, "host": "127.0.0.1",
+                           "port": 8780})
+        res = self.start_it(alive=lambda pid: True)
+        self.assertTrue(res["stale_pid_cleared"])
+        self.assertEqual(self.ws.read_pid()["pid"], 99)
+        self.assertEqual(self.terminated, [], "the stale sweep signalled a process")
+
+    def test_x62b_unreadable_live_token_is_not_reported_as_pid_reuse(self):
+        """The baseline cleared the record whenever the live read failed, because `None != recorded`
+        is true. That destroys the record on exactly the reading that proves nothing."""
+        self.ws.write_pid({"pid": 4242, "process_start_token": "tok-4242", "host": "127.0.0.1",
+                           "port": 8780})
+        res = self.start_it(alive=lambda pid: True, start_token=lambda pid: None)
+        self.assertFalse(res["stale_pid_cleared"])
+        self.assertEqual(self.terminated, [])
+
+    def test_x62c_a_genuinely_reused_pid_is_still_cleared(self):
+        self.ws.write_pid({"pid": 4242, "process_start_token": "tok-OLD", "host": "127.0.0.1",
+                           "port": 8780})
+        res = self.start_it(alive=lambda pid: True, start_token=lambda pid: "tok-NEW")
+        self.assertTrue(res["stale_pid_cleared"])
+
+
+class TestStatusOwnershipIsVerified(LauncherBase):
+    """Site 3 -- `status`. After fixing only site 1, Stop refuses while status still calls the
+    record owned: one session, two contradictory answers about the same PID."""
+
+    def status_for(self, recorded, **kw):
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 7400, "process_start_token": recorded,
+                           "host": "127.0.0.1", "port": 8780})
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        kw.setdefault("alive", lambda p: True)
+        return self.launcher(**kw).status()
+
+    def test_x63_null_recorded_token_is_never_reported_as_owned(self):
+        for bad in (None, "", "   ", 0, 1234, []):
+            res = self.status_for(bad)
+            self.assertFalse(res["launcher_owned"], repr(bad))
+            self.assertFalse(res["identity_verified"], repr(bad))
+
+    def test_x63b_unreadable_live_token_is_never_reported_as_owned(self):
+        res = self.status_for("tok-7400", start_token=lambda pid: None)
+        self.assertFalse(res["launcher_owned"])
+
+    def test_x63c_a_matching_pair_is_reported_as_owned(self):
+        res = self.status_for("tok-7400", start_token=lambda pid: "tok-7400")
+        self.assertTrue(res["launcher_owned"])
+        self.assertTrue(res["identity_verified"])
+
+    def test_x63d_status_and_stop_agree_about_the_same_record(self):
+        """The self-contradiction this site exists to prevent, asserted directly."""
+        self.ws.clear_pid()
+        self.ws.write_pid({"pid": 7401, "process_start_token": None,
+                           "host": "127.0.0.1", "port": 8780})
+        st = self.launcher(health=lambda h, p: dict(HEALTHY), alive=lambda p: True).status()
+        sp = self.launcher(health=lambda h, p: dict(HEALTHY), alive=lambda p: True,
+                           stop_timeout=1.0).stop()
+        self.assertFalse(st["launcher_owned"])
+        self.assertEqual(sp["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertFalse(sp["identity_verified"])
+
+
+class TestStartProducesAVerifiedToken(LauncherBase):
+    """Site 0 -- the source. Start must not persist, nor report success on, an unverifiable child."""
+
+    def start_it(self, **kw):
+        kw.setdefault("health", lambda h, p: dict(HEALTHY))
+        return self.launcher(**kw).start()
+
+    def test_x64_unreadable_child_token_never_reports_ready(self):
+        proc = FakeProc(pid=99)
+        res = self.start_it(spawn=lambda cmd, cwd: proc, start_token=lambda pid: None)
+        self.assertNotEqual(res["readiness"], L.LAUNCHER_READY)
+        self.assertEqual(res["readiness"], L.LAUNCHER_FAILED)
+        self.assertEqual(res["error_code"], "CONSOLE_IDENTITY_UNREADABLE")
+
+    def test_x64b_unreadable_child_token_persists_no_runtime_record(self):
+        res = self.start_it(spawn=lambda cmd, cwd: FakeProc(pid=99), start_token=lambda pid: None)
+        self.assertIsNone(self.ws.read_pid(), "a null-token record was persisted")
+        self.assertFalse(res.get("browser_opened"))
+        self.assertEqual(self.browser_calls, [], "a browser was opened for an unmanageable console")
+
+    def test_x64c_the_unverifiable_child_is_cleaned_up_through_the_owned_object(self):
+        """Cleanup goes through the Popen object we already hold -- never by re-resolving the PID,
+        which is the exact unpinned read this whole hotfix exists to remove."""
+        proc = FakeProc(pid=99)
+        self.start_it(spawn=lambda cmd, cwd: proc, start_token=lambda pid: None)
+        self.assertEqual(proc.kills, 1)
+        self.assertGreaterEqual(proc.waits, 1)
+        self.assertEqual(self.terminated, [], "cleanup went through the PID-based terminate seam")
+
+    def test_x64d_a_transient_read_failure_is_retried_before_failing(self):
+        calls = {"n": 0}
+
+        def flaky(pid):
+            calls["n"] += 1
+            return None if calls["n"] < 2 else "tok-99"
+
+        proc = FakeProc(pid=99)
+        res = self.start_it(spawn=lambda cmd, cwd: proc, start_token=flaky)
+        self.assertEqual(res["readiness"], L.LAUNCHER_READY)
+        self.assertEqual(proc.kills, 0)
+        self.assertEqual(self.ws.read_pid()["process_start_token"], "tok-99")
+
+    def test_x64e_retries_are_bounded(self):
+        calls = {"n": 0}
+
+        def never(pid):
+            calls["n"] += 1
+            return None
+
+        self.start_it(spawn=lambda cmd, cwd: FakeProc(pid=99), start_token=never)
+        self.assertEqual(calls["n"], L.START_TOKEN_READ_ATTEMPTS)
+        self.assertLessEqual(L.START_TOKEN_READ_ATTEMPTS, 5)
+
+    def test_x64f_owner_copy_for_an_unverifiable_start_is_truthful(self):
+        res = self.start_it(spawn=lambda cmd, cwd: FakeProc(pid=99), start_token=lambda pid: None)
+        msg = res["owner_message"]
+        self.assertTrue(msg.startswith("The toolkit "), msg)
+        self.assertIn("Start-AMZ-Toolkit", msg)
+        self.assertNotIn("is running", msg)
+        for code in ("CONSOLE_IDENTITY_UNREADABLE", "SESSION7_14_"):
+            self.assertNotIn(code, msg)
+
+    def test_x64g_a_readable_token_records_its_source(self):
+        res = self.start_it(spawn=lambda cmd, cwd: FakeProc(pid=99))
+        self.assertEqual(res["readiness"], L.LAUNCHER_READY)
+        rec = self.ws.read_pid()
+        self.assertTrue(L.valid_identity_token(rec["process_start_token"]))
+        self.assertEqual(rec["identity_source"], "process_start_token")
+
+
+class TestStartTokenComesFromTheOwnedHandle(RealProcessBase):
+    """Start held a `Popen` that OWNS the child, and read the child's identity by raw PID anyway.
+
+    On Windows the Popen handle is the only read that cannot describe a different process. On POSIX
+    the child is unreaped for as long as the Popen lives, so its PID cannot be recycled and the
+    /proc read is already pinned -- which is why the fallback is correct there and not here."""
+
+    def test_x65_popen_token_matches_the_pid_token_for_a_real_child(self):
+        proc = self.spawn_child()
+        token, err = L.process_start_token_from_popen(proc)
+        if os.name != "nt":
+            self.assertIsNone(token)
+            self.assertEqual(err, "NOT_WINDOWS")
+            return
+        self.assertIsNone(err, err)
+        self.assertTrue(L.valid_identity_token(token), token)
+        self.assertEqual(token, L.process_start_token(proc.pid))
+        self.assertTrue(token.startswith("win-create-"), token)
+
+    @WINDOWS_ONLY
+    def test_x65b_popen_token_survives_the_child_exiting(self):
+        """The handle keeps answering about the process it owns, which is the whole point."""
+        proc = self.spawn_child(seconds=1)
+        token_before, _ = L.process_start_token_from_popen(proc)
+        proc.wait(timeout=20)
+        token_after, err = L.process_start_token_from_popen(proc)
+        self.assertIsNone(err, err)
+        self.assertEqual(token_after, token_before)
+
+    def test_x65c_a_handleless_process_object_falls_back_rather_than_crashing(self):
+        token, err = L.process_start_token_from_popen(FakeProc(pid=1))
+        self.assertIsNone(token)
+        self.assertIn(err, ("NOT_WINDOWS", "NO_POPEN_HANDLE"))
+
+    def test_x65d_no_process_object_is_never_a_token(self):
+        for bad in (None, 0, "proc"):
+            token, err = L.process_start_token_from_popen(bad)
+            self.assertIsNone(token)
+
+
+class TestNullTokenNeverReachesARealProcess(RealProcessBase):
+    """The bystander proof, on REAL Windows processes rather than seams.
+
+    A null recorded token must not reach the OS at all: no console break, no TerminateProcess, and a
+    live unrelated process holding that PID must be running when the stop returns."""
+
+    def launcher_for(self, **kw):
+        kw.setdefault("root", ROOT)
+        kw.setdefault("workspace", self.ws)
+        kw.setdefault("health", lambda h, p: dict(UNHEALTHY))
+        kw.setdefault("port_probe", lambda h, p: False)
+        kw.setdefault("browser", lambda url: True)
+        kw.setdefault("stop_timeout", 2.0)
+        return L.Launcher(**kw)
+
+    def test_x66_a_real_bystander_survives_a_null_token_stop(self):
+        bystander = self.spawn_child()
+        self.ws.write_pid({"pid": bystander.pid, "process_start_token": None,
+                           "host": "127.0.0.1", "port": 8780})
+        launcher = self.launcher_for()
+        res = launcher.stop()
+
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOP_REFUSED)
+        self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN")
+        self.assertFalse(res["signalled"])
+        # Nothing was asked of the OS -- provable from the record, not inferred from an absence.
+        self.assertEqual(res["terminate_requests"], [])
+        self.assertEqual(launcher.terminate_requests, [])
+        time.sleep(0.4)
+        self.assertIsNone(bystander.poll(), "a null recorded token reached a real process")
+        self.assertTrue(L.process_alive(bystander.pid))
+        # The record survives the refusal.
+        self.assertIsNotNone(self.ws.read_pid())
+
+    def test_x66b_blank_and_malformed_tokens_reach_no_real_process_either(self):
+        for bad in ("", "   ", 1234):
+            bystander = self.spawn_child()
+            self.ws.clear_pid()
+            self.ws.write_pid({"pid": bystander.pid, "process_start_token": bad,
+                               "host": "127.0.0.1", "port": 8780})
+            res = self.launcher_for().stop()
+            self.assertEqual(res["error_code"], "PROCESS_IDENTITY_UNPROVEN", repr(bad))
+            self.assertEqual(res["terminate_requests"], [], repr(bad))
+            time.sleep(0.2)
+            self.assertIsNone(bystander.poll(), repr(bad))
+
+    @WINDOWS_ONLY
+    def test_x66c_the_matching_real_process_is_still_stopped(self):
+        """The invariant is fail-closed, not fail-always: a real recorded child still stops."""
+        target = self.spawn_child()
+        self.ws.write_pid({"pid": target.pid,
+                           "process_start_token": L.process_start_token(target.pid),
+                           "host": "127.0.0.1", "port": 8780})
+        res = self.launcher_for(stop_timeout=15.0).stop()
+        self.assertEqual(res["readiness"], L.LAUNCHER_STOPPED, res.get("error_code"))
+        self.assertEqual(res["exit_state"], L.EXIT_STATE_EXITED)
+        target.wait(timeout=15)
+        self.assertIsNotNone(target.poll())
 
 
 if __name__ == "__main__":

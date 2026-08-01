@@ -7,6 +7,7 @@ against real files with real mtimes, and assert the two things it must never do:
 or emit a character the owner's console cannot render.
 """
 import ast
+import hashlib
 import inspect
 import json
 import os
@@ -209,7 +210,13 @@ ADVERSARIAL_SEEDS = (
     "nurse @splat %var !bang ^caret",   # splat, cmd var, delayed expansion, cmd escape
     "-shirt",                           # leading dash: read as a parameter name if bare
     "café naïve müg",    # non-ASCII: a real keyword, and a .ps1 encoding trap
+    "nurse\\",           # the trailing backslash form the tool CLAIMS to support -- see below
 )
+
+# `nurse\` is in the corpus above on purpose. `unsupported_value()` refuses the QUOTE-REQUIRING
+# trailing backslash and declares this bare form supported; a claim of support that is never
+# round-tripped through the real shell is exactly the kind of untested assertion this work keeps
+# finding. If PowerShell mangles it after all, the claim is wrong and the refusal must widen.
 
 # Deliberately OUTSIDE the execution corpus. Note the SPACE: a bare `nurse\` is rendered
 # unquoted and is therefore safe, so the hazard needs a value that both requires quoting and
@@ -383,21 +390,52 @@ class TestWindowsPowerShellExecution(Base):
              "-File", path],
             capture_output=True, text=True, encoding="utf-8", cwd=self.ws)
 
-    def _files(self):
-        return {f for _r, _d, fs in os.walk(self.ws) for f in fs}
+    def _tree(self):
+        """Relative path -> content hash, for every file under the workspace.
+
+        Paths and hashes, not bare names. Names alone miss a file that was MODIFIED rather than
+        created, and collapse two same-named files in different directories -- so a redirect that
+        overwrote the probe would have read as no side effect at all.
+        """
+        out = {}
+        for root, _dirs, files in os.walk(self.ws):
+            for f in files:
+                p = os.path.join(root, f)
+                with open(p, "rb") as fh:
+                    out[os.path.relpath(p, self.ws)] = hashlib.sha256(fh.read()).hexdigest()
+        return out
 
     def _require_powershell(self):
         # On Windows this must EXIST. Skipping here would let a missing shell read as proof.
         self.assertTrue(os.path.isfile(self.PS_EXE), f"powershell.exe not found at {self.PS_EXE}")
 
+    @staticmethod
+    def _unquote(rendered):
+        """Invert `_ps_quote` by PowerShell's single-quoted-literal rule: strip the wrapper and
+        collapse `''` back to `'`. Bare values invert to themselves."""
+        if rendered.startswith("'") and rendered.endswith("'") and len(rendered) >= 2:
+            return rendered[1:-1].replace("''", "'")
+        return rendered
+
     def test_the_seed_corpus_is_covered_by_the_shape_tests_on_every_platform(self):
-        """Runs everywhere, so a non-Windows CI still exercises the whole corpus. It proves the
-        renderer emits a single-quoted literal with the right escaping -- not that PowerShell
-        parses it back, which is what the Windows test below is for."""
+        """Runs everywhere, so a non-Windows CI still exercises the whole corpus.
+
+        Asserts ROUND-TRIP, not "is quoted". The corpus deliberately contains `nurse\\`, which
+        renders BARE -- an earlier version of this test asserted every seed came back
+        single-quoted and would have blocked adding the one supported-but-bare case the tool
+        makes a claim about. What matters is that the rendered form decodes to the original,
+        whichever branch produced it.
+
+        This proves the renderer's own inverse. It does NOT prove PowerShell parses it back the
+        same way; that is what the Windows test below is for.
+        """
         for seed in ADVERSARIAL_SEEDS:
             rendered = P._ps_quote(seed)
-            self.assertTrue(rendered.startswith("'") and rendered.endswith("'"), seed)
-            self.assertEqual(rendered[1:-1].replace("''", "\x00"), seed.replace("'", "\x00"), seed)
+            self.assertEqual(self._unquote(rendered), seed, f"{seed!r} -> {rendered!r}")
+            if P.needs_quoting(seed):
+                self.assertTrue(rendered.startswith("'") and rendered.endswith("'"), seed)
+            else:
+                self.assertEqual(rendered, seed, seed)
 
     def test_the_execution_corpus_and_the_shape_corpus_cannot_diverge(self):
         """They are one constant today. This asserts it by AST -- not by counting occurrences in
@@ -405,8 +443,13 @@ class TestWindowsPowerShellExecution(Base):
         failure rather than a silent hole in whichever one stops being exercised."""
         cls = next(n for n in ast.parse(inspect.getsource(sys.modules[__name__])).body
                    if isinstance(n, ast.ClassDef) and n.name == "TestWindowsPowerShellExecution")
+        # Only module-level CONSTANTS, by ALL_CAPS naming. An earlier version collected every
+        # `for x in name` loop and so counted ordinary locals -- `for f in files` in the tree
+        # snapshot -- as if they were rival corpora. The invariant is about which CORPUS is
+        # iterated, not about every loop in the class.
         looped = {n.iter.id for n in ast.walk(cls)
-                  if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)}
+                  if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)
+                  and n.iter.id.isupper()}
         self.assertEqual(looped, {"ADVERSARIAL_SEEDS"},
                          f"every seed loop must iterate the one corpus; found {looped}")
         self.assertNotIn(TRAILING_BACKSLASH_SEED, ADVERSARIAL_SEEDS)
@@ -436,6 +479,7 @@ class TestWindowsPowerShellExecution(Base):
         cmd = os.path.join(d, "marker.cmd")
         with open(cmd, "w", encoding="ascii") as fh:
             fh.write("@echo off\r\n@echo MARKER-OK\r\n")
+        self.assertIn(" ", cmd, "the fixture path must actually contain a space")
         quoted = P._ps_quote(cmd)
         self.assertTrue(quoted.startswith("'"), "fixture must require quoting")
 
@@ -452,8 +496,6 @@ class TestWindowsPowerShellExecution(Base):
     def test_windows_powershell_renderer_preserves_exact_seed(self):
         self._require_powershell()
         probe = self._probe()
-        self._write_ps1("paste.ps1", "# placeholder")
-        before = self._files()          # snapshot AFTER fixtures: nothing new may appear at all
 
         for seed in ADVERSARIAL_SEEDS:
             # `&` is required, not stylistic: a line whose FIRST token is a quoted string is a
@@ -466,6 +508,10 @@ class TestWindowsPowerShellExecution(Base):
                 self.assertEqual(fh.read(3), b"\xef\xbb\xbf", "the .ps1 must carry a UTF-8 BOM")
             self.assertEqual(len([l for l in open(ps1, encoding="utf-8-sig") if l.strip()]), 1)
 
+            # Snapshot per iteration, AFTER the .ps1 is written: the script file changes on
+            # purpose every time, so a single up-front baseline could only be compared by
+            # ignoring it -- and ignoring it is how a redirect that overwrote it would hide.
+            before = self._tree()
             run = self._run_ps1(ps1)
 
             self.assertEqual(run.returncode, 0, f"{seed!r}: {run.stderr}")
@@ -477,9 +523,9 @@ class TestWindowsPowerShellExecution(Base):
             # 3. no extra command executed
             self.assertNotIn("PWNED", run.stdout, seed)
             self.assertNotIn("PWNED", run.stderr, seed)
-            # 4. no filesystem side effect ANYWHERE -- a single sentinel check would miss a
-            #    redirect whose target name came from the seed itself.
-            self.assertEqual(self._files(), before, f"{seed!r} created unexpected files")
+            # 4. no filesystem side effect ANYWHERE: added, removed, or modified. A single
+            #    sentinel check would miss a redirect whose target name came from the seed.
+            self.assertEqual(self._tree(), before, f"{seed!r} changed the workspace")
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell execution proof")
     def test_windows_powershell_runs_the_real_next_command_shape(self):
@@ -717,6 +763,9 @@ class TestSafety(Base):
         complete on a single artifact. The overlap guard in `_resolve` stops one PATTERN matching
         a phantom name; this stops two patterns collapsing onto one real name."""
         def can_share(a, b):
+            # Case-INSENSITIVE. On Windows `PRODUCT-PAGE.json` and `product-page.json` are one
+            # file, so a case-only difference between two output slots is not a difference.
+            a, b = a.lower(), b.lower()
             if "*" not in a and "*" not in b:
                 return a == b
             if "*" in a and "*" in b:

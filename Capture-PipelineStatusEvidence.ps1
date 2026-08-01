@@ -57,6 +57,15 @@
     D10 An EMPTY runs/T2 satisfied the read-only differential trivially and proved nothing about
        behaviour on real artifacts. That is now refused rather than reported as evidence.
 
+    D11 INTERPRETER IDENTITY, raised by the 2026-08-01 rev-5 review as the important unverified
+       contract. Every printed command starts with the bare literal `python`, which is why none
+       needs a call operator -- but bare `python` is a PATH lookup. On Windows it can resolve to
+       the Microsoft Store alias stub under WindowsApps, which opens the Store rather than
+       running Python, or to an interpreter without this repository's dependencies. The script
+       now resolves it, refuses the Store alias by path, proves it can import
+       core.pipeline_status from the repo, and records the path and version. The printed command
+       is only as good as what that name resolves to.
+
     Also: StrictMode Latest throws on a missing JSON property, so Get-JsonProperty reports which
     property was absent instead; origin/<branch> existence is checked before it is dereferenced;
     stages 5 and 11 are recorded by name in the summary; the trailing-backslash REFUSAL is
@@ -127,13 +136,20 @@ function Invoke-Capture {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        & python @Arguments 2>&1 | Tee-Object -FilePath $File | Out-Host
+        # Captured into a variable, then displayed. stdout and stderr are MERGED by `2>&1` on
+        # purpose: their interleaving is what makes a failure readable, and separating them would
+        # lose the ordering that says which line came before the traceback.
+        $captured = @(& python @Arguments 2>&1)
         $code = $LASTEXITCODE
         if ($null -eq $code) { $code = -1 }        # no output and no exit code is still a result
+        $captured | Set-Content -Encoding UTF8 -LiteralPath $File
+        $captured | Out-Host
         return [pscustomobject]@{
             ExitCode = [int]$code
             File     = $File
             Command  = "python $($Arguments -join ' ')"
+            Output   = $captured
+            LineCount = $captured.Count
         }
     }
     finally {
@@ -197,6 +213,26 @@ if (-not (Test-Path -LiteralPath $PowerShellExe)) {
     throw "Windows PowerShell powershell.exe was not found."
 }
 
+# D11. INTERPRETER IDENTITY. Every printed command starts with the bare literal `python`, which
+# is why none of them needs PowerShell's call operator -- but bare `python` is a PATH lookup, and
+# on Windows it can resolve to the Microsoft Store alias stub in WindowsApps, which opens the
+# Store instead of running anything. It can also resolve to an interpreter without this
+# repository's dependencies. The printed command is only as good as what that name resolves to,
+# so the resolution is evidence, not an assumption.
+$PythonCmd = Get-Command python -ErrorAction SilentlyContinue
+if ($null -eq $PythonCmd) {
+    throw "`python` does not resolve on PATH. Every printed command begins with it, so none of them would run."
+}
+$PythonPath = $PythonCmd.Source
+if ($PythonPath -like "*\WindowsApps\*") {
+    throw "`python` resolves to the Microsoft Store alias at $PythonPath, which opens the Store rather than running Python. The printed commands would not work for the owner."
+}
+$PythonVersion = (& python --version 2>&1 | Out-String).Trim()
+& python -c "import core.pipeline_status" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "The resolved interpreter at $PythonPath cannot import core.pipeline_status from $Repo."
+}
+
 $Seed = Read-Host "Enter the real T2 seed keyword"
 if ([string]::IsNullOrWhiteSpace($Seed)) { throw "A real seed keyword is required." }
 
@@ -212,6 +248,9 @@ $Env:PYTHONDONTWRITEBYTECODE = "1"     # keeps __pycache__ out of the git-status
 # -X utf8 were rejected deliberately: UTF-8 mode also changes the FILESYSTEM encoding, and this
 # tool's entire job is listing filenames -- changing how they decode would alter the measurement.
 # Narrower is correct: stdio only.
+# Scope: this is a PROCESS environment variable. It affects this script and the children it
+# spawns, and dies with the script -- it cannot leak into any later shell. It is applied to every
+# captured child deliberately, so all evidence in one run shares one encoding.
 $Env:PYTHONIOENCODING = "utf-8"
 
 [ordered]@{
@@ -225,7 +264,9 @@ $Env:PYTHONIOENCODING = "utf-8"
     windows_powershell_version = (& $PowerShellExe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
     audited_baseline           = (git rev-parse $AuditedBaseline).Trim()
     expected_main              = $WantMain
-    python_version             = (python --version 2>&1 | Out-String).Trim()
+    python_version             = $PythonVersion
+    python_resolved_path       = $PythonPath
+    python_resolution          = "bare 'python' via PATH -- the form every printed command uses"
     evidence_directory         = $EvidenceDir
 } | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "metadata.json")
 
@@ -265,6 +306,16 @@ $Stage5  = $Stages | Where-Object { $_.n -eq 5 }
 $Stage11 = $Stages | Where-Object { $_.n -eq 11 }
 if ($null -eq $Stage5 -or $null -eq $Stage11) {
     throw "Stages 5 and 11 were not both present in the JSON output."
+}
+# A non-empty runs/T2 is necessary but not sufficient: if neither stage 5 nor stage 11 has any
+# artifact, this run says nothing about the two stages the multi-output defect actually affected.
+# Recorded rather than thrown -- an early-pipeline workspace is a legitimate state, just not
+# evidence for these stages.
+$Stages5And11Exercised = (
+    $null -ne (Get-JsonProperty -Object $Stage5  -Name "artifact") -or
+    $null -ne (Get-JsonProperty -Object $Stage11 -Name "artifact"))
+if (-not $Stages5And11Exercised) {
+    Write-Warning "runs/T2 has no artifacts for stage 5 or stage 11. The read-only proof still holds, but this run does not evidence the two stages the defect affected."
 }
 
 # D3 -- C5 evidence: with NO seed there must be no pasteable engine command anywhere.
@@ -403,6 +454,8 @@ $Verdict = if ($RanAndPassed -and -not $TreeChanged -and $StatusAfter.Count -eq 
     focused_test_exit_code         = $FocusedRc
     boundary_test_exit_code        = $BoundaryRc
     runs_T2_changed                = $TreeChanged
+    stages_5_and_11_exercised      = $Stages5And11Exercised
+    stages_note                    = "false means the workspace held no artifacts for the two multi-output stages the defect affected, so this run does not evidence them even though it is read-only-clean."
     stage_5_state                  = (Get-JsonProperty -Object $Stage5  -Name "state")
     stage_5_artifact               = (Get-JsonProperty -Object $Stage5  -Name "artifact")
     stage_11_state                 = (Get-JsonProperty -Object $Stage11 -Name "state")

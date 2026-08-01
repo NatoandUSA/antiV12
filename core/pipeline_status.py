@@ -268,12 +268,19 @@ def _ps_quote(value):
         argument marshalling, downstream of this string.
     """
     text = str(value)
-    if text and not text.startswith("-") and all(c in _BARE_SAFE for c in text):
+    if not needs_quoting(text):
         return text
     return "'" + text.replace("'", "''") + "'"
 
 
 def needs_quoting(value):
+    """Whether `_ps_quote` will wrap this value.
+
+    ONE predicate, used by both the renderer and the refusal in `unsupported_value()`. It was
+    briefly duplicated -- the same condition written out in both places -- which is an
+    approximation waiting to drift: change what renders bare and the refusal silently stops
+    matching the behaviour it is supposed to describe.
+    """
     text = str(value)
     return not (text and not text.startswith("-") and all(c in _BARE_SAFE for c in text))
 
@@ -397,12 +404,13 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true", help="print the status rows as JSON")
     a = ap.parse_args(argv)
 
-    if not os.path.isdir(a.workspace):
-        print(f"workspace not found: {a.workspace}", file=sys.stderr)
-        return 2
-
     # Refuse rather than print a command whose values will not arrive intact. The workspace is
     # checked too: it is substituted into the same printed line and carries the same hazards.
+    #
+    # BEFORE the workspace is looked up, deliberately. A path carrying a control character would
+    # otherwise fail `isdir` first and be reported as "workspace not found", which is true but
+    # useless -- it sends the owner looking for a missing directory instead of at the character
+    # they pasted. Validation never touches the filesystem, so nothing is lost by going first.
     for label, value in (("seed", a.seed), ("workspace", a.workspace)):
         reason = unsupported_value(value, label) if value else ""
         if reason:
@@ -417,6 +425,10 @@ def main(argv=None):
                                  indent=2, sort_keys=True))
             print(reason, file=sys.stderr)
             return 2
+
+    if not os.path.isdir(a.workspace):
+        print(f"workspace not found: {a.workspace}", file=sys.stderr)
+        return 2
 
     rows = evaluate(a.workspace)
     if a.json:

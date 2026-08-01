@@ -293,10 +293,23 @@ gate stays — the UI should say exactly which economics fields are missing, not
 | Commits | 36 docs / 29 feat / 14 fix / 12 test |
 | Empty packages | `analytics/`, `feasibility/`, `positioning/`, `reports/` — 0 lines |
 
-Full suite: `python -m unittest discover -s tests` → 4668 ran, 1 failure, 4 skipped, ~19 min.
+**Historical, pre-environment-repair, in place:** `python -m unittest discover -s tests` →
+4668 ran, 1 failure, 4 skipped, ~19 min. **DO NOT QUOTE AS THE CURRENT OR CANONICAL SUITE
+RESULT.** It was produced before the environment repair, under a different interpreter and
+dependency state, so it is not comparable with anything measured since. It is kept, not deleted,
+because earlier documents cite it.
 The single failure is `test_199e_no_acceptance_tag_yet`, **permanently stale** (it asserts no
 `phase7-14-*` acceptance tag exists; three do, all predating this branch). Two prior audits
 recommended retiring it. Not a regression.
+
+No single absolute pass count replaces the historical figure above, deliberately — a bare count
+with no interpreter attached is what made it misleading in the first place. For authoritative
+figures use the repaired-environment, matched-worktree, **exact-ID differentials** in
+`SESSION7_14-NULL-START-TOKEN-HOTFIX-REPORT.md` and
+`SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-REPORT.md`, and record the interpreter alongside any
+number you quote. Note that a fresh detached worktree does not contain the gitignored `runs/T2/`
+fixtures, so its collection and skip totals legitimately differ from an in-place run; worktree
+figures are only ever compared worktree-to-worktree.
 
 **Known Windows loopback flakes — do not read these as regressions.** Two nodes fail
 intermittently under full-suite load and pass in isolation:

@@ -565,6 +565,39 @@ $MiddleSnapshot | ConvertTo-Json -Depth 6 |
 $FocusedRc = (Invoke-Capture -File $TestOutput -Arguments @("-m", "unittest", "discover", "-s", "tests", "-p", "test*pipeline*status*.py", "-v")).ExitCode
 if ($FocusedRc -ne 0) { throw "Pipeline-status focused tests failed with exit code $FocusedRc." }
 
+# D2 -- the name alone is not proof. A skipped test prints its name too.
+#
+# D18, found the first time any run reached this check at all. It used to scan the -v transcript
+# for the test name and "... ok" ON ONE LINE. unittest emits that line in pieces, so anything else
+# reaching stderr mid-test lands between them -- here a ResourceWarning from a leaked file handle
+# inside the test itself, which split the line and made a PASSING test unreadable as passed. The
+# script threw "did not run to a passing result" about a test that had just run and passed.
+#
+# Reading a result out of interleaved console text was the wrong instrument. Run the one test on
+# its own and let unittest report it: exit code, an explicit "Ran 1 test", and OK. A skip still
+# exits 0, so the skip check stays and is asserted separately -- that is D2 and it has not moved.
+#
+# It also runs HERE rather than after the full suite, so the central proof fails in seconds
+# instead of nineteen minutes.
+$RequiredTest = "test_windows_powershell_renderer_preserves_exact_seed"
+$RequiredNode = "tests.test_pipeline_status.TestWindowsPowerShellExecution.$RequiredTest"
+$RequiredRun  = Invoke-Capture -File (Join-Path $EvidenceDir "required-windows-test.txt") `
+                               -Arguments @("-m", "unittest", $RequiredNode, "-v")
+$RequiredText = $RequiredRun.Stdout + "`n" + $RequiredRun.Stderr
+$WasSkipped   = $RequiredText -match "skipped"
+$RanOne       = $RequiredText -match "Ran 1 test"
+$RanAndPassed = ($RequiredRun.ExitCode -eq 0) -and $RanOne -and (-not $WasSkipped) -and
+                ($RequiredText -match "(?m)^OK\s*$")
+if ($WasSkipped) {
+    throw "$RequiredTest SKIPPED on Windows. The shell-execution proof is missing and acceptance stays HOLD."
+}
+if (-not $RanOne) {
+    throw "$RequiredNode did not resolve to exactly one test. The node moved or was renamed."
+}
+if (-not $RanAndPassed) {
+    throw "$RequiredTest did not run to a passing result (exit $($RequiredRun.ExitCode)). Acceptance stays HOLD."
+}
+
 $BoundaryRc = (Invoke-Capture -File $BoundaryOutput -Arguments @("-m", "unittest", "tests.test_amazon_boundary", "tests.test_network_policy", "tests.test_connectivity_policy", "-v")).ExitCode
 if ($BoundaryRc -ne 0) { throw "Boundary tests failed with exit code $BoundaryRc." }
 
@@ -655,18 +688,6 @@ if ($Undeclared.Count -gt 0) {
     throw "Repository working tree changed during evidence capture, beyond the declared side effects ($($DeclaredSideEffects -join ', ')): $($Undeclared -join '; ')"
 }
 $DeclaredSideEffectsSeen = @($StatusAfter | ForEach-Object { ($_ -replace '^.{2,3}\s*', '').Trim('"') })
-
-# D2 -- the name alone is not proof. A skipped test prints its name too.
-$RequiredTest = "test_windows_powershell_renderer_preserves_exact_seed"
-$FocusedText  = Get-Content -Raw -LiteralPath $TestOutput
-$RanAndPassed = $FocusedText -match ([regex]::Escape($RequiredTest) + "[^\r\n]*\.\.\.\s*ok")
-$WasSkipped   = $FocusedText -match ([regex]::Escape($RequiredTest) + "[^\r\n]*skipped")
-if ($WasSkipped) {
-    throw "$RequiredTest SKIPPED on Windows. The shell-execution proof is missing and acceptance stays HOLD."
-}
-if (-not $RanAndPassed) {
-    throw "$RequiredTest did not run to a passing result. Acceptance stays HOLD."
-}
 
 # The verdict turns on what THIS script proves about THIS module: the tool ran read-only, the
 # Windows execution proof passed, and the capture left nothing behind but its declared side

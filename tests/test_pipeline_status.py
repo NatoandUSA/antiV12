@@ -546,7 +546,12 @@ class TestWindowsPowerShellExecution(Base):
             ps1 = self._write_ps1("paste.ps1", line)
             with open(ps1, "rb") as fh:
                 self.assertEqual(fh.read(3), b"\xef\xbb\xbf", "the .ps1 must carry a UTF-8 BOM")
-            self.assertEqual(len([l for l in open(ps1, encoding="utf-8-sig") if l.strip()]), 1)
+            # Closed explicitly. Leaked, this handle raised a ResourceWarning on stderr in the
+            # MIDDLE of unittest's "... ok" line, which split the gate's result line in two and
+            # made the capture script unable to see that the test had passed. A warning that
+            # corrupts the evidence is not cosmetic.
+            with open(ps1, encoding="utf-8-sig") as fh:
+                self.assertEqual(len([l for l in fh if l.strip()]), 1)
 
             # Snapshot per iteration, AFTER the .ps1 is written: the script file changes on
             # purpose every time, so a single up-front baseline could only be compared by

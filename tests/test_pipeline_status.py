@@ -6,6 +6,8 @@ is not, or invents a status it cannot derive from the filesystem. These tests pi
 against real files with real mtimes, and assert the two things it must never do: write anything,
 or emit a character the owner's console cannot render.
 """
+import ast
+import json
 import os
 import shutil
 import subprocess
@@ -194,35 +196,42 @@ class TestRendering(Base):
     def test_multi_word_seed_is_quoted(self):
         """Unquoted, `--seed nurse sweatshirt` silently becomes a different argument."""
         cmd = P._fmt_command("python -m x --seed {seed}", "runs/T2", "nurse sweatshirt")
-        self.assertIn('--seed "nurse sweatshirt"', cmd)
+        self.assertIn("--seed 'nurse sweatshirt'", cmd)
 
     def test_single_word_seed_is_not_quoted(self):
         self.assertTrue(P._fmt_command("x {seed}", "w", "mug").endswith("mug"))
 
-    def test_placeholder_when_no_seed_given(self):
-        self.assertIn("<seed-keyword>", P._fmt_command("x {seed}", "w", None))
-
-    def test_placeholder_is_quoted_so_cmd_does_not_redirect(self):
-        """`<` and `>` are redirection operators in cmd.exe. Printed bare, the placeholder line
-        is not a command the owner can paste -- it truncates and opens a file."""
-        self.assertIn('"<seed-keyword>"', P._fmt_command("x {seed}", "w", None))
-
-    def test_an_embedded_quote_is_doubled_not_passed_through(self):
-        """Baseline printed `--seed "nurse"; calc; #"`, which a shell splits at the second quote."""
-        out = P._fmt_command("x --seed {seed}", "w", 'nurse"; calc; #')
-        self.assertEqual(out, 'x --seed "nurse""; calc; #"')
-        self.assertNotIn('"nurse";', out)
+    def test_an_embedded_quote_is_escaped_not_passed_through(self):
+        """Baseline printed `--seed "nurse"; calc; #"`, which a shell splits at the second quote.
+        PowerShell's only escape inside a literal is a doubled single quote."""
+        out = P._fmt_command("x --seed {seed}", "w", "nurse'; calc; #")
+        self.assertEqual(out, "x --seed 'nurse''; calc; #'")
 
     def test_shell_metacharacters_force_quoting(self):
-        for seed in ("a;b", "a|b", "a&b", "a>b", "a$b", "a`b", "a(b)"):
-            self.assertTrue(P._quote(seed).startswith('"'), seed)
+        for seed in ("a;b", "a|b", "a&b", "a>b", "a<b", "a$b", "a`b", "a(b)", "a{b}",
+                     "a,b", "a@b", "a%b", "a!b", "a^b", "a#b", "a'b", 'a"b', "a b"):
+            self.assertTrue(P._ps_quote(seed).startswith("'"), seed)
+
+    def test_a_leading_dash_forces_quoting(self):
+        """Bare, PowerShell reads a leading `-` as the start of a parameter name, not a value."""
+        self.assertEqual(P._ps_quote("-shirt"), "'-shirt'")
+
+    def test_a_dollar_seed_is_not_expanded_away(self):
+        """A double-quoted PowerShell string expands `$5`; the seed would arrive mangled. This is
+        why the renderer commits to single-quoted literals and to ONE named shell."""
+        out = P._fmt_command("x --seed {seed}", "w", "nurse $5 gift")
+        self.assertEqual(out, "x --seed 'nurse $5 gift'")
+        self.assertNotIn('"', out)
+
+    def test_a_backtick_seed_survives(self):
+        self.assertEqual(P._ps_quote("a`b"), "'a`b'")
 
     def test_a_workspace_path_with_a_space_is_quoted(self):
         cmd = P._fmt_command("x {workspace}", r"C:\Users\Long\My Runs\T2", None)
-        self.assertIn(r'"C:\Users\Long\My Runs\T2"', cmd)
+        self.assertIn(r"'C:\Users\Long\My Runs\T2'", cmd)
 
     def test_an_ordinary_path_stays_bare(self):
-        self.assertEqual(P._quote("runs/T2"), "runs/T2")
+        self.assertEqual(P._ps_quote("runs/T2"), "runs/T2")
 
     def test_output_is_ascii_only(self):
         """It prints into the Windows console the owner uses, whose code page mangles dashes."""
@@ -234,13 +243,127 @@ class TestRendering(Base):
     def test_next_command_appears_in_the_output(self):
         rows = P.evaluate(self.ws, [self.stage(command="python -m research.x --seed {seed}")])
         out = P.render(rows, self.ws, "nurse sweatshirt")
-        self.assertIn('python -m research.x --seed "nurse sweatshirt"', out)
+        self.assertIn("python -m research.x --seed 'nurse sweatshirt'", out)
+
+    def test_the_printed_command_names_its_shell(self):
+        """Quoting is not portable. A command with no named shell cannot be correct for any."""
+        rows = P.evaluate(self.ws, [self.stage(command="python -m research.x --seed {seed}")])
+        self.assertIn(f"[{P.TARGET_SHELL}]", P.render(rows, self.ws, "mug"))
 
     def test_owner_input_prints_the_note_not_a_command(self):
         rows = P.evaluate(self.ws, [self.stage(command=None, note="drop the export in")])
         out = P.render(rows, self.ws)
         self.assertIn("you supply this one", out)
         self.assertIn("drop the export in", out)
+
+
+class TestNoCommandWithoutARealSeed(Base):
+    """A command containing `<seed-keyword>` looks ready to paste and is not. Pasted unchanged it
+    runs the engine with the literal placeholder as the seed. It was also the line most likely to
+    be pasted, because it is what a first run with no arguments prints."""
+
+    def test_fmt_command_returns_none_rather_than_a_placeholder(self):
+        self.assertIsNone(P._fmt_command("x --seed {seed}", "w", None))
+
+    def test_a_command_not_needing_a_seed_still_renders(self):
+        self.assertEqual(P._fmt_command("x {workspace}", "runs/T2", None), "x runs/T2")
+
+    def test_no_placeholder_string_is_ever_printed(self):
+        rows = P.evaluate(self.ws, [self.stage(command="python -m research.x --seed {seed}")])
+        out = P.render(rows, self.ws, None)
+        self.assertNotIn("<seed-keyword>", out)
+        self.assertNotIn("python -m research.x", out)   # the engine command is not offered
+
+    def test_the_owner_is_told_how_to_get_the_real_command(self):
+        rows = P.evaluate(self.ws, [self.stage(command="python -m research.x --seed {seed}")])
+        out = P.render(rows, self.ws, None)
+        self.assertIn("needs your seed keyword", out)
+        self.assertIn("python -m core.pipeline_status", out)
+
+    def _json(self, *extra):
+        """Stage 1 is owner-input and carries no command; satisfy it so the next actionable
+        stage is stage 2, whose command does take a seed."""
+        touch(os.path.join(self.ws, "Helium_10_Xray_a.xlsx"), self.t0)
+        out = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+                              "--workspace", self.ws, "--json", *extra],
+                             capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout)
+
+    def test_json_next_command_is_null_and_says_why(self):
+        """A machine consumer that saw a placeholder command string could run it."""
+        doc = self._json()
+        self.assertEqual(doc["next"], 2)
+        self.assertIsNone(doc["next_command"])
+        self.assertTrue(doc["next_command_needs_seed"])
+        self.assertEqual(doc["target_shell"], P.TARGET_SHELL)
+
+    def test_json_next_command_is_real_when_the_seed_is_real(self):
+        doc = self._json("--seed", "nurse sweatshirt")
+        self.assertIn("'nurse sweatshirt'", doc["next_command"])
+        self.assertFalse(doc["next_command_needs_seed"])
+
+
+class TestOutputPatternSemantics(Base):
+    """`Stage.produces` is required-all. The staleness minimum is only correct under that reading:
+    an optional or any-of pattern in the same flat list would produce a false STALE."""
+
+    def test_every_declared_output_is_required(self):
+        """Behavioural proof against the SHIPPED table, not a comment. Materialise every output
+        of a multi-output stage fresh, then remove them one at a time: each removal alone must
+        stop the stage being READY. If an optional output is ever added to `produces`, this
+        fails."""
+        multi = [s for s in P.STAGES if len(s.produces) > 1]
+        self.assertTrue(multi, "table has no multi-output stage; this guard would be vacuous")
+        for st in multi:
+            for pat in st.needs:
+                touch(os.path.join(self.ws, pat.replace("*", "X")), self.t0)
+            outs = [os.path.join(self.ws, p.replace("*", "X")) for p in st.produces]
+            for o in outs:
+                touch(o, self.t0 + 1000)
+            self.assertEqual(P.evaluate(self.ws, [st])[0]["state"], P.READY, st.title)
+            for o in outs:
+                os.remove(o)
+                self.assertNotEqual(P.evaluate(self.ws, [st])[0]["state"], P.READY,
+                                    f"{st.title}: {os.path.basename(o)} is not required")
+                touch(o, self.t0 + 1000)
+
+    def test_a_missing_required_output_never_reaches_a_staleness_verdict(self):
+        """It must report MISSING or BLOCKED. Not READY, and not STALE either -- a stage that has
+        not produced an artifact cannot be described as having produced a stale one."""
+        touch(os.path.join(self.ws, "IN.xlsx"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "OUT.json"), self.t0 + 500)      # present and older
+        r = self.one(self.stage(produces=["OUT.json", "ABSENT.json"], needs=["IN.xlsx"],
+                                command="c"))
+        self.assertIn(r["state"], (P.MISSING, P.BLOCKED))
+        self.assertEqual(r["missing_outputs"], ["ABSENT.json"])
+
+    def test_equal_mtimes_are_ready_not_stale(self):
+        """Boundary, pinned deliberately. An engine that writes its output in the same clock tick
+        as its input is the normal fast case; calling that STALE would be a permanent false alarm
+        on coarse-granularity filesystems. The comparison is strict `<`."""
+        touch(os.path.join(self.ws, "IN.xlsx"), self.t0)
+        touch(os.path.join(self.ws, "OUT.json"), self.t0)
+        r = self.one(self.stage(needs=["IN.xlsx"], command="c"))
+        self.assertEqual(r["state"], P.READY)
+
+    def test_one_second_older_is_stale(self):
+        touch(os.path.join(self.ws, "OUT.json"), self.t0)
+        touch(os.path.join(self.ws, "IN.xlsx"), self.t0 + 1)
+        self.assertEqual(self.one(self.stage(needs=["IN.xlsx"], command="c"))["state"], P.STALE)
+
+    def test_a_superseded_match_inside_one_pattern_does_not_hold_a_stage_stale(self):
+        """The other direction of the same rule: minimum ACROSS patterns, never across every
+        matching file. Otherwise an old export the owner never deleted is a permanent STALE."""
+        touch(os.path.join(self.ws, "IN.json"), self.t0 + 1000)
+        for name, when in (("US_AMAZON_cerebro_a.xlsx", self.t0 + 100),
+                           ("US_AMAZON_cerebro_b.xlsx", self.t0 + 500),
+                           ("US_AMAZON_cerebro_c.xlsx", self.t0 + 2000)):
+            touch(os.path.join(self.ws, name), when)
+        r = self.one(self.stage(produces=["US_AMAZON_cerebro_*.xlsx"], needs=["IN.json"],
+                                command="c"))
+        self.assertEqual(r["state"], P.READY)
+        self.assertEqual(r["artifact"], "US_AMAZON_cerebro_c.xlsx")
 
 
 class TestSafety(Base):
@@ -251,10 +374,66 @@ class TestSafety(Base):
         self.assertEqual(sorted(os.listdir(self.ws)), before)
 
     def test_module_makes_no_network_or_amazon_call(self):
-        src = open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8").read()
+        with open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8") as fh:
+            src = fh.read()
         for bad in ("requests", "urllib.request", "http.client", "socket",
                     "sellercentral", "amazon.com", "subprocess"):
             self.assertNotIn(bad, src, bad)
+
+    def test_the_cli_touches_no_file_in_the_workspace(self):
+        """Runtime evidence, not a source scan. A recursive size+mtime snapshot either side of a
+        real subprocess run of the CLI. An AST scan can be fooled by a dynamically resolved
+        write; a filesystem diff around the actual process cannot."""
+        for name, when in (("Helium_10_Xray_a.xlsx", self.t0), ("ASIN-CANDIDATES.json", self.t0),
+                           ("US_AMAZON_cerebro_a.xlsx", self.t0 + 900),
+                           ("MASTER-KEYWORDS-LEAN.json", self.t0),
+                           ("CEREBRO-EVIDENCE-MATRIX.json", self.t0 + 999)):
+            touch(os.path.join(self.ws, name), when)
+
+        def snapshot():
+            out = {}
+            for root, _dirs, files in os.walk(self.ws):
+                for f in files:
+                    p = os.path.join(root, f)
+                    st = os.stat(p)
+                    out[p] = (st.st_size, st.st_mtime_ns)
+            return out
+
+        before = snapshot()
+        run = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+                              "--workspace", self.ws, "--seed", "nurse sweatshirt"],
+                             capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(snapshot(), before, "the read-only CLI changed the workspace")
+
+    def test_no_qualified_write_or_exec_call_exists(self):
+        """Classifies the RECEIVER, not the bare attribute name. The earlier scan flagged
+        `text.replace` as if it were `os.replace`; this one distinguishes them, so a real
+        `os.replace` cannot hide behind that false positive being waved through."""
+        with open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        banned_os = {"remove", "unlink", "mkdir", "makedirs", "rmdir", "rename", "replace",
+                     "utime", "chmod", "system", "popen", "walk"}
+        banned_bare = {"open", "exec", "eval", "compile", "input", "__import__"}
+        offenders = []
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Call):
+                continue
+            f = n.func
+            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+                if f.value.id == "os" and f.attr in banned_os:
+                    offenders.append((n.lineno, f"os.{f.attr}"))
+            elif isinstance(f, ast.Name) and f.id in banned_bare:
+                offenders.append((n.lineno, f.id))
+        self.assertEqual(offenders, [], offenders)
+
+    def test_only_read_only_os_functions_are_used(self):
+        with open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        used = {n.attr for n in ast.walk(tree)
+                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+                and n.value.id == "os"}
+        self.assertTrue(used <= {"listdir", "path"}, sorted(used))
 
     def test_missing_workspace_is_an_error_not_a_crash(self):
         out = subprocess.run([sys.executable, "-m", "core.pipeline_status",

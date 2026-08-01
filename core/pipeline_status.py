@@ -42,12 +42,30 @@ OWNER_INPUT = "owner-input"
 
 
 class Stage:
-    """One pipeline step: what proves it ran, what it needs, and how to run it."""
+    """One pipeline step: what proves it ran, what it needs, and how to run it.
+
+    OUTPUT SEMANTICS ARE REQUIRED-ALL, and are stated here because the staleness rule is only
+    correct under that reading. Every pattern in `produces` is a required current artifact:
+
+      * required-all      -- what this class means. All patterns must match, and the stage is
+                             only as current as its least current one.
+      * required-any      -- NOT supported. A flat list cannot express "either of these".
+      * optional outputs  -- NOT supported. An optional pattern in this list would produce a
+                             false STALE, because the staleness minimum would include an
+                             artifact nothing promised to keep current.
+
+    If a stage ever needs any-of or optional outputs, model them explicitly -- a nested group,
+    or a separate `optional_produces` -- rather than adding them to this flat list and hoping
+    the comparison still holds. `test_every_declared_output_is_required` fails if the shipped
+    table stops honouring required-all.
+
+    `needs` is required-all too: a stage with any unmatched input is BLOCKED.
+    """
 
     def __init__(self, n, title, produces, needs=(), command=None, note=""):
         self.n = n
         self.title = title
-        self.produces = list(produces)
+        self.produces = list(produces)           # required-all; see the class docstring
         self.needs = list(needs)
         self.command = command                   # None => the owner supplies this file by hand
         self.note = note
@@ -128,24 +146,33 @@ def _newest(paths):
     return best
 
 
-def _oldest_output(workspace, patterns):
-    """(mtime, path) of the LEAST current declared output, or (None, None).
+def _oldest_current_output(workspace, patterns):
+    """(mtime, path) of the least current CURRENT output, or (None, None).
 
-    A stage is only as current as its oldest artifact. Taking the newest instead lets a
-    freshly rewritten sibling mask an output that is genuinely older than its own input --
-    the one failure this module exists to catch -- so the owner skips a needed re-run and
-    every downstream stage inherits an artifact that never reflected its data.
+    Precisely, and the name says only this because the earlier `_oldest_output` did not:
+    this is NOT the oldest file matching the stage's patterns. Each pattern contributes its
+    own newest match -- that pattern's CURRENT artifact -- and the minimum is taken over
+    those per-pattern heads. Two different things, and conflating them breaks the module in
+    opposite directions:
 
-    One PATTERN contributes one artifact: its newest match. The minimum is taken ACROSS
-    patterns, never across every file on disk, because a wildcard names a set the owner
-    keeps adding to, and a superseded export they never deleted must not mark a stage stale
-    for ever.
+      * minimum over per-pattern heads (this function) -- a stage is only as current as its
+        least current artifact, so a freshly rewritten sibling cannot mask an output that is
+        genuinely older than its own input. That masking is the one failure this module
+        exists to catch: the owner skips a needed re-run and every downstream stage inherits
+        an artifact that never reflected its data.
+      * minimum over every matching file (NOT this function) -- a superseded Cerebro export
+        the owner never deleted would hold its stage stale for ever.
+
+    A pattern with no match contributes nothing here. That is safe only because every
+    declared output is REQUIRED (see `Stage.produces`) and `evaluate()` resolves
+    `missing_outputs` to MISSING or BLOCKED *before* any timestamp is compared, so a stage
+    with an unmatched pattern never reaches a staleness verdict at all.
     """
     worst = (None, None)
     for pat in patterns:
         m, p = _newest(_resolve(workspace, pat))
         if m is None:
-            continue
+            continue                             # unreachable from a READY/STALE verdict
         if worst[0] is None or m < worst[0]:
             worst = (m, p)
     return worst
@@ -159,7 +186,7 @@ def evaluate(workspace, stages=STAGES):
         needed = {pat: _resolve(workspace, pat) for pat in st.needs}
         missing_inputs = [pat for pat, fs in needed.items() if not fs]
 
-        out_mtime, out_path = _oldest_output(workspace, st.produces)
+        out_mtime, out_path = _oldest_current_output(workspace, st.produces)
         in_mtime, in_path = _newest([f for fs in needed.values() for f in fs])
 
         if missing_outputs:
@@ -197,35 +224,53 @@ def _age(mtime, now=None):
     return "today" if days <= 0 else ("1 day ago" if days == 1 else f"{days} days ago")
 
 
-# Safe to hand a shell bare. Everything else -- spaces, quotes, and the metacharacters cmd.exe and
-# PowerShell act on -- forces quoting. The audited baseline quoted on space or tab alone, so it
-# printed `--seed <seed-keyword>` with cmd.exe redirection operators bare, and echoed a seed
-# containing a quote back in a form the shell would split.
+# ONE target shell, named. Quoting rules are not portable: `"$x"` is a literal in cmd.exe and a
+# variable expansion in PowerShell, and `'x'` quotes in PowerShell and does nothing in cmd.exe. A
+# renderer that names no shell cannot be correct for any, so this one commits to PowerShell -- the
+# shell Start-AMZ-Toolkit.ps1 already uses -- and labels its output.
+TARGET_SHELL = "Windows PowerShell"
+
+# Safe to hand PowerShell bare. Deliberately a whitelist: a blacklist of metacharacters is one
+# PowerShell release away from being wrong. Note `$` and backtick are absent -- inside a
+# double-quoted PowerShell string both still expand, which is why quoting below is single-quoted.
 _BARE_SAFE = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-+=/:\\")
 
 
-def _quote(value):
-    """Quote an argument the owner will paste into their shell.
+def _ps_quote(value):
+    """Render one argument as a PowerShell literal.
 
-    Scope, stated plainly because the baseline docstring overstated it: this makes the printed
-    command safe to PASTE into the Windows PowerShell and cmd.exe consoles this tool targets. It
-    is not a shell-injection boundary and does not need to be -- the seed is the owner's own text
-    going into the owner's own shell, and this module executes nothing itself. A seed keyword is
-    normally two or three words, and an unquoted one silently becomes the wrong argument.
+    Scope, stated because the baseline docstring overstated it: this makes a printed command safe
+    for the owner to PASTE into """ + TARGET_SHELL + """. It is NOT a shell-injection boundary and
+    does not need to be -- the seed is the owner's own text going into the owner's own shell, and
+    this module executes nothing. A seed keyword is normally two or three words, and an unquoted
+    one silently becomes the wrong argument.
 
-    An embedded double quote is doubled, which PowerShell and the Microsoft C runtime argument
-    parser both accept.
+    Single quotes, not double. A PowerShell single-quoted string is a true literal: no variable
+    expansion, no backtick escapes, and `''` is the only escape it has. A double-quoted string
+    would expand `$` and process backticks, so a seed of `nurse $5 gift` would lose the `$5`
+    silently -- the exact class of failure this function exists to prevent.
+
+    A leading `-` also forces quoting: bare, PowerShell reads it as a parameter name.
     """
     text = str(value)
-    if text and all(c in _BARE_SAFE for c in text):
+    if text and not text.startswith("-") and all(c in _BARE_SAFE for c in text):
         return text
-    return '"' + text.replace('"', '""') + '"'
+    return "'" + text.replace("'", "''") + "'"
+
+
+def _needs_seed(cmd):
+    return bool(cmd) and "{seed}" in cmd
 
 
 def _fmt_command(cmd, workspace, seed):
-    if not cmd:
+    """The exact line to paste, or None when a required value is not real yet.
+
+    None rather than a placeholder: a command containing `<seed-keyword>` looks ready to paste
+    and is not. Callers must present the None case as an instruction, never as a command.
+    """
+    if not cmd or (_needs_seed(cmd) and not seed):
         return None
-    return cmd.format(workspace=_quote(workspace), seed=_quote(seed or "<seed-keyword>"))
+    return cmd.format(workspace=_ps_quote(workspace), seed=_ps_quote(seed or ""))
 
 
 def render(rows, workspace, seed=None, now=None):
@@ -261,7 +306,16 @@ def render(rows, workspace, seed=None, now=None):
         why = "not run yet" if nxt["state"] == MISSING else \
               f"stale, {nxt['newer_input']} is newer than {nxt['artifact']}"
         lines.append(f"NEXT - step {nxt['n']}, {nxt['title']} ({why}):")
-        lines.append(f"       {_fmt_command(nxt['command'], workspace, seed)}")
+        ready = _fmt_command(nxt["command"], workspace, seed)
+        if ready:
+            lines.append(f"       [{TARGET_SHELL}] {ready}")
+        else:
+            # No seed, so there is no real command yet. Printing one with a placeholder in it
+            # would look pasteable and would run with the placeholder as the seed.
+            lines.append("       This step needs your seed keyword, so there is no command to")
+            lines.append("       paste yet. Re-run with it and the exact line appears here:")
+            lines.append(f"         [{TARGET_SHELL}] python -m core.pipeline_status "
+                         f"--workspace {_ps_quote(workspace)} --seed 'your seed keyword'")
         later = [r for r in rows if r is not nxt and r["state"] in (MISSING, STALE)]
         if later:
             lines.append(f"       then {len(later)} more: "
@@ -287,10 +341,16 @@ def main(argv=None):
     rows = evaluate(a.workspace)
     if a.json:
         nxt = next_action(rows)
+        # next_command is null, never a placeholder, when the seed is not known. A machine
+        # consumer that saw a `<seed-keyword>` string could run it; next_command_needs_seed
+        # says why it is null instead.
         print(json.dumps({"workspace": a.workspace, "stages": rows,
+                          "target_shell": TARGET_SHELL,
                           "next": nxt["n"] if nxt else None,
                           "next_command": _fmt_command(nxt["command"], a.workspace, a.seed)
-                          if nxt and nxt["command"] else None},
+                          if nxt else None,
+                          "next_command_needs_seed": bool(
+                              nxt and _needs_seed(nxt["command"]) and not a.seed)},
                          indent=2, sort_keys=True))
     else:
         print(render(rows, a.workspace, a.seed))

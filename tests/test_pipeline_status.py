@@ -620,15 +620,40 @@ class TestCaptureScriptContract(unittest.TestCase):
         return self.src.split(marker, 1)[1] if marker in self.src else self.src
 
     def _code(self):
-        """The body with whole-line comments removed.
+        """The body with comments removed -- BOTH line comments and `<# ... #>` blocks.
 
         Needed because these guards forbid literals that the script's own comments must be free
-        to QUOTE while explaining why they are wrong -- the first version of the double-quote
-        guard failed on the comment documenting the defect it guards. Same trap as the corpus
-        check that would otherwise count its own assertion; the fix is the same, read the code.
+        to QUOTE while explaining why they are wrong. Two versions of this helper were wrong
+        before this one: the first ignored comments entirely and failed on the line comment
+        documenting the defect it guards, the second stripped only whole-line comments and failed
+        on a block comment's interior, whose lines do not begin with `#`. Same trap as the corpus
+        check that would otherwise count its own assertion.
         """
-        return "\n".join(ln for ln in self._body().splitlines()
-                         if not ln.lstrip().startswith("#"))
+        out, in_block = [], False
+        for ln in self._body().splitlines():
+            s = ln.strip()
+            if in_block:
+                if "#>" in s:
+                    in_block = False
+                continue
+            if s.startswith("<#"):
+                if "#>" not in s[2:]:
+                    in_block = True
+                continue
+            if s.startswith("#"):
+                continue
+            out.append(ln)
+        return "\n".join(out)
+
+    def _cli_invocations(self):
+        """Only the lines that actually hand a value to the CLI.
+
+        The marshalling characterization table deliberately CONTAINS the trap values -- measuring
+        what the shell does to them is its entire job -- so a guard scanning the whole file would
+        forbid exactly the evidence it wants. Scope the claim to where the claim applies.
+        """
+        return [ln for ln in self._code().splitlines()
+                if "core.pipeline_status" in ln and "Invoke-Capture" in ln]
 
     def test_the_trailing_backslash_seed_is_doubled(self):
         """D13. `--seed "nurse gift\\"` cannot test the trailing-backslash refusal: PowerShell's
@@ -640,11 +665,13 @@ class TestCaptureScriptContract(unittest.TestCase):
             PS value `nurse gift\\\\`  -> child receives  nurse gift\\
 
         Only the doubled form delivers the value the step is about."""
-        body = self._code()
-        self.assertIn('"nurse gift\\\\"', body,
-                      "the trailing-backslash seed must be doubled to survive marshalling")
-        self.assertNotIn('"nurse gift\\"', body.replace('"nurse gift\\\\"', ""),
-                         "a single-backslash seed never reaches the tool intact")
+        lines = [ln for ln in self._cli_invocations() if "nurse gift" in ln]
+        self.assertTrue(lines, "the trailing-backslash refusal step disappeared")
+        for ln in lines:
+            self.assertIn('"nurse gift\\\\"', ln,
+                          "the trailing-backslash seed must be doubled to survive marshalling")
+            self.assertNotIn('"nurse gift\\"', ln.replace('"nurse gift\\\\"', ""),
+                             "a single-backslash seed never reaches the tool intact")
 
     def test_the_double_quote_seed_is_escaped(self):
         """D14 -- D13 one step lower, and made by the same hand in the same sitting.
@@ -656,11 +683,13 @@ class TestCaptureScriptContract(unittest.TestCase):
 
             PS value `nurse\\"quote\\"`  -> child receives  nurse"quote"
         """
-        body = self._code()
-        self.assertIn(r'nurse\"quote\"', body,
-                      "the double-quote seed must be escaped to survive marshalling")
-        self.assertNotIn("'nurse\"quote\"'", body,
-                         "a bare double-quote seed never reaches the tool intact")
+        lines = [ln for ln in self._cli_invocations() if "quote" in ln]
+        self.assertTrue(lines, "the double-quote refusal step disappeared")
+        for ln in lines:
+            self.assertIn(r'nurse\"quote\"', ln,
+                          "the double-quote seed must be escaped to survive marshalling")
+            self.assertNotIn("'nurse\"quote\"'", ln,
+                             "a bare double-quote seed never reaches the tool intact")
 
     def test_every_refusal_assertion_names_its_reason(self):
         """Both refusals exit 2. An exit code alone cannot tell them apart, so a step asserting
@@ -672,15 +701,55 @@ class TestCaptureScriptContract(unittest.TestCase):
         self.assertIn("contains a double quote", body,
                       "the double-quote refusal must be asserted by reason too")
 
-    def test_no_captured_file_is_parsed_as_whole_json(self):
-        """D12. Captures MERGE stdout and stderr on purpose, so any file from a command that also
-        wrote a human-readable line is not valid JSON. Parsing one directly threw `Invalid JSON
-        primitive` and read like a broken CLI contract. Extraction goes through Get-CapturedJson."""
+    def test_json_is_parsed_from_stdout_never_from_a_merged_stream(self):
+        """D12. Merging stdout and stderr and then parsing the result cannot work: every refusal
+        path writes a sentence to stderr and the document to stdout, so the combined text is not
+        JSON. It threw `Invalid JSON primitive: seed` on the first run that reached a refusal.
+
+        The first fix extracted the object back out of the merged text. This asserts the second
+        and better one -- do not merge what you intend to parse. stdout is captured separately and
+        is the only thing parsed."""
         body = self._code()
-        self.assertIn("function Get-CapturedJson", self.src)
+        self.assertIn("function ConvertFrom-CapturedStdout", self.src)
+        self.assertIn("2>$errFile", body,
+                      "Invoke-Capture must send stderr to its own file, not into stdout")
+        # Merging is not banned outright -- it is banned wherever the result is PARSED. The one
+        # remaining merge is `python --version`, whose output is recorded as a string and never
+        # decoded; on Python 2 it went to stderr, so merging is what makes it robust. Pinning the
+        # exception by name keeps the rule narrow and keeps a new merge from arriving unnoticed.
         for line in body.splitlines():
+            if "2>&1" in line:
+                self.assertIn("--version", line,
+                              f"a parsed capture merges the streams: {line.strip()}")
             if "ConvertFrom-Json" in line and "Get-Content" in line:
-                self.fail(f"a merged capture is parsed as whole JSON: {line.strip()}")
+                self.fail(f"a captured file is parsed as whole JSON: {line.strip()}")
+
+    def test_the_read_only_claim_is_measured_across_the_tool_alone(self):
+        """D16. The snapshot pair used to span the whole run -- focused tests, boundary tests,
+        connectivity scan and the 4781-test suite included -- while the throw named
+        `core.pipeline_status` as the thing that changed the workspace.
+
+        Run 3 fired it on a workspace the module had not touched: zero content differences, zero
+        size differences, ten files under phase6/6E rewritten byte-identically with new mtimes by
+        the suite. The assertion was true and its stated cause was false, which is the defect this
+        branch exists to remove. A third snapshot now brackets the tool's own commands."""
+        body = self._code()
+        self.assertIn("$MiddleSnapshot", body,
+                      "a snapshot must bracket the pipeline-status commands alone")
+        self.assertIn("runs-T2-diff-after-tests.txt", body,
+                      "the suite's own delta must be recorded as a separate artifact")
+        self.assertIn("runs_T2_changed_by_pipeline_status", body)
+        self.assertIn("runs_T2_changed_by_test_suite", body)
+
+    def test_the_connectivity_scan_side_effect_is_declared_not_ignored(self):
+        """D15. `scripts/connectivity_scan.py` rewrites the tracked
+        CONNECTED-RESEARCH-NETWORK-SCAN.json, so -ConnectivityScan made the clean-tree assertion
+        fail for doing what the flag asks. The fix must SCOPE the check, not remove it: anything
+        undeclared still fails."""
+        body = self._code()
+        self.assertIn("CONNECTED-RESEARCH-NETWORK-SCAN.json", body)
+        self.assertIn("$Undeclared", body,
+                      "undeclared working-tree changes must still fail the capture")
 
 
 class TestInputHygiene(Base):

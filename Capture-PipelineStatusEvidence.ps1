@@ -138,26 +138,7 @@ function Get-JsonProperty {
     return $Object.$Name
 }
 
-function Get-CapturedJson {
-    <# D12. The captured file MERGES stdout and stderr on purpose (D1/D6) -- their interleaving is
-       what makes a failure readable. That also means the file is NOT valid JSON whenever the
-       command writes a human-readable line to stderr, which every refusal path does by design.
-
-       Parsing the whole file threw `Invalid JSON primitive: seed` on the first run that reached
-       the refusal step. That reads like the CLI broke its contract; it was this script reading
-       its own evidence wrongly. Extract the one top-level object instead -- the alternative,
-       un-merging the streams, would trade a real evidence property for a parsing convenience. #>
-    param([Parameter(Mandatory = $true)][string]$File)
-    $lines = @(Get-Content -LiteralPath $File)
-    $start = -1
-    $end   = -1
-    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -eq '{') { $start = $i; break } }
-    for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -eq '}') { $end = $i; break } }
-    if ($start -lt 0 -or $end -lt $start) {
-        throw "No top-level JSON object found in $File. The CLI contract changed or the run failed."
-    }
-    return (($lines[$start..$end] -join "`n") | ConvertFrom-Json)
-}
+$script:Captures = @()
 
 function Invoke-Capture {
     <# D1/D6. Native stderr must not become a terminating error, and the success stream must
@@ -166,33 +147,80 @@ function Invoke-Capture {
        A PowerShell function returns everything written to the success stream, so a bare
        `... | Tee-Object` would combine the captured lines with the intended exit code and the
        caller's `$Rc` would be an array whose last element happens to be an integer. Display
-       output goes to the host; one [pscustomobject] with an integer ExitCode comes back. #>
+       output goes to the host; one [pscustomobject] comes back.
+
+       D12 REVISED. The streams were merged here, and the merged text was then parsed as JSON.
+       That threw `Invalid JSON primitive: seed` the first time a refusal ran, because every
+       refusal path writes a human sentence to stderr and the document to stdout. A first fix
+       extracted the JSON object back out of the merged text; this replaces that, because
+       recovering structure from a stream you deliberately destroyed is a worse contract than
+       not destroying it. stdout is captured on its own and is what gets parsed.
+
+       The cost is real and is stated rather than hidden: `2>&1` preserved the INTERLEAVING of
+       the two streams, which is what makes a traceback readable in order. The transcript below
+       reconstructs both halves but cannot restore that ordering. Machine-readable evidence has
+       to win here -- a gate that cannot parse its own output proves nothing at all. #>
     param(
         [Parameter(Mandatory = $true)][string]$File,
         [Parameter(Mandatory = $true)][string[]]$Arguments
     )
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
+    $errFile = "$File.stderr.tmp"
     try {
-        # Captured into a variable, then displayed. stdout and stderr are MERGED by `2>&1` on
-        # purpose: their interleaving is what makes a failure readable, and separating them would
-        # lose the ordering that says which line came before the traceback.
-        $captured = @(& python @Arguments 2>&1)
-        $code = $LASTEXITCODE
+        $started = Get-Date
+        $stdout  = @(& python @Arguments 2>$errFile)
+        $code    = $LASTEXITCODE
         if ($null -eq $code) { $code = -1 }        # no output and no exit code is still a result
-        $captured | Set-Content -Encoding UTF8 -LiteralPath $File
-        $captured | Out-Host
-        return [pscustomobject]@{
-            ExitCode = [int]$code
-            File     = $File
-            Command  = "python $($Arguments -join ' ')"
-            Output   = $captured
-            LineCount = $captured.Count
+        $elapsed = ((Get-Date) - $started).TotalSeconds
+
+        $stderrText = ""
+        if (Test-Path -LiteralPath $errFile) {
+            $raw = Get-Content -Raw -LiteralPath $errFile
+            if ($null -ne $raw) { $stderrText = $raw }
+            Remove-Item -LiteralPath $errFile -Force
         }
+        $stdoutText = ($stdout -join "`n")
+
+        # The human transcript keeps the same filename it always had, so the evidence directory
+        # does not change shape. Both halves are labelled because they are no longer interleaved.
+        @(
+            "=== STDOUT ==="
+            $stdoutText
+            "=== STDERR ==="
+            $stderrText
+            "=== EXIT: $code ==="
+        ) | Set-Content -Encoding UTF8 -LiteralPath $File
+        $stdout | Out-Host
+        if ($stderrText) { Write-Host $stderrText }
+
+        $result = [pscustomobject]@{
+            ExitCode  = [int]$code
+            File      = $File
+            Command   = "python $($Arguments -join ' ')"
+            Arguments = $Arguments
+            Stdout    = $stdoutText
+            Stderr    = $stderrText
+            Duration  = [math]::Round($elapsed, 3)
+            LineCount = $stdout.Count
+        }
+        $script:Captures += $result
+        return $result
     }
     finally {
         $ErrorActionPreference = $previous
     }
+}
+
+function ConvertFrom-CapturedStdout {
+    <# Parse the JSON document from a capture's OWN stdout. Never from the transcript file, and
+       never from anything stderr touched -- that conflation is exactly D12. #>
+    param([Parameter(Mandatory = $true)]$Capture)
+    if ([string]::IsNullOrWhiteSpace($Capture.Stdout)) {
+        throw "No stdout to parse from '$($Capture.Command)'. Exit code was $($Capture.ExitCode)."
+    }
+    try { return ($Capture.Stdout | ConvertFrom-Json) }
+    catch { throw "stdout of '$($Capture.Command)' is not valid JSON: $($_.Exception.Message)" }
 }
 
 Set-Location $Repo
@@ -308,6 +336,61 @@ $Env:PYTHONIOENCODING = "utf-8"
     evidence_directory         = $EvidenceDir
 } | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "metadata.json")
 
+# ---------------------------------------------------------------------------------------------
+# LAYER 1 -- SHELL MARSHALLING, CHARACTERISED SEPARATELY FROM APPLICATION POLICY.
+#
+# D13 and D14 were both the same error: proving an application's refusal REASON by sending a value
+# through a shell that rewrites that value first. The two things are different measurements and
+# they are now recorded as different artifacts.
+#
+# This step measures ONLY what PowerShell delivers to a native child -- no policy, no refusal, no
+# opinion. An argv probe prints what it received; the table says PRESERVED or TRANSFORMED. The
+# escaped forms the refusal steps rely on stop being a claim in a comment and become a recorded
+# measurement that a re-auditor can read without rerunning anything.
+#
+# Layer 2, application validation against an EXACT argv with no shell in the path, is not
+# duplicated here: tests/test_pipeline_status.py already does it via
+# subprocess.run([sys.executable, "-m", "core.pipeline_status", ...]). Repeating it in PowerShell
+# would only re-introduce the marshalling this step exists to isolate.
+# ---------------------------------------------------------------------------------------------
+$ProbePath = Join-Path $EvidenceDir "argv_probe.py"
+Set-Content -Encoding UTF8 -LiteralPath $ProbePath -Value @(
+    "import json, sys"
+    "sys.stdout.buffer.write(json.dumps(sys.argv[1:], ensure_ascii=False).encode('utf-8'))"
+)
+$MarshallingCases = @(
+    @{ label = "the real seed";                     value = $Seed },
+    @{ label = "trailing backslash, single (trap)"; value = "nurse gift\" },
+    @{ label = "trailing backslash, doubled";       value = "nurse gift\\" },
+    @{ label = "double quote, bare (trap)";         value = 'nurse"quote"' },
+    @{ label = "double quote, escaped";             value = 'nurse\"quote\"' }
+)
+$Marshalling = @()
+foreach ($case in $MarshallingCases) {
+    # stdout only, for the same reason as D12: the probe's argv echo is the measurement, and
+    # anything on stderr is a separate event that must not be glued into it.
+    $probeErr = Join-Path $EvidenceDir "argv_probe.stderr.tmp"
+    $received = ((& python $ProbePath --seed $case.value 2>$probeErr) -join "").Trim()
+    if (Test-Path -LiteralPath $probeErr) { Remove-Item -LiteralPath $probeErr -Force }
+    $argv = $null
+    try { $argv = ($received | ConvertFrom-Json)[1] } catch { $argv = "<unparseable: $received>" }
+    $Marshalling += [pscustomobject]@{
+        label            = $case.label
+        powershell_value = $case.value
+        child_received   = $argv
+        classification   = $(if ($argv -eq $case.value) { "PRESERVED" } else { "TRANSFORMED" })
+    }
+}
+$Marshalling | ConvertTo-Json -Depth 6 |
+    Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "shell-marshalling.json")
+$Marshalling | Format-Table -AutoSize | Out-Host
+
+# The owner's real seed must survive intact, or every printed command is about a different search.
+$SeedCase = $Marshalling | Where-Object { $_.label -eq "the real seed" }
+if ($SeedCase.classification -ne "PRESERVED") {
+    throw "The owner's seed does not survive marshalling to a native child: sent '$($SeedCase.powershell_value)', child received '$($SeedCase.child_received)'."
+}
+
 $BeforeSnapshot = @(Get-TreeSnapshot -Root $RunsT2)
 # B7. An EMPTY runs/T2 would satisfy the read-only differential trivially and prove nothing about
 # the tool's behaviour on real artifacts. Refuse to call that business evidence.
@@ -328,10 +411,10 @@ $BoundaryOutput  = Join-Path $EvidenceDir "boundary-tests.txt"
 $TextRc = (Invoke-Capture -File $TextOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed)).ExitCode
 if ($TextRc -ne 0) { throw "Text pipeline-status command failed with exit code $TextRc." }
 
-$JsonRc = (Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed, "--json")).ExitCode
+$JsonRun = Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed, "--json")
+$JsonRc  = $JsonRun.ExitCode
 if ($JsonRc -ne 0) { throw "JSON pipeline-status command failed with exit code $JsonRc." }
-try { $JsonDoc = Get-CapturedJson -File $JsonOutput }
-catch { throw "The --json output is not valid JSON: $($_.Exception.Message)" }
+$JsonDoc = ConvertFrom-CapturedStdout -Capture $JsonRun
 $ActualShell = Get-JsonProperty -Object $JsonDoc -Name "target_shell"
 if ($ActualShell -ne "Windows PowerShell") {
     throw "JSON target_shell is '$ActualShell', expected 'Windows PowerShell'."
@@ -357,15 +440,18 @@ if (-not $Stages5And11Exercised) {
 }
 
 # D3 -- C5 evidence: with NO seed there must be no pasteable engine command anywhere.
-$NoSeedTextRc = (Invoke-Capture -File $NoSeedText -Arguments @("-m", "core.pipeline_status")).ExitCode
+$NoSeedTextRun = Invoke-Capture -File $NoSeedText -Arguments @("-m", "core.pipeline_status")
+$NoSeedTextRc  = $NoSeedTextRun.ExitCode
 if ($NoSeedTextRc -ne 0) { throw "No-seed pipeline-status command failed with exit code $NoSeedTextRc." }
-$NoSeedJsonRc = (Invoke-Capture -File $NoSeedJson -Arguments @("-m", "core.pipeline_status", "--json")).ExitCode
+$NoSeedJsonRun = Invoke-Capture -File $NoSeedJson -Arguments @("-m", "core.pipeline_status", "--json")
+$NoSeedJsonRc  = $NoSeedJsonRun.ExitCode
 if ($NoSeedJsonRc -ne 0) { throw "No-seed JSON command failed with exit code $NoSeedJsonRc." }
-$NoSeedText_Content = Get-Content -Raw -LiteralPath $NoSeedText
+# Both streams: a placeholder must not appear anywhere the owner can see it.
+$NoSeedText_Content = $NoSeedTextRun.Stdout + "`n" + $NoSeedTextRun.Stderr
 if ($NoSeedText_Content -match "<seed-keyword>") {
     throw "C5 REGRESSION: a placeholder command was printed without a real seed."
 }
-$NoSeedDoc     = Get-CapturedJson -File $NoSeedJson
+$NoSeedDoc     = ConvertFrom-CapturedStdout -Capture $NoSeedJsonRun
 $NoSeedCommand = Get-JsonProperty -Object $NoSeedDoc -Name "next_command"
 $NoSeedNeeds   = Get-JsonProperty -Object $NoSeedDoc -Name "next_command_needs_seed"
 if ($null -ne $NoSeedCommand -and $NoSeedNeeds) {
@@ -397,20 +483,24 @@ if (Test-Path -LiteralPath (Join-Path $Repo "sentinel.txt")) {
 # anything at all goes wrong, which is the failure mode this script exists to refuse.
 $RefusedText = Join-Path $EvidenceDir "pipeline-status-refused-seed.txt"
 $RefusedJson = Join-Path $EvidenceDir "pipeline-status-refused-seed.json"
-$RefusedRc = (Invoke-Capture -File $RefusedText -Arguments @("-m", "core.pipeline_status", "--seed", "nurse gift\\")).ExitCode
+$RefusedRun = Invoke-Capture -File $RefusedText -Arguments @("-m", "core.pipeline_status", "--seed", "nurse gift\\")
+$RefusedRc  = $RefusedRun.ExitCode
 if ($RefusedRc -ne 2) {
     throw "A quote-requiring trailing-backslash seed must exit 2, got $RefusedRc."
 }
-$RefusedTextContent = Get-Content -Raw -LiteralPath $RefusedText
+# The refusal SENTENCE goes to stderr and the document to stdout; read both, since the assertion
+# below is about which reason fired, not about which stream carried it.
+$RefusedTextContent = $RefusedRun.Stdout + "`n" + $RefusedRun.Stderr
 if ($RefusedTextContent -match "python -m research") {
     throw "A refused seed emitted an engine command. It must emit none."
 }
 if ($RefusedTextContent -notmatch "ends in a backslash") {
     throw "The trailing-backslash seed was refused for a DIFFERENT reason than the backslash. Exit 2 alone is not the proof this step claims. See $RefusedText."
 }
-$RefusedJsonRc = (Invoke-Capture -File $RefusedJson -Arguments @("-m", "core.pipeline_status", "--json", "--seed", "nurse gift\\")).ExitCode
+$RefusedJsonRun = Invoke-Capture -File $RefusedJson -Arguments @("-m", "core.pipeline_status", "--json", "--seed", "nurse gift\\")
+$RefusedJsonRc  = $RefusedJsonRun.ExitCode
 if ($RefusedJsonRc -ne 2) { throw "Refused seed in --json mode must exit 2, got $RefusedJsonRc." }
-$RefusedDoc = Get-CapturedJson -File $RefusedJson
+$RefusedDoc = ConvertFrom-CapturedStdout -Capture $RefusedJsonRun
 if ((Get-JsonProperty -Object $RefusedDoc -Name "error") -ne "UNSUPPORTED_VALUE") {
     throw "Refused seed did not report a structured UNSUPPORTED_VALUE error."
 }
@@ -437,15 +527,40 @@ if ($null -ne (Get-JsonProperty -Object $RefusedDoc -Name "next_command")) {
 #     nurse gift\\      -> child receives  nurse gift\      (trailing backslash: double it)
 #     nurse\"quote\"    -> child receives  nurse"quote"     (embedded quote: backslash-escape it)
 $QuoteRefusedText = Join-Path $EvidenceDir "pipeline-status-refused-quote-seed.txt"
-$QuoteRefusedRc = (Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "core.pipeline_status", "--seed", 'nurse\"quote\"')).ExitCode
+$QuoteRefusedRun = Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "core.pipeline_status", "--seed", 'nurse\"quote\"')
+$QuoteRefusedRc  = $QuoteRefusedRun.ExitCode
 if ($QuoteRefusedRc -ne 2) { throw "A double-quote seed must exit 2, got $QuoteRefusedRc." }
-$QuoteRefusedContent = Get-Content -Raw -LiteralPath $QuoteRefusedText
+$QuoteRefusedContent = $QuoteRefusedRun.Stdout + "`n" + $QuoteRefusedRun.Stderr
 if ($QuoteRefusedContent -notmatch "contains a double quote") {
     throw "The double-quote seed was refused for a different reason. See $QuoteRefusedText."
 }
 if ($QuoteRefusedContent -match "python -m research") {
     throw "A refused double-quote seed emitted an engine command. It must emit none."
 }
+
+# ---------------------------------------------------------------------------------------------
+# D16. THE READ-ONLY CLAIM IS SCOPED HERE, and this is the last pipeline-status command.
+#
+# The snapshot pair used to be "before the first command" and "after everything", with the full
+# suite, the boundary tests and the connectivity scan in between -- and the throw said "The
+# pipeline-status run CHANGED real runs/T2". Run 3 fired exactly that, on a workspace where the
+# module had changed nothing: 220 files before and after, ZERO content differences, ZERO size
+# differences, and ten files under phase6/6E rewritten byte-identically with new mtimes by
+# something in the 4781-test suite.
+#
+# The assertion was true and its stated cause was false. That is the defect this whole branch
+# exists to remove -- DEFECT A presented a wrong value as a right one, D13 recorded a refusal for
+# the wrong reason, and this blamed the wrong actor. An evidence script may not name a cause its
+# measurement cannot support.
+#
+# So the claim is measured where the claim actually is. BEFORE -> MIDDLE brackets ONLY the
+# pipeline-status commands and still THROWS: that is the read-only proof, and it is now stricter,
+# because nothing else can dilute it. MIDDLE -> AFTER brackets everything else and is reported as
+# its own separate finding about the SUITE, never as a fact about this module.
+# ---------------------------------------------------------------------------------------------
+$MiddleSnapshot = @(Get-TreeSnapshot -Root $RunsT2)
+$MiddleSnapshot | ConvertTo-Json -Depth 6 |
+    Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-after-pipeline-status.json")
 
 $FocusedRc = (Invoke-Capture -File $TestOutput -Arguments @("-m", "unittest", "discover", "-s", "tests", "-p", "test*pipeline*status*.py", "-v")).ExitCode
 if ($FocusedRc -ne 0) { throw "Pipeline-status focused tests failed with exit code $FocusedRc." }
@@ -480,29 +595,66 @@ $AfterSnapshot | ConvertTo-Json -Depth 6 |
 $Flatten = { param($rows) @($rows | ForEach-Object {
     "$($_.RelativePath)`t$($_.Length)`t$($_.LastWriteTimeUtcTicks)`t$($_.SHA256)" }) }
 $BeforeComparable = & $Flatten $BeforeSnapshot
+$MiddleComparable = & $Flatten $MiddleSnapshot
 $AfterComparable  = & $Flatten $AfterSnapshot
-# Compare the joined text FIRST. Compare-Object refuses an empty collection, so calling it on an
-# empty workspace -- or on one side becoming empty -- would throw an argument-binding error that
-# reads like a script bug instead of like the evidence result it actually is.
-$TreeChanged = (($BeforeComparable -join "`n") -ne ($AfterComparable -join "`n"))
-$TreeDiff = @()
-if ($TreeChanged -and $BeforeComparable.Count -gt 0 -and $AfterComparable.Count -gt 0) {
-    $TreeDiff = @(Compare-Object -ReferenceObject $BeforeComparable -DifferenceObject $AfterComparable)
+
+function Compare-Snapshot {
+    # Compare the joined text FIRST. Compare-Object refuses an empty collection, so calling it on
+    # an empty workspace -- or on one side becoming empty -- would throw an argument-binding error
+    # that reads like a script bug instead of like the evidence result it actually is.
+    param([string[]]$Reference, [string[]]$Difference)
+    $changed = (($Reference -join "`n") -ne ($Difference -join "`n"))
+    $diff = @()
+    if ($changed -and $Reference.Count -gt 0 -and $Difference.Count -gt 0) {
+        $diff = @(Compare-Object -ReferenceObject $Reference -DifferenceObject $Difference)
+    }
+    if ($changed -and $diff.Count -eq 0) {
+        $diff = @("one side is empty: reference=$($Reference.Count) difference=$($Difference.Count)")
+    }
+    return [pscustomobject]@{ Changed = $changed; Diff = $diff }
 }
-if ($TreeChanged -and $TreeDiff.Count -eq 0) {
-    $TreeDiff = @("one side is empty: before=$($BeforeComparable.Count) after=$($AfterComparable.Count)")
+
+# THE claim: the pipeline-status commands, and nothing else, touched nothing.
+$ToolDelta = Compare-Snapshot -Reference $BeforeComparable -Difference $MiddleComparable
+$ToolDelta.Diff | Out-String |
+    Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-diff.txt")
+$TreeChanged = $ToolDelta.Changed
+$TreeDiff    = $ToolDelta.Diff
+
+# A SEPARATE fact about everything that ran after them. Attributed to the suite, because that is
+# what it measures. Recorded loudly and never folded into the sentence above.
+$SuiteDelta = Compare-Snapshot -Reference $MiddleComparable -Difference $AfterComparable
+$SuiteDelta.Diff | Out-String |
+    Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-diff-after-tests.txt")
+if ($SuiteDelta.Changed) {
+    Write-Warning "The TEST SUITE changed real runs/T2 (not core.pipeline_status, which was already proved clean above). This is a finding about the suite writing into the owner's real workspace, and it matters here because pipeline_status derives STALE from mtimes. See runs-T2-diff-after-tests.txt."
 }
-$TreeDiff | Out-String | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-diff.txt")
 if ($TreeChanged) {
-    throw "The pipeline-status run CHANGED real runs/T2. Review $EvidenceDir."
+    throw "The pipeline-status COMMANDS changed real runs/T2, measured across those commands alone. Review runs-T2-diff.txt in $EvidenceDir."
 }
+
+# D15. `scripts/connectivity_scan.py` WRITES CONNECTED-RESEARCH-NETWORK-SCAN.json, which is a
+# TRACKED file. So -ConnectivityScan made the clean-tree assertion below fail for doing exactly
+# what the flag asks for: the two switches were mutually exclusive and nothing said so. Run 3
+# would have thrown here had it not thrown earlier.
+#
+# Declared, not excused. The scan's own output is allowed and is recorded by name; anything else
+# still fails. A blanket "ignore modified files" would have removed the check instead of scoping
+# it, and the check is the one that catches an evidence run mutating the repository.
+$DeclaredSideEffects = @()
+if ($ConnectivityScan) { $DeclaredSideEffects += "CONNECTED-RESEARCH-NETWORK-SCAN.json" }
 
 $StatusAfter = @(git status --porcelain=v1 --untracked-files=all)
 $StatusAfter | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "git-status-after.txt")
-if ($StatusAfter.Count -gt 0) {
+$Undeclared = @($StatusAfter | Where-Object {
+    $path = ($_ -replace '^.{2,3}\s*', '').Trim('"')
+    $DeclaredSideEffects -notcontains $path
+})
+if ($Undeclared.Count -gt 0) {
     git status
-    throw "Repository working tree changed during evidence capture."
+    throw "Repository working tree changed during evidence capture, beyond the declared side effects ($($DeclaredSideEffects -join ', ')): $($Undeclared -join '; ')"
 }
+$DeclaredSideEffectsSeen = @($StatusAfter | ForEach-Object { ($_ -replace '^.{2,3}\s*', '').Trim('"') })
 
 # D2 -- the name alone is not proof. A skipped test prints its name too.
 $RequiredTest = "test_windows_powershell_renderer_preserves_exact_seed"
@@ -516,11 +668,19 @@ if (-not $RanAndPassed) {
     throw "$RequiredTest did not run to a passing result. Acceptance stays HOLD."
 }
 
-$Verdict = if ($RanAndPassed -and -not $TreeChanged -and $StatusAfter.Count -eq 0) {
+# The verdict turns on what THIS script proves about THIS module: the tool ran read-only, the
+# Windows execution proof passed, and the capture left nothing behind but its declared side
+# effects. $SuiteDelta is deliberately NOT a term here -- it is a true finding about other code,
+# and folding it in would repeat the attribution error D16 exists to remove.
+$Verdict = if ($RanAndPassed -and -not $TreeChanged -and $Undeclared.Count -eq 0) {
     "WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT"
 } else {
     "INCOMPLETE"
 }
+
+# The review's D12 contract: stdout, stderr and exit code preserved as separate fields per command.
+$script:Captures | ConvertTo-Json -Depth 6 |
+    Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "captures.json")
 
 [ordered]@{
     verdict                        = $Verdict
@@ -537,7 +697,14 @@ $Verdict = if ($RanAndPassed -and -not $TreeChanged -and $StatusAfter.Count -eq 
     refused_seed_json_exit_code    = $RefusedJsonRc
     focused_test_exit_code         = $FocusedRc
     boundary_test_exit_code        = $BoundaryRc
-    runs_T2_changed                = $TreeChanged
+    runs_T2_changed_by_pipeline_status = $TreeChanged
+    runs_T2_changed_scope          = "Measured across the pipeline-status commands ALONE, which is the only span this module is responsible for. The old field spanned the whole run including the full suite, so it reported a change the module had not made."
+    runs_T2_changed_by_test_suite  = $SuiteDelta.Changed
+    runs_T2_test_suite_note        = "A separate finding about OTHER code writing into the owner's real workspace. Run 3, 2026-08-01: 220 files before and after, zero content and zero size differences, ten files under phase6/6E rewritten byte-identically with new mtimes. It is not a pipeline_status defect, and it is not nothing either -- this module derives STALE from mtimes, so a suite that advances them can change what the owner is told to run next."
+    shell_marshalling              = $Marshalling
+    shell_marshalling_note         = "Layer 1 only: what PowerShell delivers to a native child, with no application policy involved. Application validation against an exact argv is proved in tests/test_pipeline_status.py, not here, so the two measurements cannot be confused for one another."
+    declared_side_effects          = $DeclaredSideEffects
+    declared_side_effects_observed = $DeclaredSideEffectsSeen
     stages_5_and_11_exercised      = $Stages5And11Exercised
     stages_note                    = "false means the workspace held no artifacts for the two multi-output stages the defect affected, so this run does not evidence them even though it is read-only-clean."
     stage_5_state                  = (Get-JsonProperty -Object $Stage5  -Name "state")
@@ -547,7 +714,7 @@ $Verdict = if ($RanAndPassed -and -not $TreeChanged -and $StatusAfter.Count -eq 
     connectivity_scan_exit_code    = $ConnectivityRc
     full_suite_exit_code           = $FullSuiteRc
     full_suite_note                = "null means not requested. A nonzero code is NOT by itself a regression: test_199e_no_acceptance_tag_yet is known-stale and fails on main too. Compare against the audited baseline."
-    repository_changed             = ($StatusAfter.Count -gt 0)
+    repository_changed_undeclared  = ($Undeclared.Count -gt 0)
     powershell_execution_test_ran_and_passed = $RanAndPassed
     c5_no_placeholder_command      = $true
     c4_no_redirection_side_effect  = $true

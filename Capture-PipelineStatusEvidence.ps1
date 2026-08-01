@@ -66,6 +66,23 @@
        core.pipeline_status from the repo, and records the path and version. The printed command
        is only as good as what that name resolves to.
 
+    D12 FOUND BY RUNNING IT. The captured file merges stdout and stderr (D1/D6), so it is not
+       valid JSON whenever the command also writes a human-readable line to stderr -- which every
+       refusal path does by design. `ConvertFrom-Json` on the whole file threw `Invalid JSON
+       primitive: seed` at the refusal step, which reads like a broken CLI contract and was this
+       script misreading its own evidence. Get-CapturedJson extracts the one top-level object;
+       un-merging the streams would trade a real evidence property for parsing convenience.
+
+    D13 FOUND BY RUNNING IT, and the more serious of the two. The refusal step passed the seed
+       `nurse gift\` to prove the TRAILING-BACKSLASH refusal. It cannot: the marshalling defect
+       under test destroys that input before the tool sees it. Measured here --
+           PS value `nurse gift\`   -> child receives  nurse gift"
+           PS value `nurse gift\\`  -> child receives  nurse gift\
+       -- so the tool was refusing a value containing a DOUBLE QUOTE while the script recorded the
+       result as proof about backslashes. It exited 2 for the wrong reason and the gate could not
+       tell, because it asserted only the exit code. Now the seed is doubled so the intended value
+       actually arrives, and every refusal assertion names the REASON it expects.
+
     Also: StrictMode Latest throws on a missing JSON property, so Get-JsonProperty reports which
     property was absent instead; origin/<branch> existence is checked before it is dereferenced;
     stages 5 and 11 are recorded by name in the summary; the trailing-backslash REFUSAL is
@@ -119,6 +136,27 @@ function Get-JsonProperty {
         throw "Expected JSON property '$Name' is absent. The CLI contract changed or the run failed."
     }
     return $Object.$Name
+}
+
+function Get-CapturedJson {
+    <# D12. The captured file MERGES stdout and stderr on purpose (D1/D6) -- their interleaving is
+       what makes a failure readable. That also means the file is NOT valid JSON whenever the
+       command writes a human-readable line to stderr, which every refusal path does by design.
+
+       Parsing the whole file threw `Invalid JSON primitive: seed` on the first run that reached
+       the refusal step. That reads like the CLI broke its contract; it was this script reading
+       its own evidence wrongly. Extract the one top-level object instead -- the alternative,
+       un-merging the streams, would trade a real evidence property for a parsing convenience. #>
+    param([Parameter(Mandatory = $true)][string]$File)
+    $lines = @(Get-Content -LiteralPath $File)
+    $start = -1
+    $end   = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -eq '{') { $start = $i; break } }
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -eq '}') { $end = $i; break } }
+    if ($start -lt 0 -or $end -lt $start) {
+        throw "No top-level JSON object found in $File. The CLI contract changed or the run failed."
+    }
+    return (($lines[$start..$end] -join "`n") | ConvertFrom-Json)
 }
 
 function Invoke-Capture {
@@ -292,7 +330,7 @@ if ($TextRc -ne 0) { throw "Text pipeline-status command failed with exit code $
 
 $JsonRc = (Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed, "--json")).ExitCode
 if ($JsonRc -ne 0) { throw "JSON pipeline-status command failed with exit code $JsonRc." }
-try { $JsonDoc = Get-Content -Raw -LiteralPath $JsonOutput | ConvertFrom-Json }
+try { $JsonDoc = Get-CapturedJson -File $JsonOutput }
 catch { throw "The --json output is not valid JSON: $($_.Exception.Message)" }
 $ActualShell = Get-JsonProperty -Object $JsonDoc -Name "target_shell"
 if ($ActualShell -ne "Windows PowerShell") {
@@ -327,7 +365,7 @@ $NoSeedText_Content = Get-Content -Raw -LiteralPath $NoSeedText
 if ($NoSeedText_Content -match "<seed-keyword>") {
     throw "C5 REGRESSION: a placeholder command was printed without a real seed."
 }
-$NoSeedDoc     = Get-Content -Raw -LiteralPath $NoSeedJson | ConvertFrom-Json
+$NoSeedDoc     = Get-CapturedJson -File $NoSeedJson
 $NoSeedCommand = Get-JsonProperty -Object $NoSeedDoc -Name "next_command"
 $NoSeedNeeds   = Get-JsonProperty -Object $NoSeedDoc -Name "next_command_needs_seed"
 if ($null -ne $NoSeedCommand -and $NoSeedNeeds) {
@@ -344,23 +382,58 @@ if (Test-Path -LiteralPath (Join-Path $Repo "sentinel.txt")) {
 
 # Evidence for the option-B decision taken under the 2026-08-01 pre-Windows review: a value the
 # tool cannot pass through PowerShell unchanged must be REFUSED, not emitted with a caveat.
+# D13. The seed below is written with TWO trailing backslashes, and that is not a typo.
+#
+# This step is supposed to prove the TRAILING-BACKSLASH refusal end to end. Passing `nurse gift\`
+# never did: the marshalling bug under test destroys the input before the tool sees it. Measured
+# through this very shell --
+#     PS value `nurse gift\`   -> child receives  nurse gift"      (backslash became a QUOTE)
+#     PS value `nurse gift\\`  -> child receives  nurse gift\      (the value actually intended)
+# -- so the single-backslash form made the tool refuse a value containing a double quote and the
+# script recorded it as proof about backslashes. It exited 2 for the WRONG REASON, and an exit
+# code alone could never tell the difference. The doubled form is what delivers `nurse gift\`.
+#
+# Hence the reason assertions below. A gate that checks only the exit code passes whenever
+# anything at all goes wrong, which is the failure mode this script exists to refuse.
 $RefusedText = Join-Path $EvidenceDir "pipeline-status-refused-seed.txt"
 $RefusedJson = Join-Path $EvidenceDir "pipeline-status-refused-seed.json"
-$RefusedRc = (Invoke-Capture -File $RefusedText -Arguments @("-m", "core.pipeline_status", "--seed", "nurse gift\")).ExitCode
+$RefusedRc = (Invoke-Capture -File $RefusedText -Arguments @("-m", "core.pipeline_status", "--seed", "nurse gift\\")).ExitCode
 if ($RefusedRc -ne 2) {
     throw "A quote-requiring trailing-backslash seed must exit 2, got $RefusedRc."
 }
-if ((Get-Content -Raw -LiteralPath $RefusedText) -match "python -m research") {
+$RefusedTextContent = Get-Content -Raw -LiteralPath $RefusedText
+if ($RefusedTextContent -match "python -m research") {
     throw "A refused seed emitted an engine command. It must emit none."
 }
-$RefusedJsonRc = (Invoke-Capture -File $RefusedJson -Arguments @("-m", "core.pipeline_status", "--json", "--seed", "nurse gift\")).ExitCode
+if ($RefusedTextContent -notmatch "ends in a backslash") {
+    throw "The trailing-backslash seed was refused for a DIFFERENT reason than the backslash. Exit 2 alone is not the proof this step claims. See $RefusedText."
+}
+$RefusedJsonRc = (Invoke-Capture -File $RefusedJson -Arguments @("-m", "core.pipeline_status", "--json", "--seed", "nurse gift\\")).ExitCode
 if ($RefusedJsonRc -ne 2) { throw "Refused seed in --json mode must exit 2, got $RefusedJsonRc." }
-$RefusedDoc = Get-Content -Raw -LiteralPath $RefusedJson | ConvertFrom-Json
+$RefusedDoc = Get-CapturedJson -File $RefusedJson
 if ((Get-JsonProperty -Object $RefusedDoc -Name "error") -ne "UNSUPPORTED_VALUE") {
     throw "Refused seed did not report a structured UNSUPPORTED_VALUE error."
 }
+if ((Get-JsonProperty -Object $RefusedDoc -Name "detail") -notmatch "ends in a backslash") {
+    throw "The structured refusal named a different cause than the backslash."
+}
 if ($null -ne (Get-JsonProperty -Object $RefusedDoc -Name "next_command")) {
     throw "A refused seed left next_command non-null."
+}
+
+# The third refusal, added 2026-08-01 after the first Windows run of the test suite found that a
+# double quote is dropped on the way to the child. Proved here in the shell it is about, and
+# distinguished BY REASON from the backslash case above -- the two are one exit code apart and
+# nothing else.
+$QuoteRefusedText = Join-Path $EvidenceDir "pipeline-status-refused-quote-seed.txt"
+$QuoteRefusedRc = (Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "core.pipeline_status", "--seed", 'nurse"quote"')).ExitCode
+if ($QuoteRefusedRc -ne 2) { throw "A double-quote seed must exit 2, got $QuoteRefusedRc." }
+$QuoteRefusedContent = Get-Content -Raw -LiteralPath $QuoteRefusedText
+if ($QuoteRefusedContent -notmatch "contains a double quote") {
+    throw "The double-quote seed was refused for a different reason. See $QuoteRefusedText."
+}
+if ($QuoteRefusedContent -match "python -m research") {
+    throw "A refused double-quote seed emitted an engine command. It must emit none."
 }
 
 $FocusedRc = (Invoke-Capture -File $TestOutput -Arguments @("-m", "unittest", "discover", "-s", "tests", "-p", "test*pipeline*status*.py", "-v")).ExitCode

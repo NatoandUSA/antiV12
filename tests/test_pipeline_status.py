@@ -594,6 +594,68 @@ class TestWindowsPowerShellExecution(Base):
         self.assertEqual(len(printed), 1, f"extra stdout: {printed!r}")
 
 
+class TestCaptureScriptContract(unittest.TestCase):
+    """Source-level guards on `Capture-PipelineStatusEvidence.ps1`.
+
+    The script had NO test coverage of any kind, which is why two defects survived six review
+    rounds and surfaced only when it was finally executed. Both were of a shape a reader will
+    reproduce: an assertion that looks strict and checks the wrong thing.
+
+    These run on every platform, because reading a file does not need PowerShell -- and because a
+    guard that only ran on Windows would have the same blind spot as the defects it guards.
+    """
+
+    SCRIPT = os.path.join(ROOT, "Capture-PipelineStatusEvidence.ps1")
+
+    def setUp(self):
+        if not os.path.isfile(self.SCRIPT):
+            self.skipTest("capture script absent from this tree")
+        with open(self.SCRIPT, encoding="utf-8-sig") as fh:
+            self.src = fh.read()
+
+    def _body(self):
+        """Everything after the comment-based help, so the .NOTES prose describing a defect is
+        not mistaken for the defect itself."""
+        marker = "\n#>"
+        return self.src.split(marker, 1)[1] if marker in self.src else self.src
+
+    def test_the_trailing_backslash_seed_is_doubled(self):
+        """D13. `--seed "nurse gift\\"` cannot test the trailing-backslash refusal: PowerShell's
+        native marshalling -- the very defect under test -- turns it into `nurse gift"` before the
+        tool sees it, so the tool refuses it for containing a DOUBLE QUOTE and the script records
+        the result as proof about backslashes. Measured, in this shell:
+
+            PS value `nurse gift\\`   -> child receives  nurse gift"
+            PS value `nurse gift\\\\`  -> child receives  nurse gift\\
+
+        Only the doubled form delivers the value the step is about."""
+        body = self._body()
+        self.assertIn('"nurse gift\\\\"', body,
+                      "the trailing-backslash seed must be doubled to survive marshalling")
+        self.assertNotIn('"nurse gift\\"', body.replace('"nurse gift\\\\"', ""),
+                         "a single-backslash seed never reaches the tool intact")
+
+    def test_every_refusal_assertion_names_its_reason(self):
+        """Both refusals exit 2. An exit code alone cannot tell them apart, so a step asserting
+        only the code passes whenever anything at all goes wrong -- which is exactly what happened:
+        the backslash step passed on a double-quote refusal. Each refusal must be pinned by cause."""
+        body = self._body()
+        self.assertIn("ends in a backslash", body,
+                      "the backslash refusal must be asserted by reason, not by exit code alone")
+        self.assertIn("contains a double quote", body,
+                      "the double-quote refusal must be asserted by reason too")
+
+    def test_no_captured_file_is_parsed_as_whole_json(self):
+        """D12. Captures MERGE stdout and stderr on purpose, so any file from a command that also
+        wrote a human-readable line is not valid JSON. Parsing one directly threw `Invalid JSON
+        primitive` and read like a broken CLI contract. Extraction goes through Get-CapturedJson."""
+        body = self._body()
+        self.assertIn("function Get-CapturedJson", self.src)
+        for line in body.splitlines():
+            if "ConvertFrom-Json" in line and "Get-Content" in line:
+                self.fail(f"a merged capture is parsed as whole JSON: {line.strip()}")
+
+
 class TestInputHygiene(Base):
     def test_a_wildcard_does_not_match_on_overlapping_head_and_tail(self):
         """`startswith(head) and endswith(tail)` alone accepts `abcd` for `abc*bcd`, because the

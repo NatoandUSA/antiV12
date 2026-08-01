@@ -12,7 +12,7 @@ carried forward late. Do not delete that branch; closing it is a separate owner-
 | Acceptance tag | `phase7-14-composite-launcher-safety-hotfix-accepted-211f2f8`, **pushed** |
 | `d163ff0` (pipeline-status) | audited → REMEDIATION_REQUIRED → **remediated on a branch**, still OUT of `main` (§11, §12) |
 | Active branch | `hotfix-pipeline-status-multi-output-staleness` — pushed, **not merged, not tagged**. No hash pinned here on purpose: it would self-invalidate on the next commit, including this one. Verify local == origin instead |
-| Acceptance of that branch | **HOLD** — was five blockers, now **one**: an independent re-audit (§12, §14) |
+| Acceptance of that branch | **HOLD** — was five blockers, now **two**: an independent re-audit, and one target-only test failure needing an owner decision (§12, §14) |
 | Windows gate | **COMPLETED** — `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT`, run 6 of 6 (§14) |
 
 Verify:
@@ -64,13 +64,21 @@ it is not something this session can do for itself.
 
 **Commission a fresh independent re-audit of the candidate HEAD, from new worktrees.**
 
-That is the last blocker. Everything else on the list is closed with evidence. It cannot be
-closed from inside this branch, because the thing needing review is work that has so far only
-ever been judged by its author: six runs of a gate I wrote, passing on the seventh.
+It cannot be closed from inside this branch, because the thing needing review is work that has so
+far only ever been judged by its author: six runs of a gate I wrote, passing on the fifth and
+sixth.
 
 Give the auditor: `SESSION7_14-PIPELINE-STATUS-REMEDIATION-REPORT.md` §§13–14, `-PROOF.json`
-(`windows_gate_execution` holds the run-by-run record), and the verification block at the top of
-this file. Point them at §14's differential first — it is the claim most worth attacking.
+(`windows_gate_execution` holds the run-by-run record and the differential), and the verification
+block at the top of this file.
+
+**Point them at §14's differential first, and tell them revision 8 got it wrong.** It claimed zero
+target-only failures; there is one. That correction came from an external reviewer noticing an
+internal inconsistency, not from the author re-checking — which is the strongest available
+argument for why this step exists.
+
+**Then decide the `test_136b` question** (§14). It is a real merge blocker and it is an owner
+call, not an auditor one.
 
 ### To reproduce the gate
 
@@ -557,9 +565,11 @@ earlier report and is not comparable with either: it was measured where the Wind
 `-PROOF.json` (machine-readable; `first_windows_execution` holds §13, `windows_gate_execution`
 holds §14 and the differential, `response_export` holds decisions and next steps).
 
-### The blockers — was five, now one
+### The blockers — was five, now two
 
 1. No fresh independent re-audit of the final Windows-evidenced commit.
+2. One **target-only** test failure needing an owner decision before merge:
+   `test_136b_accepted_authorities_unmodified` passes on `211f2f8` and fails here (§14).
 
 Closed by the gate completing (§14), recorded rather than deleted:
 
@@ -700,25 +710,52 @@ resolved by weakening an assertion.**
 `runs_T2_changed_by_pipeline_status: false`, `repository_changed_undeclared: false`, stage 5
 `READY`, stage 11 `STALE`, connectivity scan **0 active Amazon-account paths**.
 
-**Full suite `Ran 4783 — failures=5, errors=1, skipped=4`, and the differential is
-`BASELINE_EQUIVALENT` with ZERO target-only failures.** Worktrees at `211f2f8` and at candidate
-HEAD, both outside any `claude`-named directory, same interpreter: 3 failures each, same IDs.
-`test_52` is the known loopback flake and passes in isolation; `test_199e` is permanently stale.
+**Full suite `Ran 4783 — failures=5, errors=1, skipped=4`. The differential is
+`BASELINE_EQUIVALENT_EXCEPT_ONE` — exactly ONE target-only failure.**
 
-Two of the six deserve naming, because both are the same defect class as everything above — an
-assertion whose implementation is broader than its name:
+An earlier version of this section claimed **zero**, and that was wrong. It folded two different
+measurements into one headline: the worktree differential covered only the three launcher nodes,
+while `test_136b` was classified by a separate method that never compared against a tree lacking
+this branch's file. An external reviewer caught it from the internal inconsistency alone. Every
+node has now been run in **both** worktrees:
 
-* **`test_136b_accepted_authorities_unmodified`** uses `git diff --name-only ... core/`, which
-  reports **additions**. `core/pipeline_status.py` is a new file, so this has failed since
-  `518b516` — the branch's first commit, which only *added* a file.
-* **`test_15_to_20_startup_launcher_is_safe`** forbids the substring `claude` in the generated
-  autostart `.bat` to catch an external AI-tool call. The `.bat` embeds the interpreter path, and
-  this repo lives under `D:\Claude\`. **It cannot pass for any checkout under a directory named
-  "Claude"** — which is where the toolkit actually is.
+| Node | `211f2f8` | Candidate | |
+|---|---|---|---|
+| `test_52_request_size_bounded` | PASS | PASS | flake, only under load |
+| `test_15_to_20_startup_launcher_is_safe` | FAIL | FAIL | equivalent |
+| `test_16_17_23_32_33_34_full_lifecycle` | FAIL | FAIL | equivalent |
+| `test_35_live_restart` | FAIL | FAIL | equivalent |
+| `test_199e_no_acceptance_tag_yet` | FAIL | FAIL | equivalent |
+| `test_136b_accepted_authorities_unmodified` | **PASS** | **FAIL** | **TARGET-ONLY** |
 
-Neither is touched here; both are accepted-phase test code and out of scope.
+**This one needs an owner decision before any merge.** `git diff --name-status 3f758de HEAD --
+core/` returns exactly `A core/pipeline_status.py` — an **addition**. The test's stated intent,
+accepted authorities *unmodified*, is not violated; its implementation reports additions too. But
+**merging this branch turns a passing test on `main` into a failing one**, and that is not
+something this branch gets to wave away. Three options, none taken here: accept a documented
+target-only failure; correct `test_136b` to compare modifications rather than any diff (the honest
+one, and out of scope); or move `core/pipeline_status.py` outside what it guards.
+
+`test_15_to_20_startup_launcher_is_safe` needs no decision — it forbids the substring `claude` in
+the generated autostart `.bat` to catch an external AI-tool call, and the `.bat` embeds the
+interpreter path. **It cannot pass for any checkout under a directory named "Claude"** — which is
+where this toolkit lives. It fails identically on both trees.
+
+**Six runs total: 1–4 threw, 5 and 6 passed** (5 abbreviated, 6 complete). Stage evidence was
+captured ~17 minutes *before* the suite ran — `pipeline-status.json` at 00:17:57, `full-suite.txt`
+at 00:35:14 — so it cannot have been contaminated. The suite touched **ten** files, not 220; 220
+is the total file count in `runs/T2`.
+
+### Backlog, logged not fixed — the suite writes into the real workspace
+
+The full suite rewrites ten files under `runs/T2/phase6/6E` byte-identically with new mtimes.
+**`pipeline_status` derives `STALE` purely from mtimes**, so running the test suite can change
+what the tool tells you to do next without changing a single byte of content. Not a
+`pipeline_status` defect and not fixed here; the fix is to point those tests at temporary
+workspaces. Recorded in `-PROOF.json` → `backlog_test_isolation`.
 
 ### What is still not proven
 
-**Nothing has been independently audited since the gate started passing.** That is the single
-remaining blocker and it is the whole gate. **Acceptance stays HOLD.**
+**Nothing has been independently audited since the gate started passing**, and the one
+target-only failure above is an owner decision that has not been taken. Those are the remaining
+blockers. **Acceptance stays HOLD.**

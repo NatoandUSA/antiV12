@@ -770,37 +770,58 @@ connectivity scan: **0 active Amazon-account paths**.
 
 Full suite: `Ran 4783 tests — FAILED (failures=5, errors=1, skipped=4)`.
 
-### The full-suite differential — BASELINE_EQUIVALENT, zero target-only failures
+### The full-suite differential — ONE target-only node, and revision 8 got this wrong
 
-Judged differentially, never absolutely. All six non-passing nodes are accounted for:
+**CORRECTION TO REVISION 8.** Revision 8 reported "`BASELINE_EQUIVALENT`, zero target-only
+failures". That was wrong, and it was wrong in this document's own favourite way: two different
+measurements folded into one headline. The worktree differential covered the **three launcher
+nodes only**; `test_136b` was classified separately, by running `git diff` at three commits *on
+the branch*, and never once against a tree where the branch's file is absent. The weaker method's
+result was then reported under the stronger claim.
 
-| Node | Classification | How it was established |
-|---|---|---|
-| `test_52_request_size_bounded` | `PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE` | passes in isolation; prior accepted reports record the same signature |
-| `test_199e_no_acceptance_tag_yet` | permanently stale, documented | asserts no `phase7-14-*` tag exists; three do |
-| `test_136b_accepted_authorities_unmodified` | pre-existing **on this branch**, false positive | identical result at `518b516`, `06d42cc`, `36ec291` |
-| `test_15_to_20_startup_launcher_is_safe` | pre-existing **on accepted main** | worktree differential |
-| `test_16_17_23_32_33_34_full_lifecycle` | pre-existing **on accepted main** | worktree differential |
-| `test_35_live_restart` | pre-existing **on accepted main** | worktree differential |
+An external reviewer caught it from the internal inconsistency alone — if `test_136b` fails
+because this branch *added* a file, it cannot also fail on a baseline that does not have it. That
+is exactly right, and it is the same reasoning this document has been applying to everything else.
 
-Method for the last three: worktrees at `211f2f8` and at the candidate HEAD, both outside any
-`claude`-named directory, same interpreter, same three nodes. **3 failures on each, same node IDs.**
-Worktree compared only to worktree, per the standing rule.
+Re-measured properly. Every node run in **both** worktrees, same interpreter, both outside any
+`claude`-named directory:
 
-Two of these deserve naming, because both are the same defect class this document keeps finding —
-an assertion whose implementation is broader than its name:
+| Node | Baseline `211f2f8` | Candidate | Verdict |
+|---|---|---|---|
+| `test_52_request_size_bounded` | PASS | PASS | flake, only under full-suite load |
+| `test_15_to_20_startup_launcher_is_safe` | FAIL | FAIL | baseline-equivalent |
+| `test_16_17_23_32_33_34_full_lifecycle` | FAIL | FAIL | baseline-equivalent |
+| `test_35_live_restart` | FAIL | FAIL | baseline-equivalent |
+| `test_199e_no_acceptance_tag_yet` | FAIL | FAIL | baseline-equivalent |
+| `test_136b_accepted_authorities_unmodified` | **PASS** | **FAIL** | **TARGET-ONLY** |
 
-* **`test_136b`** runs `git diff --name-only <base> -- ... core/`, which reports **additions** as
-  well as modifications. `core/pipeline_status.py` is a new file, absent from accepted `main`, so
-  the test has reported "accepted 7.3-7.12 authority modified" since `518b516` — the branch's
-  first commit, which only *added* a file.
-* **`test_15_to_20`** forbids the substring `claude` in the generated autostart `.bat`, intending
-  to catch an external AI-tool invocation. The `.bat` embeds the quoted interpreter path, and this
-  repository lives under `D:\Claude\`. **The test cannot pass for any checkout under a directory
-  named "Claude"**, which is where the owner's toolkit actually is.
+**Classification: `BASELINE_EQUIVALENT_EXCEPT_ONE`. Exactly one target-only non-passing node.**
 
-Neither is touched here. Both are in accepted-phase test code, outside this branch's scope, and
-both are recorded so the next reader does not re-derive them.
+### The one target-only failure, and what it does and does not mean
+
+`git diff --name-status 3f758de c0aaf03 -- core/` returns exactly `A core/pipeline_status.py`.
+An **addition**. The test's stated intent — accepted 7.3–7.12 authorities unmodified — is not
+violated: nothing was modified. Its implementation is `git diff --name-only ... core/`, which
+reports additions too, so any new file under `core/` fails it.
+
+That does not make the failure disappear, and this document is not going to argue it away. **A
+merge of this branch turns a passing test on `main` into a failing one.** That is a real
+consequence and it is the owner's call, not this branch's:
+
+1. accept a known, documented target-only failure;
+2. correct `test_136b` to compare modifications rather than any diff — a change to accepted-phase
+   test code, needing its own review;
+3. put `core/pipeline_status.py` somewhere `test_136b` does not guard.
+
+Nothing here does any of them. **Option 2 is the honest one** — the test asserts something broader
+than its name — but it is out of scope for a branch about multi-output staleness, and this
+document has spent fourteen sections arguing that scope discipline is what keeps evidence
+trustworthy.
+
+`test_15_to_20` is the same defect class and needs no decision: it forbids the substring `claude`
+in the generated autostart `.bat` to catch an external AI-tool invocation, and the `.bat` embeds
+the quoted interpreter path. **It cannot pass for any checkout under a directory named "Claude"**,
+which is where the owner's toolkit lives. It fails identically on both trees.
 
 ### What is now proven, and what is not
 
@@ -812,5 +833,32 @@ clean.
 Still open: **no fresh independent re-audit of this commit.** That is the one remaining blocker,
 and it is the whole gate. `main` is untouched at `211f2f8`, there is no tag, nothing is merged.
 
-**Acceptance remains HOLD.** Six runs of a gate I wrote, passing on the seventh, is evidence — not
-acceptance. It has still only ever been judged by its author.
+### Run count, stated once and exactly
+
+**Six runs total. Runs 1–4 threw. Runs 5 and 6 completed with exit 0.** Run 5 was the abbreviated
+validation (no `-FullSuite`); run 6 was the complete gate. Revision 8 also contained the phrase
+"passing on the seventh", which contradicted its own table two paragraphs above; there was no
+seventh run. Corrected here and in `-PROOF.json`.
+
+### Evidence ordering — stage results predate any suite mutation
+
+Asked by the 2026-08-02 review, and answerable from the evidence directory's own timestamps:
+
+```
+00:17:57  pipeline-status.json                 <- stage 5 / stage 11 evidence
+00:17:58  runs-T2-after-pipeline-status.json   <- the read-only proof closes here
+00:18:16  pipeline-status-tests.txt
+00:18:31  boundary-tests.txt, connectivity-scan.txt
+00:35:14  full-suite.txt                       <- the only thing that touched runs/T2
+```
+
+The business-state evidence was captured **roughly seventeen minutes before** the full suite ran.
+It cannot have been contaminated by it.
+
+One correction to that review's reading: the suite did not touch 220 files. **220 is the total
+file count in `runs/T2`, before and after.** The number of files it touched is **ten**, all under
+`phase6/6E`, all mtime-only.
+
+**Acceptance remains HOLD.** Six runs of a gate I wrote, passing on the fifth and sixth, is
+evidence — not acceptance. It has still only ever been judged by its author, and the one
+target-only failure above is a decision the author does not get to make.

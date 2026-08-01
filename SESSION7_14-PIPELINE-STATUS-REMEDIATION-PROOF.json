@@ -360,21 +360,57 @@
       "full_suite": "Ran 4783 tests - FAILED (failures=5, errors=1, skipped=4)"
     },
     "full_suite_differential": {
-      "verdict": "BASELINE_EQUIVALENT",
-      "target_only_failures": 0,
-      "method": "Worktrees at 211f2f8 and at the candidate HEAD, both outside any claude-named directory, same interpreter, same nodes. 3 failures on each, same node IDs. Worktree compared only to worktree.",
+      "verdict": "BASELINE_EQUIVALENT_EXCEPT_ONE",
+      "target_only_failures": 1,
+      "supersedes": "Revision 8 reported BASELINE_EQUIVALENT with zero target-only failures. That was WRONG. See correction_to_revision_8 below.",
+      "correction_to_revision_8": {
+        "what_was_claimed": "zero target-only failures",
+        "what_is_true": "exactly one: test_136b_accepted_authorities_unmodified",
+        "how_the_error_was_made": "Two different measurements folded into one headline. The worktree differential covered the three launcher nodes only. test_136b was classified separately by running git diff at three commits ON THE BRANCH, never against a tree lacking the branch's file. The weaker method's result was reported under the stronger claim.",
+        "who_caught_it": "An external reviewer, from the internal inconsistency alone: a test that fails because this branch ADDED a file cannot also fail on a baseline that does not have that file.",
+        "defect_class": "The same one this document keeps finding -- a claim broader than the measurement supporting it. D16 attributed a real change to the wrong actor; this attributed a separately-derived classification to a differential that never covered it."
+      },
+      "method": "Every node run in BOTH worktrees (211f2f8 and candidate c0aaf03), same interpreter, both outside any claude-named directory, sequential. Compared by node ID and outcome, not by counts.",
       "nodes": [
-        {"node": "test_52_request_size_bounded", "classification": "PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE", "evidence": "passes in isolation; prior accepted reports record the same signature"},
-        {"node": "test_199e_no_acceptance_tag_yet", "classification": "PERMANENTLY_STALE_DOCUMENTED"},
-        {"node": "test_136b_accepted_authorities_unmodified", "classification": "PRE_EXISTING_ON_THIS_BRANCH_FALSE_POSITIVE", "evidence": "identical result at 518b516, 06d42cc and 36ec291", "cause": "git diff --name-only over core/ reports ADDITIONS too; core/pipeline_status.py is a new file absent from accepted main, so this has failed since the branch's first commit, which only added a file"},
-        {"node": "test_15_to_20_startup_launcher_is_safe", "classification": "PRE_EXISTING_ON_ACCEPTED_MAIN_FALSE_POSITIVE", "cause": "forbids the substring 'claude' in the generated autostart .bat to catch an external AI-tool invocation; the .bat embeds the quoted interpreter path and this repository lives under D:\\Claude\\. The test cannot pass for any checkout under a directory named 'Claude'."},
-        {"node": "test_16_17_23_32_33_34_full_lifecycle", "classification": "PRE_EXISTING_ON_ACCEPTED_MAIN", "cause": "live dashboard did not become healthy within 30s"},
-        {"node": "test_35_live_restart", "classification": "PRE_EXISTING_ON_ACCEPTED_MAIN", "cause": "live dashboard did not become healthy within 30s"}
+        {"node": "test_52_request_size_bounded", "baseline": "PASS", "candidate": "PASS", "classification": "PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE", "evidence": "passes in isolation on both trees; only fails under full-suite load; prior accepted reports record the same signature"},
+        {"node": "test_15_to_20_startup_launcher_is_safe", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT_FALSE_POSITIVE", "cause": "forbids the substring 'claude' in the generated autostart .bat to catch an external AI-tool invocation; the .bat embeds the quoted interpreter path and this repository lives under D:\\Claude\\. The test cannot pass for any checkout under a directory named 'Claude'."},
+        {"node": "test_16_17_23_32_33_34_full_lifecycle", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT", "cause": "live dashboard did not become healthy within 30s"},
+        {"node": "test_35_live_restart", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT", "cause": "live dashboard did not become healthy within 30s"},
+        {"node": "test_199e_no_acceptance_tag_yet", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT_PERMANENTLY_STALE"},
+        {"node": "test_136b_accepted_authorities_unmodified", "baseline": "PASS", "candidate": "FAIL", "classification": "TARGET_ONLY", "cause": "git diff --name-only over core/ reports ADDITIONS as well as modifications. git diff --name-status 3f758de c0aaf03 -- core/ returns exactly 'A core/pipeline_status.py'.", "intent_vs_implementation": "The stated intent -- accepted 7.3-7.12 authorities unmodified -- is NOT violated; nothing was modified. The implementation is broader than the name.", "consequence": "Merging this branch turns a passing test on main into a failing one. That is real and it is the owner's decision, not this branch's.", "options": ["accept a known documented target-only failure", "correct test_136b to compare modifications rather than any diff -- a change to accepted-phase test code needing its own review", "relocate core/pipeline_status.py outside what test_136b guards"], "recommendation": "Option 2 is the honest one, and it is out of scope here.", "done_in_this_branch": "nothing"}
       ],
-      "not_fixed_here": "test_136b and test_15_to_20 are in accepted-phase test code, outside this branch's scope. Both are the same defect class this document keeps finding -- an assertion whose implementation is broader than its name -- and both are recorded so the next reader does not re-derive them."
+      "not_fixed_here": "test_136b and test_15_to_20 are accepted-phase test code, outside this branch's scope. Both are recorded so the next reader does not re-derive them."
+    },
+    "run_count": {
+      "total_runs": 6,
+      "threw": [1, 2, 3, 4],
+      "completed_exit_0": [5, 6],
+      "run_5": "abbreviated validation, no -FullSuite",
+      "run_6": "the complete gate, -FullSuite -ConnectivityScan",
+      "correction": "Revision 8 also contained the phrase 'passing on the seventh', contradicting its own run table. There was no seventh run."
+    },
+    "evidence_ordering": {
+      "question": "Was stage evidence captured before the suite mutated runs/T2?",
+      "answer": "YES, by roughly seventeen minutes, from the evidence directory's own timestamps.",
+      "timeline": [
+        "00:17:57 pipeline-status.json -- stage 5 and stage 11 evidence",
+        "00:17:58 runs-T2-after-pipeline-status.json -- the read-only proof closes here",
+        "00:18:16 pipeline-status-tests.txt",
+        "00:18:31 boundary-tests.txt and connectivity-scan.txt",
+        "00:35:14 full-suite.txt -- the only step that touched runs/T2"
+      ],
+      "correction_to_the_review": "The suite did not touch 220 files. 220 is the TOTAL file count in runs/T2, before and after. The number touched is TEN, all under phase6/6E, all mtime-only."
+    },
+    "backlog_test_isolation": {
+      "item": "The full test suite writes into the real runs/T2 workspace.",
+      "observed": "Ten files under phase6/6E rewritten byte-identically with new mtimes.",
+      "why_it_matters": "pipeline_status derives STALE purely from mtimes, so running the suite can change the owner's next-action advice without changing a single byte of content.",
+      "scope": "NOT a pipeline_status defect and NOT fixed here. Logged as a separate backlog item, as the 2026-08-02 review recommends.",
+      "suggested_fix": "Point those tests at isolated temporary workspaces rather than runs/T2."
     }
   },
-  "revision": 8,
+  "revision": 9,
+  "revision_9_note": "Corrects revision 8, which claimed the full-suite differential was BASELINE_EQUIVALENT with zero target-only failures. It is BASELINE_EQUIVALENT_EXCEPT_ONE: test_136b_accepted_authorities_unmodified passes on 211f2f8 and fails on the candidate. Also corrects the run count ('passing on the seventh' -- there was no seventh run) and answers the 2026-08-02 review's evidence-ordering question from timestamps. Responds to AMZ_FBM_PIPELINE_STATUS_WINDOWS_EVIDENCE_COMPLETE_REAUDIT_REVIEW_2026-08-02.json.",
   "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. Revision 6 responded to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims. Revision 7 is the FIRST revision containing anything measured on Windows: see first_windows_execution.",
   "first_windows_execution": {
     "date": "2026-08-01",

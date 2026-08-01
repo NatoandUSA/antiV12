@@ -7,6 +7,7 @@ against real files with real mtimes, and assert the two things it must never do:
 or emit a character the owner's console cannot render.
 """
 import ast
+import inspect
 import json
 import os
 import shutil
@@ -207,7 +208,17 @@ ADVERSARIAL_SEEDS = (
     "nurse (sub) [idx] {blk}",          # grouping, index and script-block syntax
     "nurse @splat %var !bang ^caret",   # splat, cmd var, delayed expansion, cmd escape
     "-shirt",                           # leading dash: read as a parameter name if bare
+    "café naïve müg",    # non-ASCII: a real keyword, and a .ps1 encoding trap
 )
+
+# Deliberately OUTSIDE the execution corpus. Note the SPACE: a bare `nurse\` is rendered
+# unquoted and is therefore safe, so the hazard needs a value that both requires quoting and
+# ends in a backslash. PowerShell then hands `'nurse gift\'` to a native child as
+# `"nurse gift\"`, and the Microsoft C runtime reads `\"` as an escaped quote -- the argument is
+# mangled BELOW the renderer. The literal `_ps_quote` emits is correct and the child still gets
+# the wrong value, so putting this in the gate corpus would fail the acceptance test for a
+# PowerShell limitation the renderer cannot fix. Shape asserted; behaviour documented.
+TRAILING_BACKSLASH_SEED = "nurse gift\\"
 
 
 class TestRendering(Base):
@@ -334,11 +345,41 @@ class TestWindowsPowerShellExecution(Base):
     else. Nothing here runs an engine, touches the workspace, or contacts anything.
     """
 
+    PS_EXE = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                          "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+
     def _probe(self):
+        """Prints its argv as JSON and nothing else. No logging, no banner, no prefix -- the
+        assertion reads the LAST stdout line, and anything chatty would break that contract."""
         path = os.path.join(self.ws, "argv_probe.py")
         with open(path, "w", encoding="utf-8") as fh:
             fh.write("import json, sys\nprint(json.dumps(sys.argv[1:]))\n")
         return path
+
+    def _write_ps1(self, name, line):
+        """One executable command line, written the way Windows PowerShell 5.1 must read it.
+
+        utf-8-SIG, not utf-8. Windows PowerShell 5.1 reads a BOM-less .ps1 as the system ANSI
+        code page, so a non-ASCII seed would be silently mojibaked before PowerShell ever
+        parsed it -- and the test would then be measuring the file encoding, not the renderer.
+        """
+        path = os.path.join(self.ws, name)
+        with open(path, "w", encoding="utf-8-sig") as fh:
+            fh.write(line + "\n")
+        return path
+
+    def _run_ps1(self, path):
+        return subprocess.run(
+            [self.PS_EXE, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-File", path],
+            capture_output=True, text=True, encoding="utf-8", cwd=self.ws)
+
+    def _files(self):
+        return {f for _r, _d, fs in os.walk(self.ws) for f in fs}
+
+    def _require_powershell(self):
+        # On Windows this must EXIST. Skipping here would let a missing shell read as proof.
+        self.assertTrue(os.path.isfile(self.PS_EXE), f"powershell.exe not found at {self.PS_EXE}")
 
     def test_the_seed_corpus_is_covered_by_the_shape_tests_on_every_platform(self):
         """Runs everywhere, so a non-Windows CI still exercises the whole corpus. It proves the
@@ -349,62 +390,111 @@ class TestWindowsPowerShellExecution(Base):
             self.assertTrue(rendered.startswith("'") and rendered.endswith("'"), seed)
             self.assertEqual(rendered[1:-1].replace("''", "\x00"), seed.replace("'", "\x00"), seed)
 
+    def test_the_execution_corpus_and_the_shape_corpus_cannot_diverge(self):
+        """They are one constant today. This asserts it by AST -- not by counting occurrences in
+        the source, which would count its own assertion -- so splitting them later is a test
+        failure rather than a silent hole in whichever one stops being exercised."""
+        cls = next(n for n in ast.parse(inspect.getsource(sys.modules[__name__])).body
+                   if isinstance(n, ast.ClassDef) and n.name == "TestWindowsPowerShellExecution")
+        looped = {n.iter.id for n in ast.walk(cls)
+                  if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)}
+        self.assertEqual(looped, {"ADVERSARIAL_SEEDS"},
+                         f"every seed loop must iterate the one corpus; found {looped}")
+        self.assertNotIn(TRAILING_BACKSLASH_SEED, ADVERSARIAL_SEEDS)
+
+    def test_a_trailing_backslash_renders_correctly_even_though_powershell_mangles_it(self):
+        """Known limitation, pinned so it cannot be mistaken for an untested case. The literal is
+        right; PowerShell's native argument marshalling is what breaks, below the renderer.
+
+        A bare `nurse\\` is NOT affected -- unquoted, there is no quote for the C runtime to
+        mis-parse. The hazard needs a value that both requires quoting and ends in a backslash."""
+        self.assertEqual(P._ps_quote("nurse\\"), "nurse\\")                    # bare: safe
+        self.assertEqual(P._ps_quote(TRAILING_BACKSLASH_SEED), "'nurse gift\\'")  # quoted: hazard
+
     @unittest.skipUnless(sys.platform == "win32",
                          "Windows PowerShell execution proof; the renderer targets that shell")
     def test_windows_powershell_renderer_preserves_exact_seed(self):
-        exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
-                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-        # On Windows this must EXIST. Skipping here would let a missing shell read as proof.
-        self.assertTrue(os.path.isfile(exe), f"powershell.exe not found at {exe}")
-
+        self._require_powershell()
         probe = self._probe()
-        ps1 = os.path.join(self.ws, "paste.ps1")
-        sentinel = os.path.join(self.ws, "sentinel.txt")
+        before = self._files()
 
         for seed in ADVERSARIAL_SEEDS:
-            # Rendered by the PRODUCTION helper. If _ps_quote is wrong, this line is wrong.
-            line = "{py} {probe} --seed {seed}".format(
+            # `&` is required, not stylistic: a line whose FIRST token is a quoted string is a
+            # string EXPRESSION in PowerShell, not a command. Without it, a python.exe under
+            # `C:\Program Files\...` would be echoed rather than run, and this test would fail
+            # on the environment instead of on the renderer.
+            line = "& {py} {probe} --seed {seed}".format(
                 py=P._ps_quote(sys.executable), probe=P._ps_quote(probe), seed=P._ps_quote(seed))
-            with open(ps1, "w", encoding="utf-8") as fh:
-                fh.write(line + "\n")
+            ps1 = self._write_ps1("paste.ps1", line)
+            self.assertEqual(len([l for l in open(ps1, encoding="utf-8-sig") if l.strip()]), 1)
 
-            run = subprocess.run(
-                [exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1],
-                capture_output=True, text=True, cwd=self.ws)
+            run = self._run_ps1(ps1)
 
             self.assertEqual(run.returncode, 0, f"{seed!r}: {run.stderr}")
+            self.assertEqual(run.stderr.strip(), "", f"{seed!r} wrote to stderr: {run.stderr!r}")
             argv = json.loads(run.stdout.strip().splitlines()[-1])
-            # 1. the seed arrives as ONE argument, 2. with its exact value
+            # 1. one argument, 2. exact value -- no normalising, no trimming
             self.assertEqual(argv, ["--seed", seed], f"{seed!r} was mangled: {argv!r}")
+            self.assertEqual(len(argv), 2, argv)
             # 3. no extra command executed
             self.assertNotIn("PWNED", run.stdout, seed)
             self.assertNotIn("PWNED", run.stderr, seed)
-            # 4. no redirection-created file
-            self.assertFalse(os.path.exists(sentinel), f"{seed!r} created {sentinel}")
+            # 4. no redirection-created file, under ANY name -- a single sentinel check would
+            #    miss a redirect whose target came from the seed itself.
+            self.assertEqual(self._files() - before, {"argv_probe.py", "paste.ps1"},
+                             f"{seed!r} created unexpected files")
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell execution proof")
     def test_windows_powershell_runs_the_real_next_command_shape(self):
         """The same proof through `_fmt_command` rather than `_ps_quote` directly, so the
         template-substitution path is covered too, workspace argument included."""
-        exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
-                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-        self.assertTrue(os.path.isfile(exe), exe)
+        self._require_powershell()
         probe = self._probe()
         seed = "nurse'; Write-Host PWNED; # $5"
         line = P._fmt_command(
-            "{py} {probe} --workspace {{workspace}} --seed {{seed}}".format(
+            "& {py} {probe} --workspace {{workspace}} --seed {{seed}}".format(
                 py=P._ps_quote(sys.executable), probe=P._ps_quote(probe)),
             self.ws, seed)
-        ps1 = os.path.join(self.ws, "paste2.ps1")
-        with open(ps1, "w", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-        run = subprocess.run(
-            [exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1],
-            capture_output=True, text=True, cwd=self.ws)
+        run = self._run_ps1(self._write_ps1("paste2.ps1", line))
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(json.loads(run.stdout.strip().splitlines()[-1]),
                          ["--workspace", self.ws, "--seed", seed])
         self.assertNotIn("PWNED", run.stdout)
+
+
+class TestInputHygiene(Base):
+    def test_a_wildcard_does_not_match_on_overlapping_head_and_tail(self):
+        """`startswith(head) and endswith(tail)` alone accepts `abcd` for `abc*bcd`, because the
+        head and the tail overlap. A phantom match makes a stage look READY on a file that is
+        not its artifact."""
+        touch(os.path.join(self.ws, "abcd"), self.t0)
+        self.assertEqual(P._resolve(self.ws, "abc*bcd"), [])
+        touch(os.path.join(self.ws, "abcXbcd"), self.t0)
+        self.assertEqual([os.path.basename(p) for p in P._resolve(self.ws, "abc*bcd")], ["abcXbcd"])
+
+    def test_control_characters_are_named_not_silently_quoted(self):
+        self.assertEqual(P.unsupported_characters("nurse shirt"), "")
+        self.assertEqual(P.unsupported_characters("nurse\nshirt"), "\\n")
+        self.assertIn("\\t", P.unsupported_characters("a\tb\rc"))
+
+    def test_a_seed_with_a_newline_is_refused_not_printed(self):
+        """A seed pasted out of a spreadsheet can carry a newline. Printed, it splits the command
+        across two lines and the second looks like a separate command. No quoting fixes that."""
+        touch(os.path.join(self.ws, "Helium_10_Xray_a.xlsx"), self.t0)
+        out = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+                              "--workspace", self.ws, "--seed", "nurse\nshirt"],
+                             capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("cannot be printed in a command", out.stderr)
+        self.assertIn("\\n", out.stderr)
+        self.assertEqual(out.stdout, "")
+
+    def test_an_ordinary_seed_still_runs(self):
+        touch(os.path.join(self.ws, "Helium_10_Xray_a.xlsx"), self.t0)
+        out = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+                              "--workspace", self.ws, "--seed", "nurse sweatshirt"],
+                             capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(out.returncode, 0, out.stderr)
 
 
 class TestOutputPatternSemantics(Base):

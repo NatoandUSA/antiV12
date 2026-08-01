@@ -119,7 +119,13 @@ _MARK = {READY: "ok", STALE: "STALE", MISSING: "--", BLOCKED: "blocked"}
 
 
 def _resolve(workspace, pattern):
-    """Every existing file matching one artifact name. A trailing '*' is the only wildcard used."""
+    """Every existing file matching one artifact name. A trailing '*' is the only wildcard used.
+
+    The length guard is not decoration: `startswith(head) and endswith(tail)` alone accepts a
+    name where head and tail OVERLAP, so `abc*bcd` would match `abcd` even though a real match
+    needs six characters. No shipped pattern can hit it today; a future one could, and it would
+    surface as a phantom artifact that makes a stage look READY.
+    """
     if "*" not in pattern:
         p = os.path.join(workspace, pattern)
         return [p] if os.path.isfile(p) else []
@@ -129,7 +135,8 @@ def _resolve(workspace, pattern):
     except OSError:
         return []
     return sorted(os.path.join(workspace, n) for n in names
-                  if n.startswith(head) and n.endswith(tail)
+                  if len(n) >= len(head) + len(tail)
+                  and n.startswith(head) and n.endswith(tail)
                   and os.path.isfile(os.path.join(workspace, n)))
 
 
@@ -251,11 +258,33 @@ def _ps_quote(value):
     silently -- the exact class of failure this function exists to prevent.
 
     A leading `-` also forces quoting: bare, PowerShell reads it as a parameter name.
+
+    TWO LIMITS THIS FUNCTION CANNOT FIX, because they are not about quoting:
+
+      * A control character (newline, tab, NUL) inside a value corrupts the printed line
+        itself, whatever the quoting. `unsupported_characters()` rejects those at the CLI
+        boundary instead, so a corrupted command is never printed.
+      * A value ending in an odd number of backslashes is mangled by PowerShell's NATIVE
+        argument marshalling, downstream of this string: PowerShell hands `'a\'` to the child
+        as `"a\"`, and the Microsoft C runtime reads `\"` as an escaped quote. The literal this
+        function emits is correct; what the child receives is not. Documented, not silently
+        worked around -- see the report's known limitations.
     """
     text = str(value)
     if text and not text.startswith("-") and all(c in _BARE_SAFE for c in text):
         return text
     return "'" + text.replace("'", "''") + "'"
+
+
+def unsupported_characters(value):
+    """The characters in `value` that cannot survive being printed as a command, or ''.
+
+    Control characters only. A newline in a seed -- easily arrived at by pasting from a
+    spreadsheet -- would split the printed command across lines, and the second line would look
+    like a separate command. Rejecting at the boundary is honest; quoting cannot help.
+    """
+    bad = sorted({c for c in str(value) if ord(c) < 0x20 or ord(c) == 0x7F})
+    return "".join(repr(c)[1:-1] for c in bad)
 
 
 def _needs_seed(cmd):
@@ -337,6 +366,15 @@ def main(argv=None):
     if not os.path.isdir(a.workspace):
         print(f"workspace not found: {a.workspace}", file=sys.stderr)
         return 2
+
+    # Reject rather than print a corrupted command. A seed pasted out of a spreadsheet can carry
+    # a newline or tab, and no amount of quoting keeps a printed command line intact through one.
+    if a.seed:
+        bad = unsupported_characters(a.seed)
+        if bad:
+            print(f"seed contains characters that cannot be printed in a command: {bad}\n"
+                  f"retype the seed keyword without them", file=sys.stderr)
+            return 2
 
     rows = evaluate(a.workspace)
     if a.json:

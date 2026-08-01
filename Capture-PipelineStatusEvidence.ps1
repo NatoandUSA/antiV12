@@ -38,14 +38,31 @@
        now empty and HEAD is verified against origin/<branch> plus descent from the audited
        baseline. Pass -ExpectedHead <sha> to pin exactly for a formal capture.
 
-    Also: Compare-Object is guarded against an empty workspace under StrictMode, and the
-    summary records a single overall verdict rather than leaving the caller to add it up.
+    D6 Tee-Object output had to be routed to Out-Host. Without it every captured line becomes
+       part of Invoke-Capture's return value and each exit-code variable is an array of output.
+
+    D7 Compare-Object refuses an empty collection, so an empty runs/T2 -- or one side becoming
+       empty -- threw an argument-binding error that reads like a script bug rather than like
+       the evidence result it is. Text comparison first, Compare-Object only for the detail.
+
+    D8 Python's stdout falls back to the ANSI code page when REDIRECTED rather than attached to
+       a console, which is exactly what Tee-Object does. A non-ASCII seed would have raised
+       UnicodeEncodeError and aborted the capture on an encoding detail. PYTHONIOENCODING=utf-8.
+
+    Also: StrictMode Latest throws on a missing JSON property, so Get-JsonProperty reports which
+    property was absent instead; origin/<branch> existence is checked before it is dereferenced;
+    stages 5 and 11 are recorded by name in the summary; and -FullSuite / -ConnectivityScan close
+    B5 and B6 in the same sitting when asked.
 
     NOT CHECKED HERE, deliberately: nothing in this script authorizes a merge or an acceptance
     tag, and it refuses to run if one already points at HEAD.
 #>
 param(
     [string]$Repo = "D:\Claude\Amazon\AMZ-FBM-Toolkit-v2_4_0-RC2\AMZ-FBM-Toolkit-v2_3_4-RC1",
+    # B5/B6 from the 2026-08-01 gate review. Off by default: the full suite is ~19 minutes and
+    # most runs do not need it. On, so both can be closed in the same sitting when they do.
+    [switch]$FullSuite,
+    [switch]$ConnectivityScan,
     # Deliberately NOT defaulted to a hash. A hardcoded candidate hash self-invalidates the
     # moment the branch gains a commit -- including the commit that adds this script -- and a
     # stale default is worse than none, because it either blocks a valid run or gets edited out
@@ -71,6 +88,19 @@ function Get-TreeSnapshot {
                 SHA256                = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash
             }
         }
+}
+
+function Get-JsonProperty {
+    <# StrictMode Latest throws on a missing property, which turns a clear evidence failure into
+       an opaque one. Ask first, then report what was actually missing. #>
+    param(
+        [Parameter(Mandatory = $true)]$Object,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+    if ($null -eq $Object -or -not $Object.psobject.Properties.Name.Contains($Name)) {
+        throw "Expected JSON property '$Name' is absent. The CLI contract changed or the run failed."
+    }
+    return $Object.$Name
 }
 
 function Invoke-Capture {
@@ -107,7 +137,12 @@ if ([string]::IsNullOrWhiteSpace($Branch) -or $Branch -eq "main") {
 }
 if ([string]::IsNullOrWhiteSpace($ExpectedHead)) {
     # Unpinned: the candidate must at least be published (so a re-auditor can fetch exactly what
-    # was measured) and must descend from the audited baseline.
+    # was measured) and must descend from the audited baseline. Both are checked; neither is a
+    # substitute for the other, and together they cannot certify an arbitrary branch.
+    git show-ref --verify --quiet "refs/remotes/origin/$Branch"
+    if ($LASTEXITCODE -ne 0) {
+        throw "origin/$Branch does not exist. Push the branch before capturing evidence about it."
+    }
     $OriginBranch = (git rev-parse "origin/$Branch").Trim()
     if ($Head -ne $OriginBranch) {
         throw "HEAD $Head is not pushed: origin/$Branch is $OriginBranch. Evidence must describe a fetchable commit."
@@ -150,6 +185,11 @@ $Stamp       = Get-Date -Format "yyyyMMdd-HHmmss"
 $EvidenceDir = Join-Path $env:TEMP "AMZ-FBM-pipeline-status-$Stamp"
 New-Item -ItemType Directory -Path $EvidenceDir | Out-Null
 $Env:PYTHONDONTWRITEBYTECODE = "1"     # keeps __pycache__ out of the git-status gate
+# D8. Python's stdout falls back to the ANSI code page when it is REDIRECTED rather than attached
+# to a console -- which is exactly what Tee-Object does. A seed containing a non-ASCII character,
+# e.g. "cafe" with an acute accent, would then raise UnicodeEncodeError and abort the capture on
+# an encoding detail rather than on anything about the tool.
+$Env:PYTHONIOENCODING = "utf-8"
 
 [ordered]@{
     captured_at                = (Get-Date).ToString("o")
@@ -160,6 +200,8 @@ $Env:PYTHONDONTWRITEBYTECODE = "1"     # keeps __pycache__ out of the git-status
     origin_main                = $OriginMain
     powershell_exe             = $PowerShellExe
     windows_powershell_version = (& $PowerShellExe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
+    audited_baseline           = (git rev-parse $AuditedBaseline).Trim()
+    expected_main              = $WantMain
     python_version             = (python --version 2>&1 | Out-String).Trim()
     evidence_directory         = $EvidenceDir
 } | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "metadata.json")
@@ -183,8 +225,18 @@ $JsonRc = Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_sta
 if ($JsonRc -ne 0) { throw "JSON pipeline-status command failed with exit code $JsonRc." }
 try { $JsonDoc = Get-Content -Raw -LiteralPath $JsonOutput | ConvertFrom-Json }
 catch { throw "The --json output is not valid JSON: $($_.Exception.Message)" }
-if ($JsonDoc.target_shell -ne "Windows PowerShell") {
-    throw "JSON target_shell is '$($JsonDoc.target_shell)', expected 'Windows PowerShell'."
+$ActualShell = Get-JsonProperty -Object $JsonDoc -Name "target_shell"
+if ($ActualShell -ne "Windows PowerShell") {
+    throw "JSON target_shell is '$ActualShell', expected 'Windows PowerShell'."
+}
+
+# The two stages the multi-output staleness defect actually affected. Recorded by name so the
+# re-auditor reads a result rather than re-deriving one from the stage array.
+$Stages = Get-JsonProperty -Object $JsonDoc -Name "stages"
+$Stage5  = $Stages | Where-Object { $_.n -eq 5 }
+$Stage11 = $Stages | Where-Object { $_.n -eq 11 }
+if ($null -eq $Stage5 -or $null -eq $Stage11) {
+    throw "Stages 5 and 11 were not both present in the JSON output."
 }
 
 # D3 -- C5 evidence: with NO seed there must be no pasteable engine command anywhere.
@@ -196,8 +248,10 @@ $NoSeedText_Content = Get-Content -Raw -LiteralPath $NoSeedText
 if ($NoSeedText_Content -match "<seed-keyword>") {
     throw "C5 REGRESSION: a placeholder command was printed without a real seed."
 }
-$NoSeedDoc = Get-Content -Raw -LiteralPath $NoSeedJson | ConvertFrom-Json
-if ($null -ne $NoSeedDoc.next_command -and $NoSeedDoc.next_command_needs_seed) {
+$NoSeedDoc     = Get-Content -Raw -LiteralPath $NoSeedJson | ConvertFrom-Json
+$NoSeedCommand = Get-JsonProperty -Object $NoSeedDoc -Name "next_command"
+$NoSeedNeeds   = Get-JsonProperty -Object $NoSeedDoc -Name "next_command_needs_seed"
+if ($null -ne $NoSeedCommand -and $NoSeedNeeds) {
     throw "C5 REGRESSION: next_command is non-null while next_command_needs_seed is true."
 }
 
@@ -215,6 +269,26 @@ if ($FocusedRc -ne 0) { throw "Pipeline-status focused tests failed with exit co
 $BoundaryRc = Invoke-Capture -File $BoundaryOutput -Arguments @("-m", "unittest", "tests.test_amazon_boundary", "tests.test_network_policy", "tests.test_connectivity_policy", "-v")
 if ($BoundaryRc -ne 0) { throw "Boundary tests failed with exit code $BoundaryRc." }
 
+$ConnectivityRc = $null
+if ($ConnectivityScan) {                                   # B6
+    $ConnectivityOutput = Join-Path $EvidenceDir "connectivity-scan.txt"
+    $ConnectivityRc = Invoke-Capture -File $ConnectivityOutput -Arguments @("scripts/connectivity_scan.py")
+    if ($ConnectivityRc -ne 0) { throw "Connectivity scan failed with exit code $ConnectivityRc." }
+}
+
+$FullSuiteRc = $null
+if ($FullSuite) {                                          # B5 -- roughly 19 minutes
+    Write-Host "Running the full suite. This takes ~19 minutes." -ForegroundColor Yellow
+    $FullSuiteOutput = Join-Path $EvidenceDir "full-suite.txt"
+    $FullSuiteRc = Invoke-Capture -File $FullSuiteOutput -Arguments @("-m", "unittest", "discover", "-s", "tests")
+    # NOT thrown on: the known-stale test_199e_no_acceptance_tag_yet fails on main too, so a
+    # nonzero code here is not by itself a regression. It is recorded for the differential and
+    # the re-auditor compares it against the same run on the audited baseline.
+    if ($FullSuiteRc -ne 0) {
+        Write-Warning "Full suite exit code $FullSuiteRc. Compare against the baseline run before calling it a regression. See $FullSuiteOutput."
+    }
+}
+
 $AfterSnapshot = @(Get-TreeSnapshot -Root $RunsT2)
 $AfterSnapshot | ConvertTo-Json -Depth 6 |
     Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-after.json")
@@ -223,12 +297,19 @@ $Flatten = { param($rows) @($rows | ForEach-Object {
     "$($_.RelativePath)`t$($_.Length)`t$($_.LastWriteTimeUtcTicks)`t$($_.SHA256)" }) }
 $BeforeComparable = & $Flatten $BeforeSnapshot
 $AfterComparable  = & $Flatten $AfterSnapshot
+# Compare the joined text FIRST. Compare-Object refuses an empty collection, so calling it on an
+# empty workspace -- or on one side becoming empty -- would throw an argument-binding error that
+# reads like a script bug instead of like the evidence result it actually is.
+$TreeChanged = (($BeforeComparable -join "`n") -ne ($AfterComparable -join "`n"))
 $TreeDiff = @()
-if ($BeforeComparable.Count -gt 0 -or $AfterComparable.Count -gt 0) {
+if ($TreeChanged -and $BeforeComparable.Count -gt 0 -and $AfterComparable.Count -gt 0) {
     $TreeDiff = @(Compare-Object -ReferenceObject $BeforeComparable -DifferenceObject $AfterComparable)
 }
+if ($TreeChanged -and $TreeDiff.Count -eq 0) {
+    $TreeDiff = @("one side is empty: before=$($BeforeComparable.Count) after=$($AfterComparable.Count)")
+}
 $TreeDiff | Out-String | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-diff.txt")
-if ($TreeDiff.Count -gt 0) {
+if ($TreeChanged) {
     throw "The pipeline-status run CHANGED real runs/T2. Review $EvidenceDir."
 }
 
@@ -251,7 +332,7 @@ if (-not $RanAndPassed) {
     throw "$RequiredTest did not run to a passing result. Acceptance stays HOLD."
 }
 
-$Verdict = if ($RanAndPassed -and $TreeDiff.Count -eq 0 -and $StatusAfter.Count -eq 0) {
+$Verdict = if ($RanAndPassed -and -not $TreeChanged -and $StatusAfter.Count -eq 0) {
     "WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT"
 } else {
     "INCOMPLETE"
@@ -270,7 +351,14 @@ $Verdict = if ($RanAndPassed -and $TreeDiff.Count -eq 0 -and $StatusAfter.Count 
     adversarial_seed_exit_code     = $AdvRc
     focused_test_exit_code         = $FocusedRc
     boundary_test_exit_code        = $BoundaryRc
-    runs_T2_changed                = ($TreeDiff.Count -gt 0)
+    runs_T2_changed                = $TreeChanged
+    stage_5_state                  = (Get-JsonProperty -Object $Stage5  -Name "state")
+    stage_5_artifact               = (Get-JsonProperty -Object $Stage5  -Name "artifact")
+    stage_11_state                 = (Get-JsonProperty -Object $Stage11 -Name "state")
+    stage_11_artifact              = (Get-JsonProperty -Object $Stage11 -Name "artifact")
+    connectivity_scan_exit_code    = $ConnectivityRc
+    full_suite_exit_code           = $FullSuiteRc
+    full_suite_note                = "null means not requested. A nonzero code is NOT by itself a regression: test_199e_no_acceptance_tag_yet is known-stale and fails on main too. Compare against the audited baseline."
     repository_changed             = ($StatusAfter.Count -gt 0)
     powershell_execution_test_ran_and_passed = $RanAndPassed
     c5_no_placeholder_command      = $true

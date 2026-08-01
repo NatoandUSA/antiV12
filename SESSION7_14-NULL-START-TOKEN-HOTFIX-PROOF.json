@@ -1,0 +1,235 @@
+{
+  "schema_version": "phase7-14-null-start-token-hotfix-proof-v1",
+  "stage_id": "7.14",
+  "hotfix": "NULL_START_TOKEN",
+  "generated_at": "2026-08-01",
+  "branch": "hotfix-phase7-14-stop-exit-verification",
+  "baseline_commit": "a70bdb0",
+  "merged": false,
+  "acceptance_tag": null,
+  "invariant": "A missing, null, blank, malformed or unreadable token never authorizes a signal, a termination, an ownership claim, or a successful Start.",
+  "root_cause": {
+    "summary": "Every consumer of the recorded start token tested it for truthiness inline, reading a falsy token as 'skip the check' rather than 'cannot verify'. Start manufactured the falsy token by reading the child's identity by raw PID while holding a Popen that owns it, persisting None, and returning READY.",
+    "sites": [
+      {"n": 0, "site": "_start_locked", "baseline": "token = self._start_token(pid) -> persisted -> LAUNCHER_READY", "effect": "manufactures the null token", "fixed": true},
+      {"n": 1, "site": "_pinned_identity", "baseline": "if not recorded: return None, handle_token, ev", "effect": "authorizes termination", "fixed": true},
+      {"n": 2, "site": "_clear_stale_pid", "baseline": "if rec.get('process_start_token') and token != rec.get(...)", "effect": "PID-reuse branch never runs", "fixed": true},
+      {"n": 3, "site": "status", "baseline": "if owned and rec.get('process_start_token')", "effect": "launcher_owned true, unverified", "fixed": true}
+    ],
+    "false_claim_in_4c5d362_commit_message": "any missing token ... refuses -- false for the recorded token, which is the one the other two are compared against"
+  },
+  "baseline_harm_measured": {
+    "method": "real Windows child process, PID recorded with process_start_token=null, real stop path",
+    "readiness": "SESSION7_14_LAUNCHER_STOPPED",
+    "identity_verified_reported": true,
+    "signalled": true,
+    "terminate_requests": ["GenerateConsoleCtrlEvent ok", "TerminateProcess ok"],
+    "process_identity": {
+      "recorded_token_present": false,
+      "handle_token_matches_recorded": false,
+      "process_token_matches_recorded": false,
+      "authorized_by": "NO_RECORDED_TOKEN"
+    },
+    "bystander_alive_after_stop": false,
+    "bystander_exit_code": 1,
+    "verdict": "BYSTANDER_KILLED",
+    "findings_beyond_the_original_audit": [
+      "the launcher recorded its own evidence that identity did NOT match, then terminated anyway",
+      "the hard-path termination check reported identity_verified true because expect_token was derived from the live handle, so the termination handle was validated against itself -- circular in exactly the case where the first two checks had failed"
+    ]
+  },
+  "fixed_behaviour_same_probe": {
+    "readiness": "SESSION7_14_LAUNCHER_STOP_REFUSED",
+    "error_code": "PROCESS_IDENTITY_UNPROVEN",
+    "signalled": false,
+    "identity_verified": false,
+    "terminate_requests": [],
+    "process_identity": {"recorded_token_valid": false, "authorized_by": null},
+    "bystander_alive_after_stop": true,
+    "verdict": "survived",
+    "record_preserved": true
+  },
+  "live_launcher_run": {
+    "console": "production.phase7_unified_owner_console",
+    "port": 8791,
+    "browser_opened": false,
+    "start_readiness": "SESSION7_14_LAUNCHER_READY",
+    "startup_seconds": 0.56,
+    "recorded_token": "win-create-134299933208600311",
+    "identity_source": "popen_handle",
+    "token_valid": true,
+    "status_launcher_owned": true,
+    "status_identity_verified": true,
+    "stop_readiness": "SESSION7_14_LAUNCHER_STOPPED",
+    "exit_state": "EXITED",
+    "stop_seconds": 3.25,
+    "runtime_record_cleared": true
+  },
+  "fix": {
+    "validator": {
+      "name": "valid_identity_token",
+      "rule": "isinstance(token, str) and bool(token.strip())",
+      "presence_and_shape_not_format": true,
+      "why_not_a_format_gate": "the accepted test seams legitimately emit tokens like tok-4242; a win-create-/posix-start- gate would convert every seam-driven stop into a refusal"
+    },
+    "start_side": {
+      "new_function": "process_start_token_from_popen(proc)",
+      "reads_through": "proc._handle",
+      "order": ["popen_handle", "process_start_token fallback", "fail closed"],
+      "posix_fallback_is_correct_because": "an unreaped child pins its own PID for as long as the Popen lives, so the /proc read is already pinned by the same object",
+      "retry_attempts": 3,
+      "on_exhaustion": {
+        "record_written": false,
+        "child_cleanup": "proc.kill() through the owned object -- no PID is re-resolved",
+        "readiness": "SESSION7_14_LAUNCHER_FAILED",
+        "error_code": "CONSOLE_IDENTITY_UNREADABLE",
+        "browser_opened": false
+      }
+    },
+    "clear_stale_pid": {
+      "process_gone": "clear (unchanged)",
+      "recorded_token_unusable": "clear, reason=unverifiable_record (new)",
+      "live_token_unreadable": "KEEP -- baseline cleared it as pid_reused because None != recorded is true (new)",
+      "live_token_mismatch": "clear (unchanged)",
+      "never_signals": true
+    },
+    "status": {"ownership_is_verified_or_not_claimed": true, "identity_verified_exposed": true}
+  },
+  "owner_messages": {
+    "stop_identity_unproven": "The toolkit was not stopped because the launcher could not confirm which process it is. Nothing on this computer was stopped. Close the toolkit window yourself, or end its task in Task Manager, then run Start-AMZ-Toolkit again.",
+    "start_identity_unreadable": "The toolkit could not be started safely: the launcher could not confirm which process it had just created, so it closed that process again. Nothing was left behind. Run Start-AMZ-Toolkit once more.",
+    "delivered_in": "the Stop/Start console output, not the web panel, which is unreachable in exactly the situation the sentence describes",
+    "contains_no_raw_error_code": true,
+    "capitalization": "The toolkit"
+  },
+  "tests": {
+    "new_tests": 30,
+    "failing_against_unfixed_module": 26,
+    "passing_after_fix": 30,
+    "new_classes": [
+      "TestIdentityTokenValidator",
+      "TestNullTokenNeverAuthorizes",
+      "TestUnverifiableRecordSweep",
+      "TestStatusOwnershipIsVerified",
+      "TestStartProducesAVerifiedToken",
+      "TestStartTokenComesFromTheOwnedHandle",
+      "TestNullTokenNeverReachesARealProcess"
+    ],
+    "real_windows_process_tests": true,
+    "bystander_assertion": "terminate_requests == [] and the real process is still alive when the stop returns"
+  },
+  "accepted_assertions_changed": [
+    {
+      "test": "test_h04_identity_refusal_wording_is_accurate",
+      "what_changed": "the frozen owner sentence, which was true and completely unactionable",
+      "machine_contract_untouched": true,
+      "readiness_and_error_code_still_asserted": true,
+      "reason": "the remediation contract required truthful owner recovery copy"
+    }
+  ],
+  "accepted_assertions_weakened_or_skipped": [],
+  "regression": {
+    "phase7_14_file": {"ran": 546, "failures": 1},
+    "known_stale_failure": {
+      "test": "test_199e_no_acceptance_tag_yet",
+      "pre_existing": true,
+      "verified_by": "git stash + re-run on the unmodified baseline produced the identical failure",
+      "cause": "asserts no phase7-14-* acceptance tag exists; three do, all predating this branch",
+      "retired_here": false,
+      "why_not": "retiring a test in the same commit that changes the code it guards is exactly the move an auditor should distrust"
+    },
+    "comparison_method": "exact (kind, module, test_name) set-difference; totals alone are not evidence because two runs can share a count and share none of its members",
+    "in_place_differential": {
+      "status": "INCOMPLETE_ENVIRONMENT",
+      "is_canonical_suite_count": false,
+      "do_not_quote_as": "the full suite result",
+      "reason": "both sides ran on an interpreter that did not satisfy requirements.txt; cryptography>=42.0 declared and absent, accounting for 37 of 41 problems",
+      "baseline": {"commit": "a70bdb0", "ran": 4681, "problems": 41},
+      "target": {"commit": "5a9b495", "ran": 4711, "problems": 41},
+      "outside_changed_module": {"shared": 40, "baseline_only": 0, "target_only": 0},
+      "inside_changed_module": {"baseline": ["test_199e_no_acceptance_tag_yet"], "target": ["test_199e_no_acceptance_tag_yet"]},
+      "verdict": "BASELINE_EQUIVALENT_OUTSIDE_CHANGED_MODULE"
+    },
+    "environment_repair": {
+      "command": "pip install -r requirements.txt",
+      "python_executable": ".venv\\Scripts\\python.exe",
+      "python_version": "3.12.10",
+      "pip_check": {"returncode": 0, "stdout": "No broken requirements found."},
+      "cryptography_version_before": null,
+      "cryptography_version_after": "50.0.0",
+      "requirements_sha256": "f9a83989c2b91710bb0d6b4b48266949dc88cdaed2b455bd4814337c47367397",
+      "collected_tests": 4711,
+      "collection_errors": 0,
+      "packages_installed": 25,
+      "only_missing_requirement_was": "cryptography (plus transitive cffi, pycparser); flask and all others already satisfied",
+      "effect": "removed all 37 Phase 7.9 problems; EncryptionUnavailable count 0"
+    },
+    "canonical_differential": {
+      "status": "CANONICAL_COMPARISON",
+      "is_canonical_pass_count": false,
+      "why_not_a_pass_count": "a fresh worktree has no runs/T2 (gitignored) and no local install state, so 329 tests skip against 4 in place; the remaining failures are for want of that workspace, not for want of correct code",
+      "method": "two fresh worktrees differing only by commit, run sequentially, one absolute interpreter path (never a bare `python`)",
+      "baseline": {"commit": "a70bdb0", "ran": 4679, "problems": 20, "skipped": 329},
+      "target": {"commit": "5a9b495", "ran": 4709, "problems": 20, "skipped": 329},
+      "outside_changed_module": {"shared": 19, "baseline_only": 0, "target_only": 0},
+      "inside_changed_module": {"baseline": ["test_199e_no_acceptance_tag_yet"], "target": ["test_199e_no_acceptance_tag_yet"]},
+      "remaining_by_module": {
+        "test_session5d_certification": 8,
+        "test_backend_semantic_quality": 4,
+        "test_backend_phrase_integrity": 3,
+        "test_instance_manager": 2,
+        "test_autostart_fallback": 1,
+        "test_offline_bootstrap": 1,
+        "test_phase7_14_owner_usability_pilot_readiness": 1
+      },
+      "verdict": "BASELINE_EQUIVALENT_OUTSIDE_CHANGED_MODULE",
+      "regressions": 0
+    },
+    "process_defect_exposed": {
+      "finding": "the project virtualenv did not satisfy the project's own requirements.txt, so the regression gate returned different answers depending on which interpreter was invoked",
+      "evidence": "Phase 7.9 was accepted 2026-07-23 recording crypto 91/91, which is only reachable with cryptography present; the .venv did not have it",
+      "class": "environment/process defect, not a code defect",
+      "remediated": "cryptography 50.0.0 installed from the declared requirements file; interpreter, pip check, versions, requirements hash and collected count now recorded with every count"
+    }
+  },
+  "dashboard_app_py": {
+    "status": "PRE_EXISTING_RETIREMENT_EVIDENCE_ONLY",
+    "observed": "test_instance_manager and test_autostart_fallback fail with 'dashboard did not become healthy within 30s'",
+    "not_a_dependency_gap": "flask is installed and pip check is clean",
+    "identical_at_baseline_and_target": true,
+    "modified_by_this_hotfix": false,
+    "retired_by_this_hotfix": false
+  },
+  "amazon_boundary": {
+    "seller_central_connections": 0,
+    "seller_api_calls": 0,
+    "advertising_api_calls": 0,
+    "seller_report_downloads": 0,
+    "seller_browser_automation_actions": 0,
+    "changed_by_this_hotfix": false
+  },
+  "files_changed": [
+    "production/phase7_owner_launcher.py",
+    "tests/test_phase7_14_owner_usability_pilot_readiness.py"
+  ],
+  "files_not_changed": [
+    "dashboard/app.py",
+    "core/instance_manager.py",
+    "production/phase7_unified_owner_console.py",
+    "Start-AMZ-Toolkit.bat",
+    "Start-AMZ-Toolkit.ps1",
+    "Stop-AMZ-Toolkit.bat",
+    "Stop-AMZ-Toolkit.ps1"
+  ],
+  "out_of_scope_confirmed_untouched": {
+    "duplicate_process_supervisors": "deferred until after the pilot",
+    "pipeline_observer": "not started",
+    "acrylic_category": "not started",
+    "new_readiness_states_added": 0
+  },
+  "known_limitations": [
+    "The Start-side handle read is Windows-only by necessity; on POSIX the fallback raw-PID read is used and is pinned by the unreaped Popen child, which is a different guarantee from a handle and is documented as such.",
+    "valid_identity_token checks presence and shape, not format, so a syntactically valid but wrong token is still caught only by the three-way comparison, not by the validator itself.",
+    "The bounded Start retry absorbs a transient API failure; a persistent one fails closed and requires the owner to run Start again."
+  ]
+}

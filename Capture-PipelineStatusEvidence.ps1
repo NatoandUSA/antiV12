@@ -425,8 +425,19 @@ if ($null -ne (Get-JsonProperty -Object $RefusedDoc -Name "next_command")) {
 # double quote is dropped on the way to the child. Proved here in the shell it is about, and
 # distinguished BY REASON from the backslash case above -- the two are one exit code apart and
 # nothing else.
+#
+# D14, and it is D13 again one step lower. The first version of THIS step passed a plain
+# 'nurse"quote"', which cannot work for the same reason: PowerShell drops the quotes on the way
+# to the child, the tool receives `nursequote` -- an ordinary, perfectly valid seed -- and returns
+# 0. The gate threw `A double-quote seed must exit 2, got 0`, which was the gate being right.
+#
+# The general rule, worth stating once: A VALUE THE TOOL REFUSES BECAUSE THIS SHELL CANNOT DELIVER
+# IT INTACT CANNOT BE DELIVERED TO THE TOOL BY THIS SHELL. Testing such a refusal end-to-end needs
+# the escaped form the shell CAN carry. Measured, both cases:
+#     nurse gift\\      -> child receives  nurse gift\      (trailing backslash: double it)
+#     nurse\"quote\"    -> child receives  nurse"quote"     (embedded quote: backslash-escape it)
 $QuoteRefusedText = Join-Path $EvidenceDir "pipeline-status-refused-quote-seed.txt"
-$QuoteRefusedRc = (Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "core.pipeline_status", "--seed", 'nurse"quote"')).ExitCode
+$QuoteRefusedRc = (Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "core.pipeline_status", "--seed", 'nurse\"quote\"')).ExitCode
 if ($QuoteRefusedRc -ne 2) { throw "A double-quote seed must exit 2, got $QuoteRefusedRc." }
 $QuoteRefusedContent = Get-Content -Raw -LiteralPath $QuoteRefusedText
 if ($QuoteRefusedContent -notmatch "contains a double quote") {

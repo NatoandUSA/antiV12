@@ -619,6 +619,17 @@ class TestCaptureScriptContract(unittest.TestCase):
         marker = "\n#>"
         return self.src.split(marker, 1)[1] if marker in self.src else self.src
 
+    def _code(self):
+        """The body with whole-line comments removed.
+
+        Needed because these guards forbid literals that the script's own comments must be free
+        to QUOTE while explaining why they are wrong -- the first version of the double-quote
+        guard failed on the comment documenting the defect it guards. Same trap as the corpus
+        check that would otherwise count its own assertion; the fix is the same, read the code.
+        """
+        return "\n".join(ln for ln in self._body().splitlines()
+                         if not ln.lstrip().startswith("#"))
+
     def test_the_trailing_backslash_seed_is_doubled(self):
         """D13. `--seed "nurse gift\\"` cannot test the trailing-backslash refusal: PowerShell's
         native marshalling -- the very defect under test -- turns it into `nurse gift"` before the
@@ -629,17 +640,33 @@ class TestCaptureScriptContract(unittest.TestCase):
             PS value `nurse gift\\\\`  -> child receives  nurse gift\\
 
         Only the doubled form delivers the value the step is about."""
-        body = self._body()
+        body = self._code()
         self.assertIn('"nurse gift\\\\"', body,
                       "the trailing-backslash seed must be doubled to survive marshalling")
         self.assertNotIn('"nurse gift\\"', body.replace('"nurse gift\\\\"', ""),
                          "a single-backslash seed never reaches the tool intact")
 
+    def test_the_double_quote_seed_is_escaped(self):
+        """D14 -- D13 one step lower, and made by the same hand in the same sitting.
+
+        The general rule: a value the tool refuses BECAUSE this shell cannot deliver it intact
+        cannot be delivered to the tool by this shell. A plain `nurse"quote"` arrives as
+        `nursequote`, an ordinary valid seed, and the tool correctly returns 0 -- so the step
+        proves nothing and the gate throws. Only the backslash-escaped form carries the quote:
+
+            PS value `nurse\\"quote\\"`  -> child receives  nurse"quote"
+        """
+        body = self._code()
+        self.assertIn(r'nurse\"quote\"', body,
+                      "the double-quote seed must be escaped to survive marshalling")
+        self.assertNotIn("'nurse\"quote\"'", body,
+                         "a bare double-quote seed never reaches the tool intact")
+
     def test_every_refusal_assertion_names_its_reason(self):
         """Both refusals exit 2. An exit code alone cannot tell them apart, so a step asserting
         only the code passes whenever anything at all goes wrong -- which is exactly what happened:
         the backslash step passed on a double-quote refusal. Each refusal must be pinned by cause."""
-        body = self._body()
+        body = self._code()
         self.assertIn("ends in a backslash", body,
                       "the backslash refusal must be asserted by reason, not by exit code alone")
         self.assertIn("contains a double quote", body,
@@ -649,7 +676,7 @@ class TestCaptureScriptContract(unittest.TestCase):
         """D12. Captures MERGE stdout and stderr on purpose, so any file from a command that also
         wrote a human-readable line is not valid JSON. Parsing one directly threw `Invalid JSON
         primitive` and read like a broken CLI contract. Extraction goes through Get-CapturedJson."""
-        body = self._body()
+        body = self._code()
         self.assertIn("function Get-CapturedJson", self.src)
         for line in body.splitlines():
             if "ConvertFrom-Json" in line and "Get-Content" in line:

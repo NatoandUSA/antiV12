@@ -4,7 +4,8 @@
   "document_type": "remediation_proof_and_feedback_response_export",
   "responds_to": [
     "AMZ_FBM_PUSH_AND_HANDOFF_FEEDBACK_2026-08-01.json",
-    "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json"
+    "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json",
+    "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1 (reviewer draft, 2026-08-01)"
   ],
   "generated_at": "2026-08-01",
   "note": "Serves two purposes: the repo's REPORT.md + PROOF.json acceptance-evidence convention, and the owner's standing instruction to export every feedback/review response as JSON (see response_export).",
@@ -17,7 +18,8 @@
     "95f9b67": "DEFECT A fix - blocking",
     "fcd6d31": "DEFECT B fix - low, non-blocking, revertable alone",
     "631a491": "revision 1 report + proof - the reviewed candidate",
-    "2894269": "review corrections C1-C5, C7"
+    "2894269": "review corrections C1-C5, C7",
+    "018af92": "Windows PowerShell execution test + corrected capture script"
   },
   "merged": false,
   "acceptance_tag": null,
@@ -157,7 +159,10 @@
     "verify": "git diff 518b516 HEAD -- tests/test_pipeline_status.py | grep '^-' | grep self.assert",
     "accepted_assertions_changed": "NONE",
     "accepted_assertions_weakened_or_skipped": "NONE",
-    "target_only_passing_tests": "NONE"
+    "target_only_passing_tests": "NONE",
+    "revision_3_count": 52,
+    "after_revision_3": "Ran 52 tests - OK (skipped=2)",
+    "skips": "The 2 skips are the Windows-only execution proofs. Correct on macOS, an ACCEPTANCE BLOCKER on Windows - the capture script throws if either skips there."
   },
   "audit_soundness_findings_reverified": {
     "correction": "C7",
@@ -181,11 +186,12 @@
   },
   "known_limitations": [
     "BLOCKING - NO REAL-ARTIFACT RUN. runs/T2 does not exist on this macOS clone. The before/after is a synthetic workspace driven through the real CLI: it proves the logic and the owner-facing output, not behaviour against the owner's actual files.",
-    "BLOCKING - PRINTED COMMANDS NOT EXECUTED IN THE SHELL THEY NAME. pwsh is not available here. _ps_quote implements PowerShell's documented single-quoted literal rule and is unit-tested against it, but 'the seed arrives as one argument with its exact value' has not been demonstrated by running the line.",
+    "BLOCKING - PRINTED COMMANDS NOT YET EXECUTED IN THE SHELL THEY NAME. The test that will do it now exists (test_windows_powershell_renderer_preserves_exact_seed) but SKIPS on macOS. Until it passes on Windows, 'the seed arrives as one argument with its exact value' is an argument from PowerShell's documented literal-string rule, not evidence.",
     "The pre-existing ResourceWarning in test_module_makes_no_network_or_amazon_call was fixed in 2894269 while that test was already being edited for C7. Revision 1 said it was left alone.",
     "The audit's separate stage-3 observation (ASIN-CANDIDATES newer than ASIN-BATCHES) concerns a single-output stage and is untouched.",
     "Windows mtime granularity not measured on NTFS. The equal-mtime boundary is pinned as READY.",
-    "Nothing here is accepted. Not merged, no tag, main unchanged at 211f2f8. Branch pushed for review only."
+    "Nothing here is accepted. Not merged, no tag, main unchanged at 211f2f8. Branch pushed for review only.",
+    "Capture-PipelineStatusEvidence.ps1 has never been executed. No pwsh on this clone."
   ],
   "does_not_unlock": [
     "This is NOT the Pipeline Observer V1 from the 2026-07-31 review. That is a 10-state model with block reasons, prerequisites, freshness and source dates - a derivation layer that does not exist yet and must be scoped and tested as new logic or it will invent status. This module has four states and says so.",
@@ -237,31 +243,26 @@
     "next_steps": [
       {
         "order": 1,
-        "action": "Push the C1-C7 correction commits",
-        "blocking": false
+        "action": "On Windows, from the remediation branch: run .\\Capture-PipelineStatusEvidence.ps1 . It produces BOTH blocking artifacts and throws rather than reporting a partial pass.",
+        "blocking": true
       },
       {
         "order": 2,
-        "action": "On Windows: run against real runs/T2 with an interactively entered seed, capturing stdout/stderr, exit code, stage statuses, mtimes and a before/after filesystem diff",
-        "blocking": true
+        "action": "Expect to fix something in the script on first run; it has never been executed. Commit any fix to the remediation branch.",
+        "blocking": false
       },
       {
         "order": 3,
-        "action": "On Windows: execute the printed command in PowerShell with adversarial seeds and prove the seed arrives as one argument, exact value, with no extra command and no redirection-created file",
-        "blocking": true
-      },
-      {
-        "order": 4,
         "action": "Follow-up docs/proof commit with the real Windows evidence; do not rewrite history",
         "blocking": true
       },
       {
-        "order": 5,
+        "order": 4,
         "action": "Fresh independent re-audit from a new session and fresh worktrees",
         "blocking": true
       },
       {
-        "order": 6,
+        "order": 5,
         "action": "Only after acceptance: merge and tag, as a separate owner-approved step",
         "blocking": false
       }
@@ -282,7 +283,7 @@
       "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
     }
   },
-  "revision": 2,
+  "revision": 3,
   "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. This revision responds to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims.",
   "pushed_for_review": {
     "branch_only": true,
@@ -371,5 +372,82 @@
       "Printed commands not executed in Windows PowerShell with adversarial seeds.",
       "Fresh independent re-audit not yet completed."
     ]
+  },
+  "windows_capture": {
+    "script": "Capture-PipelineStatusEvidence.ps1",
+    "derived_from": "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1",
+    "draft_assumptions_verified": [
+      "tests/test_amazon_boundary.py exists",
+      "tests/test_network_policy.py exists",
+      "tests/test_connectivity_policy.py exists",
+      "discover pattern 'test*pipeline*status*.py' matches test_pipeline_status.py"
+    ],
+    "defects_found_in_draft": [
+      {
+        "id": "D1",
+        "severity": "blocking",
+        "defect": "native 2>&1 | Tee-Object under $ErrorActionPreference='Stop' raises NativeCommandError on the first stderr line in Windows PowerShell 5.1.",
+        "evidence": "python -m unittest writes ALL output to stderr; stdout is empty and even 'OK' is on stderr. Verified on this clone.",
+        "impact": "Both test steps would have thrown before producing any evidence.",
+        "fix": "Invoke-Capture drops to 'Continue' for the native call and checks $LASTEXITCODE."
+      },
+      {
+        "id": "D2",
+        "severity": "blocking_for_correctness",
+        "defect": "The gate matched the test NAME in -v output. A SKIPPED test prints its name.",
+        "evidence": "Reproduced: 'test_windows_powershell_renderer_preserves_exact_seed (...) ... skipped' matches the draft's regex.",
+        "impact": "powershell_execution_test_seen would report true while nothing executed - a false pass on the one gate the script exists to enforce.",
+        "fix": "Requires '... ok' and throws on 'skipped'."
+      },
+      {
+        "id": "D3",
+        "severity": "evidence_gap",
+        "defect": "Only the with-seed rendering was captured.",
+        "impact": "C5 had no Windows evidence.",
+        "fix": "No-seed text and JSON runs added, both asserted."
+      },
+      {
+        "id": "D4",
+        "severity": "evidence_gap",
+        "defect": "No adversarial seed against the real workspace.",
+        "impact": "C4 had no end-to-end Windows evidence outside the unit test.",
+        "fix": "Adversarial-seed run plus sentinel-file check added."
+      },
+      {
+        "id": "D5",
+        "severity": "maintainability",
+        "defect": "-ExpectedHead hardcoded to 5104904, invalidated by the commit adding the script.",
+        "fix": "Default empty; HEAD verified as pushed and descending from the audited baseline. Pass -ExpectedHead <sha> to pin."
+      },
+      {
+        "id": "D6",
+        "severity": "introduced_and_fixed_during_rewrite",
+        "defect": "Tee-Object output would become part of Invoke-Capture's return value, making each exit-code variable an array of output lines.",
+        "fix": "Routed to Out-Host."
+      },
+      {
+        "id": "D7",
+        "severity": "introduced_and_fixed_during_rewrite",
+        "defect": "Compare-Object on an empty workspace under StrictMode.",
+        "fix": "Guarded."
+      }
+    ],
+    "not_run": "pwsh is not available on this clone. The script has been read and reasoned about, not executed. Balanced delimiters and ASCII-only were checked; that is not the same as running it. Expect to fix something on first run."
+  },
+  "powershell_execution_proof": {
+    "test_class": "TestWindowsPowerShellExecution",
+    "required_test": "test_windows_powershell_renderer_preserves_exact_seed",
+    "status": "WRITTEN_SKIPS_ON_MACOS_MUST_PASS_ON_WINDOWS",
+    "method": "Writes the PRODUCTION-rendered line to a .ps1 - what pasting actually does - runs it through real powershell.exe with -NoProfile -NonInteractive, and reads back sys.argv from a harmless probe that prints its own argv as JSON and nothing else.",
+    "proves": [
+      "the seed arrives as ONE argument",
+      "with its exact value",
+      "no extra command executed (no PWNED in stdout or stderr)",
+      "no redirection-created file (sentinel.txt absent)"
+    ],
+    "adversarial_seed_count": 12,
+    "corpus_shared_with": "test_the_seed_corpus_is_covered_by_the_shape_tests_on_every_platform, so the platform-independent and Windows corpora cannot drift apart",
+    "missing_shell_behaviour": "On Windows a missing powershell.exe FAILS rather than skips. A missing shell must not read as proof.",
+    "second_test": "test_windows_powershell_runs_the_real_next_command_shape covers the _fmt_command template-substitution path including the workspace argument"
   }
 }

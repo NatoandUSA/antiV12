@@ -268,11 +268,12 @@ modified.
    behaviour against the owner's actual files. Run
    `python -m core.pipeline_status --seed '<seed>'` against the real `runs/T2` on Windows
    before this is accepted. **Blocking on its own.**
-2. **The printed commands have not been executed in the shell they name.** `pwsh` is not
-   available on this clone. `_ps_quote` implements PowerShell's documented single-quoted
-   literal rule and is unit-tested against it, but "the seed arrives as one argument with its
-   exact value" has **not** been demonstrated by running the line. Windows-side evidence,
-   same bucket as limitation 1. **Blocking on its own.**
+2. **The printed commands have not been executed in the shell they name — but the test that
+   will do it now exists.** `TestWindowsPowerShellExecution.test_windows_powershell_renderer_preserves_exact_seed`
+   writes the production-rendered line to a `.ps1`, runs it through real `powershell.exe`, and
+   reads back argv. It **skips on this clone** and must **pass on Windows**. Until it has run
+   there, "the seed arrives as one argument with its exact value" is an argument from
+   PowerShell's documented literal-string rule, not evidence. **Blocking on its own.**
 3. **Pre-existing `ResourceWarning`** in `test_module_makes_no_network_or_amazon_call` —
    fixed in `2894269` while that test was already being edited for C7 (`open(...).read()` →
    context manager). Noted because revision 1 said it was deliberately left alone.
@@ -361,3 +362,41 @@ unit-tested; that is weaker than execution and is not described as equivalent.
 * Shell execution evidence for printed commands — §5.2
 * Fresh independent re-audit from a new session
 * Merge and acceptance tag remain unauthorized
+
+---
+
+## 9. Windows capture — the script, and five defects in the draft
+
+`Capture-PipelineStatusEvidence.ps1` produces both blocking artifacts in one run. It is
+derived from the reviewer's `WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1`, which is
+careful work — SHA256 tree snapshot, `PYTHONDONTWRITEBYTECODE` so `__pycache__` cannot
+pollute the git-status gate, preflight anchored on commits, and a refusal to conclude
+anything without a passing PowerShell execution test.
+
+That last point was the real instruction: **the test it demands did not exist.** It does now
+(§2, `TestWindowsPowerShellExecution`). Reviewing the draft to write it surfaced five defects.
+
+| | Defect | Why it mattered |
+|---|---|---|
+| **D1** | `native.exe 2>&1 \| Tee-Object` under `$ErrorActionPreference='Stop'` raises `NativeCommandError` on the first stderr line in Windows PowerShell 5.1 | **Blocking.** Verified that `python -m unittest` writes *all* output to stderr — stdout is empty, even `OK` is on stderr. Both test steps would have thrown before producing evidence. |
+| **D2** | The gate looked for the test **name** in `-v` output. A skipped test prints its name too | **Blocking for correctness.** `powershell_execution_test_seen` would report `true` while nothing executed — a false pass on the one gate the script exists to enforce. Reproduced on this clone. |
+| **D3** | Only the with-seed rendering was captured | C5 — no command printed without a real seed — had no Windows evidence at all |
+| **D4** | No adversarial seed was ever run against the real workspace | C4 had no end-to-end Windows evidence outside the unit test |
+| **D5** | `-ExpectedHead` hardcoded to `5104904` | Self-invalidates on the next commit — including the one adding the script. A stale default either blocks a valid run or gets edited out of the way |
+
+D2 is the one worth dwelling on. Had the test been written and the check left alone, a
+macOS or CI run would have reported the execution proof as seen while both Windows tests
+skipped. The gate would have certified the absence of the thing it was checking for.
+
+Two more, found while rewriting: `Tee-Object` output had to be routed to `Out-Host` or every
+captured line becomes part of the function's return value and each exit-code variable an
+array; and `Compare-Object` needed guarding for an empty workspace under `StrictMode`.
+
+**What the script cannot do:** it is untested. `pwsh` is not on this clone, so it has been
+read and reasoned about, not run. Balanced delimiters and ASCII-only are checked; that is
+not the same as executing. Expect to fix something on first run.
+
+```powershell
+git checkout hotfix-pipeline-status-multi-output-staleness
+.\Capture-PipelineStatusEvidence.ps1                       # or -ExpectedHead <sha> to pin
+```

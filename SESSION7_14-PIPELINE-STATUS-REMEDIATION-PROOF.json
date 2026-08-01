@@ -5,7 +5,8 @@
   "responds_to": [
     "AMZ_FBM_PUSH_AND_HANDOFF_FEEDBACK_2026-08-01.json",
     "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json",
-    "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1 (reviewer draft, 2026-08-01)"
+    "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1 (reviewer draft, 2026-08-01)",
+    "AMZ_FBM_PIPELINE_STATUS_REV3_SCRIPT_REVIEW_AND_WINDOWS_GATE_2026-08-01.json"
   ],
   "generated_at": "2026-08-01",
   "note": "Serves two purposes: the repo's REPORT.md + PROOF.json acceptance-evidence convention, and the owner's standing instruction to export every feedback/review response as JSON (see response_export).",
@@ -19,7 +20,8 @@
     "fcd6d31": "DEFECT B fix - low, non-blocking, revertable alone",
     "631a491": "revision 1 report + proof - the reviewed candidate",
     "2894269": "review corrections C1-C5, C7",
-    "018af92": "Windows PowerShell execution test + corrected capture script"
+    "018af92": "Windows PowerShell execution test + corrected capture script",
+    "c3c4af2": "bug hunt -- eight defects, one blocking the Windows gate"
   },
   "merged": false,
   "acceptance_tag": null,
@@ -162,7 +164,9 @@
     "target_only_passing_tests": "NONE",
     "revision_3_count": 52,
     "after_revision_3": "Ran 52 tests - OK (skipped=2)",
-    "skips": "The 2 skips are the Windows-only execution proofs. Correct on macOS, an ACCEPTANCE BLOCKER on Windows - the capture script throws if either skips there."
+    "skips": "The 2 skips are the Windows-only execution proofs. Correct on macOS, an ACCEPTANCE BLOCKER on Windows - the capture script throws if either skips there.",
+    "revision_4_count": 58,
+    "after_revision_4": "Ran 58 tests - OK (skipped=2)"
   },
   "audit_soundness_findings_reverified": {
     "correction": "C7",
@@ -182,7 +186,22 @@
     "printed_m_modules_referenced": 12,
     "printed_m_modules_missing_on_disk": 0,
     "files_added": 2,
-    "existing_files_modified": 0
+    "existing_files_modified": 0,
+    "reverified_after_bug_hunt": {
+      "imports": [
+        "__future__",
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "time"
+      ],
+      "os_attributes_used": [
+        "listdir",
+        "path"
+      ],
+      "ascii_only_source": true
+    }
   },
   "known_limitations": [
     "BLOCKING - NO REAL-ARTIFACT RUN. runs/T2 does not exist on this macOS clone. The before/after is a synthetic workspace driven through the real CLI: it proves the logic and the owner-facing output, not behaviour against the owner's actual files.",
@@ -243,17 +262,17 @@
     "next_steps": [
       {
         "order": 1,
-        "action": "On Windows, from the remediation branch: run .\\Capture-PipelineStatusEvidence.ps1 . It produces BOTH blocking artifacts and throws rather than reporting a partial pass.",
+        "action": "On Windows, from the remediation branch: .\\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan",
         "blocking": true
       },
       {
         "order": 2,
-        "action": "Expect to fix something in the script on first run; it has never been executed. Commit any fix to the remediation branch.",
+        "action": "Expect a first-run fix; the script has still never executed. Commit any fix to the branch, do not weaken a gate to get past it.",
         "blocking": false
       },
       {
         "order": 3,
-        "action": "Follow-up docs/proof commit with the real Windows evidence; do not rewrite history",
+        "action": "Follow-up docs/proof commit with the real Windows evidence; no history rewrite",
         "blocking": true
       },
       {
@@ -263,7 +282,7 @@
       },
       {
         "order": 5,
-        "action": "Only after acceptance: merge and tag, as a separate owner-approved step",
+        "action": "Only after acceptance: merge and tag, owner-approved separate step",
         "blocking": false
       }
     ],
@@ -283,7 +302,7 @@
       "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
     }
   },
-  "revision": 3,
+  "revision": 4,
   "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. This revision responds to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims.",
   "pushed_for_review": {
     "branch_only": true,
@@ -368,8 +387,9 @@
     "branch_push_authorized": true,
     "branch_pushed": true,
     "blockers": [
-      "No real Windows runs/T2 execution evidence.",
-      "Printed commands not executed in Windows PowerShell with adversarial seeds.",
+      "Capture-PipelineStatusEvidence.ps1 has never been executed on Windows.",
+      "The two Windows-only tests are skipped here and must PASS on Windows.",
+      "No real runs/T2 execution evidence.",
       "Fresh independent re-audit not yet completed."
     ]
   },
@@ -449,5 +469,86 @@
     "corpus_shared_with": "test_the_seed_corpus_is_covered_by_the_shape_tests_on_every_platform, so the platform-independent and Windows corpora cannot drift apart",
     "missing_shell_behaviour": "On Windows a missing powershell.exe FAILS rather than skips. A missing shell must not read as proof.",
     "second_test": "test_windows_powershell_runs_the_real_next_command_shape covers the _fmt_command template-substitution path including the workspace argument"
+  },
+  "bug_hunt_2026_08_01": {
+    "authorization_note": "The gate review set additional_code_change_authorized_before_windows_run: false. Overruled deliberately, on the owner's instruction to bug-hunt and fix, and because B1 would have made the Windows capture throw for the wrong reason. There is no value in running a script with a known defect to obtain evidence.",
+    "defects": [
+      {
+        "id": "B1",
+        "severity": "blocking_would_have_failed_the_gate",
+        "defect": "In PowerShell a line whose FIRST token is a quoted string is a string EXPRESSION, not a command. _ps_quote(sys.executable) quotes any interpreter path containing a space, e.g. C:\\Program Files\\Python311\\python.exe.",
+        "consequence": "The generated .ps1 would have ECHOED the path, exited 0, and json.loads would have raised on the echoed text. The gate test would have failed on the environment rather than on the renderer, presenting as a JSONDecodeError that reads like a broken test.",
+        "why_undetected": "The Windows-only test cannot run on this macOS clone, so nothing here would ever have exercised it. It would have failed on the first Windows machine whose Python lives under C:\\Program Files.",
+        "fix": "Call operator: `& {py} {probe} --seed {seed}`."
+      },
+      {
+        "id": "B2",
+        "severity": "blocking_latent",
+        "defect": "Windows PowerShell 5.1 reads a BOM-less .ps1 as the system ANSI code page.",
+        "consequence": "The Unicode seed added for this review would have been mojibaked before PowerShell parsed it; the test would have measured file encoding.",
+        "fix": ".ps1 written utf-8-sig."
+      },
+      {
+        "id": "B3",
+        "severity": "high",
+        "defect": "Python stdout falls back to the ANSI code page when REDIRECTED rather than attached to a console -- exactly what Tee-Object does.",
+        "consequence": "A non-ASCII seed raises UnicodeEncodeError and aborts the capture.",
+        "fix": "PYTHONIOENCODING=utf-8 in the capture script."
+      },
+      {
+        "id": "B4",
+        "severity": "latent_correctness",
+        "defect": "_resolve matched on overlapping head and tail: startswith(head) and endswith(tail) alone accepts 'abcd' for 'abc*bcd'.",
+        "consequence": "A phantom artifact making a stage look READY. No shipped pattern hits it.",
+        "fix": "Length guard: len(n) >= len(head) + len(tail)."
+      },
+      {
+        "id": "B5",
+        "severity": "medium",
+        "defect": "No reject policy for control characters in --seed.",
+        "consequence": "A seed pasted from a spreadsheet carries a newline; the printed command splits across lines and the second looks like a separate command. Quoting cannot fix it.",
+        "fix": "unsupported_characters() names them; CLI exits 2 with a clear message."
+      },
+      {
+        "id": "B6",
+        "severity": "high",
+        "defect": "Tee-Object output became part of Invoke-Capture's return value.",
+        "consequence": "Every exit-code variable would have been an array of output lines.",
+        "fix": "Routed to Out-Host."
+      },
+      {
+        "id": "B7",
+        "severity": "medium",
+        "defect": "Compare-Object refuses an empty collection.",
+        "consequence": "An empty runs/T2 threw an argument-binding error that reads like a script bug rather than the evidence result.",
+        "fix": "Text comparison first; Compare-Object only for the detail."
+      },
+      {
+        "id": "B8",
+        "severity": "low",
+        "defect": "StrictMode Latest throws on a missing JSON property; origin/<branch> was dereferenced without checking it exists.",
+        "fix": "Get-JsonProperty reports the absent property; show-ref verifies the remote ref."
+      }
+    ],
+    "self_correction": {
+      "claim": "Revision 3 characterised the trailing-backslash hazard as 'nurse\\'.",
+      "status": "WRONG_AND_CORRECTED",
+      "why": "'\\' is bare-safe, so 'nurse\\' renders UNQUOTED and there is no quote for the C runtime to mis-parse. The hazard needs a value that BOTH requires quoting AND ends in a backslash: 'nurse gift\\'.",
+      "both_cases_now_pinned": true,
+      "stays_out_of_execution_corpus": "It is a PowerShell native-marshalling limitation BELOW the renderer. Failing the acceptance gate on something _ps_quote cannot fix would be wrong."
+    },
+    "review_items_implemented": [
+      "exact-value comparison, no normalising or trimming",
+      "stderr asserted empty",
+      "whole-directory snapshot instead of one sentinel name, so a redirect to ANY filename is caught",
+      "exactly one executable line per .ps1",
+      "argv length asserted",
+      "corpus divergence blocked by AST, not by counting source occurrences -- the counting version counted its own assertion and failed",
+      "-FullSuite and -ConnectivityScan switches close gate-review B5 and B6 in one sitting",
+      "stages 5 and 11 recorded by name in summary.json",
+      "probe prints machine-readable JSON only, no logging or banner",
+      "temp files isolated in a mkdtemp workspace removed on failure via addCleanup",
+      "missing powershell.exe FAILS on Windows rather than skipping"
+    ]
   }
 }

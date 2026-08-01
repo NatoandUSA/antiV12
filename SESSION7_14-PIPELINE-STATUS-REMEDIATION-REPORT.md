@@ -399,4 +399,52 @@ not the same as executing. Expect to fix something on first run.
 ```powershell
 git checkout hotfix-pipeline-status-multi-output-staleness
 .\Capture-PipelineStatusEvidence.ps1                       # or -ExpectedHead <sha> to pin
+.\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan   # also closes B5 and B6
 ```
+
+---
+
+## 10. Bug hunt — eight defects, one of which broke the gate
+
+The 2026-08-01 gate review set `additional_code_change_authorized_before_windows_run: false`.
+That is overruled here, deliberately: **B1 would have made the Windows capture throw for the
+wrong reason.** There is no value in running a script with a known defect to obtain evidence.
+
+| | Defect | Severity |
+|---|---|---|
+| **B1** | In PowerShell, a line whose **first token is a quoted string** is a string *expression*, not a command. `_ps_quote(sys.executable)` quotes any interpreter path containing a space — `C:\Program Files\Python311\python.exe` is the common case — so the generated `.ps1` would have **echoed the path, exited 0**, and `json.loads` would then have raised on the echoed text. The gate test would have failed on the environment, not on the renderer. Fixed with the call operator `&`. | **Blocking** |
+| **B2** | Windows PowerShell 5.1 reads a **BOM-less `.ps1` as the system ANSI code page**. The Unicode seed this review asked for would have been mojibaked before PowerShell parsed it, and the test would have measured file encoding rather than the renderer. `.ps1` now written `utf-8-sig`. | **Blocking, latent** |
+| **B3** | Python's stdout falls back to the ANSI code page when **redirected** rather than attached to a console — exactly what `Tee-Object` does. A non-ASCII seed would have raised `UnicodeEncodeError` and aborted the capture. `PYTHONIOENCODING=utf-8`. | High |
+| **B4** | `_resolve` matched on **overlapping head and tail**: `startswith(head) and endswith(tail)` alone accepts `abcd` for `abc*bcd`. No shipped pattern hits it; a future one would, as a phantom artifact making a stage look `READY`. Length guard. | Latent correctness |
+| **B5** | No **reject policy for control characters**. A seed pasted from a spreadsheet can carry a newline, which splits the printed command across lines and makes the second look like a separate command. Quoting cannot fix it. `unsupported_characters()` names them; the CLI exits 2. | Medium |
+| **B6** | `Tee-Object` output became part of `Invoke-Capture`'s return value, so **every exit-code variable would have been an array** of output lines. | High |
+| **B7** | `Compare-Object` refuses an empty collection, so an empty `runs/T2` threw an argument-binding error that reads like a script bug rather than the evidence result. | Medium |
+| **B8** | `StrictMode Latest` throws on a missing JSON property; `Get-JsonProperty` reports which one. `origin/<branch>` verified to exist before dereferencing. | Low |
+
+B1 is the one to note. The Windows-only gate test was written last revision and could not run
+here, so nothing on this clone would ever have exercised it. It would have failed on the first
+Windows machine whose Python lives under `C:\Program Files` — and the failure mode is a
+`JSONDecodeError` on an echoed path, which reads like a broken test rather than a shell issue.
+
+### One correction to my own last revision
+
+I first characterised the trailing-backslash hazard as `nurse\`. That is wrong: `\` is
+bare-safe, so it renders **unquoted** and there is no quote for the C runtime to mis-parse. The
+hazard needs a value that **both** requires quoting **and** ends in a backslash —
+`nurse gift\` → `'nurse gift\'` → `"nurse gift\"`. Both cases are now pinned by test.
+
+It stays **out** of the execution corpus on purpose: it is a PowerShell native-marshalling
+limitation *below* the renderer, and failing the acceptance gate on something `_ps_quote`
+cannot fix would be wrong.
+
+### Review items also implemented
+
+Exact-value comparison with no normalising · `stderr` asserted empty · a **whole-directory
+snapshot** instead of one sentinel name, so a redirect to *any* filename is caught · exactly one
+executable line per `.ps1` · `argv` length asserted · corpus divergence blocked **by AST**
+rather than by counting source occurrences, which counted its own assertion · `-FullSuite` and
+`-ConnectivityScan` for B5/B6 of the gate review · stages 5 and 11 recorded by name in
+`summary.json`.
+
+`Ran 58 tests — OK (skipped=2)`. Module invariants re-verified after the changes: imports
+unchanged, `os.*` still `{listdir, path}`, source ASCII-only.

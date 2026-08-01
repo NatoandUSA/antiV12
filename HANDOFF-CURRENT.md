@@ -12,7 +12,8 @@ carried forward late. Do not delete that branch; closing it is a separate owner-
 | Acceptance tag | `phase7-14-composite-launcher-safety-hotfix-accepted-211f2f8`, **pushed** |
 | `d163ff0` (pipeline-status) | audited → REMEDIATION_REQUIRED → **remediated on a branch**, still OUT of `main` (§11, §12) |
 | Active branch | `hotfix-pipeline-status-multi-output-staleness` — pushed, **not merged, not tagged**. No hash pinned here on purpose: it would self-invalidate on the next commit, including this one. Verify local == origin instead |
-| Acceptance of that branch | **HOLD** — was five blockers, now **three** (§12, §13) |
+| Acceptance of that branch | **HOLD** — was five blockers, now **one**: an independent re-audit (§12, §14) |
+| Windows gate | **COMPLETED** — `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT`, run 6 of 6 (§14) |
 
 Verify:
 ```
@@ -56,42 +57,52 @@ the file — a filename is not metadata.
 ## START HERE
 
 **Nothing is half-finished. The tree is clean, everything is committed and pushed, `main` is
-untouched.** There is exactly ONE next action and it needs the Windows machine.
+untouched.** The Windows gate has now **completed** (§14). There is exactly ONE next action and
+it is not something this session can do for itself.
 
 ### The one thing to do
+
+**Commission a fresh independent re-audit of the candidate HEAD, from new worktrees.**
+
+That is the last blocker. Everything else on the list is closed with evidence. It cannot be
+closed from inside this branch, because the thing needing review is work that has so far only
+ever been judged by its author: six runs of a gate I wrote, passing on the seventh.
+
+Give the auditor: `SESSION7_14-PIPELINE-STATUS-REMEDIATION-REPORT.md` §§13–14, `-PROOF.json`
+(`windows_gate_execution` holds the run-by-run record), and the verification block at the top of
+this file. Point them at §14's differential first — it is the claim most worth attacking.
+
+### To reproduce the gate
 
 ```powershell
 git checkout hotfix-pipeline-status-multi-output-staleness
 .\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan
 ```
 
-**It will ask for the seed keyword and wait** (`Read-Host`, line 236). Run it from a real console
-you are sitting at — piped or non-interactive invocation gets EOF and the seed arrives empty. The
-recorded T2 seed is `personalized nurse sweatshirt`; confirm it rather than assuming it, because
-a silently changed seed measures a workspace nobody asked about.
-
-That single run produces every remaining piece of acceptance evidence for
-`core/pipeline_status.py`: a real `runs/T2` execution proved read-only by SHA256 tree
-snapshot, the three Windows-only tests, the full suite, and the connectivity scan. It **throws**
-rather than reporting a partial pass.
+**It asks for the seed and waits** (`Read-Host`). Run it from a real console you are sitting at —
+a piped or non-interactive invocation gets EOF and the seed arrives empty. The recorded T2 seed is
+`personalized nurse sweatshirt`, identical in 7 `runs/T2` artifacts; confirm it rather than
+assuming it, because a silently changed seed measures a workspace nobody asked about. Expect
+~20 minutes with `-FullSuite`, and `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT` at the
+end.
 
 **A throw is evidence of a real failure condition — it is not a pass.** If it fires: preserve the
 evidence directory, fix only the demonstrated defect with a focused test, commit to the branch,
 push branch-only, rerun the **complete** gate from a clean state, and keep acceptance on **HOLD**.
 A gate that has been made to stop throwing is not a gate that has run. Do not weaken a gate,
-convert a throw to a warning, merge, tag, or bypass a Windows test.
-
-**The three Windows-only tests have now run** (§13) and pass, so the gate will get further than
-it ever has. It has still never completed. The interpreter check is already satisfied in this
-repo's shell — bare `python` resolves to `.venv\Scripts\python.exe`, not the Store alias — but the
-script re-checks it at run time rather than trusting that record, because a different shell has a
-different PATH.
+convert a throw to a warning, merge, tag, or bypass a Windows test. Four of the six runs threw,
+every throw was real, and none was resolved by softening an assertion — that is the standard.
 
 ### What NOT to do
 
-Do not merge or tag anything. Do not start Phase 7.15, Phase 8, or the full Pipeline Observer
-(§8). Do not do further static hardening on the branch — the policy is to stop once no known
-blocker remains. §13 opened two and closed both; if that stays true, stop.
+Do not merge or tag anything — **not even now that the gate passes.** A green gate is the
+precondition for the audit, not a substitute for it. Do not start Phase 7.15, Phase 8, or the full
+Pipeline Observer (§8). Do not do further static hardening on the branch; the policy is to stop
+once no known blocker remains, and the only one left needs another pair of eyes, not more code.
+
+Do not "fix" `test_136b_accepted_authorities_unmodified` or
+`test_15_to_20_startup_launcher_is_safe` as part of this branch (§14). Both are pre-existing false
+positives in accepted-phase test code, both are recorded, and both are out of scope here.
 
 ### If you cannot get to Windows
 
@@ -530,22 +541,34 @@ git merge-base --is-ancestor 518b516 HEAD && echo descends-from-audited-baseline
 | `ea2190b` | audit against `required_checks` — six gaps |
 | `c6cbdb9` | revision 6 |
 | `06d42cc` | handoff |
-| *this commit* | revision 7 — first Windows execution, two defects (§13) |
+| `9d6ef86` | first Windows execution — unsatisfiable proof + dropped double quote (§13) |
+| `a7bea7b` | revision 7 + the consolidation review's C1–C4 |
+| `7af2df5` | D12/D13 — the gate exited 2 for the wrong reason |
+| `36ec291` | D14 — D13 again, one step lower |
+| `69095b0` | D16/D15 — the gate blamed the wrong actor; layer separation |
+| `cbf288e` | D18 — a warning split the verdict line |
+| *this commit* | revision 8 — the gate completed (§14) |
 
-`66 tests — OK (skipped=0)` **on Windows**. Every earlier count in the report reads
-`64 — OK (skipped=3)` and is not comparable: it was measured where the Windows-only tests cannot
-run, so it describes a different set of executed tests rather than a worse result. Read
-`SESSION7_14-PIPELINE-STATUS-REMEDIATION-REPORT.md` (§§10–13 are the review history) and
-`-PROOF.json` (machine-readable; `first_windows_execution` holds §13, `response_export` holds
-decisions and next steps).
+`72 tests — OK (skipped=0)` **on Windows**, the current focused count; it was 66 at the first
+Windows execution (§13) and 64 before that. The 64 figure reads `OK (skipped=3)` throughout the
+earlier report and is not comparable with either: it was measured where the Windows-only tests
+*cannot* run, so it describes a different set of executed tests rather than a worse result. Read
+`SESSION7_14-PIPELINE-STATUS-REMEDIATION-REPORT.md` (§§10–14 are the review history) and
+`-PROOF.json` (machine-readable; `first_windows_execution` holds §13, `windows_gate_execution`
+holds §14 and the differential, `response_export` holds decisions and next steps).
 
-### The blockers — was five, now three
+### The blockers — was five, now one
 
-1. `Capture-PipelineStatusEvidence.ps1` has **never completed a run**.
-2. No real `runs/T2` execution evidence.
-3. No fresh independent re-audit of the final Windows-evidenced commit.
+1. No fresh independent re-audit of the final Windows-evidenced commit.
 
-Closed on 2026-08-01, recorded rather than deleted so the change is auditable:
+Closed by the gate completing (§14), recorded rather than deleted:
+
+* ~~`Capture-PipelineStatusEvidence.ps1` has never completed a run.~~ **Run 6 completed, exit 0.**
+  Runs 1–4 each threw on a real gate defect; none was resolved by weakening an assertion.
+* ~~No real `runs/T2` execution evidence.~~ **Real workspace, real recorded seed, stages 5 and 11
+  exercised**, and the read-only differential is clean *and correctly scoped*.
+
+Closed earlier on 2026-08-01, also recorded rather than deleted:
 
 * ~~The three Windows-only tests must pass on Windows.~~ **They ran and pass** — and two of them
   failed first. §13.
@@ -647,7 +670,55 @@ are restored above: the falsy-vs-truthy explanation of why the old identity gate
 worked (§5), the note that the review artifacts are external and not repository-verifiable (§0),
 and the `proc.poll()` amendment (§0). **Deletion remains a separate owner-approved step.**
 
+---
+
+## 14. The gate ran — six runs, four more defects, then a clean completion
+
+Full detail in the report §14 and `-PROOF.json` → `windows_gate_execution`.
+
+Runs 1–4 each threw. **Every throw was the gate being right about something, and none was
+resolved by weakening an assertion.**
+
+* **D12** — captures merged stdout and stderr, then parsed the result as JSON. Every refusal
+  writes a sentence to stderr and the document to stdout, so it could never parse. stdout is now
+  captured on its own; `captures.json` keeps exit code, stdout, stderr and duration per command.
+* **D14** — the double-quote step passed a bare `nurse"quote"`, which arrives as `nursequote`.
+  D13 repeated one step lower, in the fix for D13.
+* **D16 — the gate blamed the wrong actor.** It threw *"the pipeline-status run CHANGED real
+  `runs/T2`"*. It had not: 220 files before and after, **zero** content and **zero** size
+  differences. Ten files under `phase6/6E` were rewritten byte-identically with new mtimes by the
+  4781-test suite, which ran *between* the two snapshots. True assertion, false stated cause —
+  this branch's own subject matter. A third snapshot now brackets the tool's own commands and
+  still throws; everything else is reported separately as a finding about the **suite**.
+  It still matters: this module derives `STALE` purely from mtimes, so a suite that advances them
+  can change what you are told to run next.
+* **D18** — a `ResourceWarning` from a leaked handle landed between the test name and its `... ok`,
+  so a **passing** test was unreadable as passed. Handle closed; the gate now reads unittest's own
+  verdict, and does it before the full suite instead of after.
+
+**Run 6:** `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT`, exit 0. `main_unchanged: true`,
+`runs_T2_changed_by_pipeline_status: false`, `repository_changed_undeclared: false`, stage 5
+`READY`, stage 11 `STALE`, connectivity scan **0 active Amazon-account paths**.
+
+**Full suite `Ran 4783 — failures=5, errors=1, skipped=4`, and the differential is
+`BASELINE_EQUIVALENT` with ZERO target-only failures.** Worktrees at `211f2f8` and at candidate
+HEAD, both outside any `claude`-named directory, same interpreter: 3 failures each, same IDs.
+`test_52` is the known loopback flake and passes in isolation; `test_199e` is permanently stale.
+
+Two of the six deserve naming, because both are the same defect class as everything above — an
+assertion whose implementation is broader than its name:
+
+* **`test_136b_accepted_authorities_unmodified`** uses `git diff --name-only ... core/`, which
+  reports **additions**. `core/pipeline_status.py` is a new file, so this has failed since
+  `518b516` — the branch's first commit, which only *added* a file.
+* **`test_15_to_20_startup_launcher_is_safe`** forbids the substring `claude` in the generated
+  autostart `.bat` to catch an external AI-tool call. The `.bat` embeds the interpreter path, and
+  this repo lives under `D:\Claude\`. **It cannot pass for any checkout under a directory named
+  "Claude"** — which is where the toolkit actually is.
+
+Neither is touched here; both are accepted-phase test code and out of scope.
+
 ### What is still not proven
 
-The gate script has still never completed a run. Nothing in §13 is `runs/T2` evidence, and a
-suite that has been made to pass is not a gate that has run. **Acceptance stays HOLD.**
+**Nothing has been independently audited since the gate started passing.** That is the single
+remaining blocker and it is the whole gate. **Acceptance stays HOLD.**

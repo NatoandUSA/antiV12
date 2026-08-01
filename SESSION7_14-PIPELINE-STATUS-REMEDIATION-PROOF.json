@@ -314,7 +314,67 @@
       "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
     }
   },
-  "revision": 7,
+  "windows_gate_execution": {
+    "responds_to": "AMZ_FBM_PIPELINE_STATUS_WINDOWS_GATE_RUN3_REVIEW_2026-08-01.json",
+    "command": ".\\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan",
+    "environment": "Windows 11; bare python = .venv\\Scripts\\python.exe 3.12.10; seed 'personalized nurse sweatshirt', recorded identically in 7 runs/T2 artifacts and read from the workspace rather than chosen.",
+    "runs": [
+      {"run": 1, "reached": "refusal step", "threw_on": "ConvertFrom-Json over a merged stdout+stderr capture", "defect": "D12"},
+      {"run": 2, "reached": "past the backslash refusal with the correct reason", "threw_on": "the new double-quote step", "defect": "D14"},
+      {"run": 3, "reached": "end of the full suite", "threw_on": "'the pipeline-status run CHANGED real runs/T2'", "defect": "D16"},
+      {"run": 4, "reached": "the final required-test check", "threw_on": "'did not run to a passing result' about a test that had passed", "defect": "D18"},
+      {"run": 5, "reached": "complete, without -FullSuite", "result": "exit 0"},
+      {"run": 6, "reached": "complete", "result": "exit 0", "verdict": "WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT"}
+    ],
+    "no_assertion_was_weakened": "Every throw was the gate being right about something. D16 replaced one span with a narrower one that still throws, and added a second span reported separately -- the original claim is tested more precisely, not less.",
+    "D16_false_attribution": {
+      "severity": "the same class this branch exists to remove -- a true assertion with a false stated cause",
+      "thrown": "The pipeline-status run CHANGED real runs/T2.",
+      "measured": "220 files before and after, 0 added, 0 removed, 0 content differences, 0 size differences. Ten files under phase6/6E rewritten byte-identically with new mtimes.",
+      "actual_cause": "the 4781-test suite, which ran BETWEEN the two snapshots",
+      "fix": "A third snapshot brackets the pipeline-status commands alone; that pair still throws and is now stricter. The remaining span is reported as runs_T2_changed_by_test_suite and never attributed to this module.",
+      "why_it_still_matters": "pipeline_status derives STALE purely from mtimes, so a suite that advances them on real artifacts can change what the owner is told to run next. Run 6: changed_by_pipeline_status=false, changed_by_test_suite=true -- both true, and now separable."
+    },
+    "D15_declared_side_effect": "scripts/connectivity_scan.py rewrites the TRACKED CONNECTED-RESEARCH-NETWORK-SCAN.json, so -ConnectivityScan guaranteed the clean-tree assertion would fail for doing what the flag asks. The side effect is declared by name; anything undeclared still fails.",
+    "D18_split_verdict_line": "The required-test check matched the test name and '... ok' on ONE line. A ResourceWarning from a handle leaked inside the test landed between them and made a PASSING test unreadable as passed. The handle is closed, and the gate now runs that node alone and reads unittest's own verdict. It also runs before the full suite, so the central proof fails in seconds rather than nineteen minutes.",
+    "shell_marshalling_measured": [
+      {"powershell_value": "personalized nurse sweatshirt", "child_received": "personalized nurse sweatshirt", "classification": "PRESERVED"},
+      {"powershell_value": "nurse gift\\", "child_received": "nurse gift\"", "classification": "TRANSFORMED", "note": "the trap"},
+      {"powershell_value": "nurse gift\\\\", "child_received": "nurse gift\\", "classification": "TRANSFORMED", "note": "delivers the intended value"},
+      {"powershell_value": "nurse\"quote\"", "child_received": "nursequote", "classification": "TRANSFORMED", "note": "the trap"},
+      {"powershell_value": "nurse\\\"quote\\\"", "child_received": "nurse\"quote\"", "classification": "TRANSFORMED", "note": "delivers the intended value"}
+    ],
+    "layer_separation": "Layer 1 (shell marshalling) is shell-marshalling.json and carries no application policy. Layer 2 (validation against an exact argv, no shell involved) is NOT duplicated in PowerShell -- tests/test_pipeline_status.py already does it via subprocess.run([sys.executable, ...]), and repeating it here would re-introduce the marshalling layer 1 exists to isolate.",
+    "run6_summary": {
+      "verdict": "WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT",
+      "main_unchanged": true,
+      "runs_T2_changed_by_pipeline_status": false,
+      "runs_T2_changed_by_test_suite": true,
+      "repository_changed_undeclared": false,
+      "powershell_execution_test_ran_and_passed": true,
+      "stages_5_and_11_exercised": true,
+      "stage_5_state": "READY",
+      "stage_11_state": "STALE",
+      "focused_boundary_connectivity_exit_codes": [0, 0, 0],
+      "connectivity_scan": "0 active Amazon-account paths",
+      "full_suite": "Ran 4783 tests - FAILED (failures=5, errors=1, skipped=4)"
+    },
+    "full_suite_differential": {
+      "verdict": "BASELINE_EQUIVALENT",
+      "target_only_failures": 0,
+      "method": "Worktrees at 211f2f8 and at the candidate HEAD, both outside any claude-named directory, same interpreter, same nodes. 3 failures on each, same node IDs. Worktree compared only to worktree.",
+      "nodes": [
+        {"node": "test_52_request_size_bounded", "classification": "PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE", "evidence": "passes in isolation; prior accepted reports record the same signature"},
+        {"node": "test_199e_no_acceptance_tag_yet", "classification": "PERMANENTLY_STALE_DOCUMENTED"},
+        {"node": "test_136b_accepted_authorities_unmodified", "classification": "PRE_EXISTING_ON_THIS_BRANCH_FALSE_POSITIVE", "evidence": "identical result at 518b516, 06d42cc and 36ec291", "cause": "git diff --name-only over core/ reports ADDITIONS too; core/pipeline_status.py is a new file absent from accepted main, so this has failed since the branch's first commit, which only added a file"},
+        {"node": "test_15_to_20_startup_launcher_is_safe", "classification": "PRE_EXISTING_ON_ACCEPTED_MAIN_FALSE_POSITIVE", "cause": "forbids the substring 'claude' in the generated autostart .bat to catch an external AI-tool invocation; the .bat embeds the quoted interpreter path and this repository lives under D:\\Claude\\. The test cannot pass for any checkout under a directory named 'Claude'."},
+        {"node": "test_16_17_23_32_33_34_full_lifecycle", "classification": "PRE_EXISTING_ON_ACCEPTED_MAIN", "cause": "live dashboard did not become healthy within 30s"},
+        {"node": "test_35_live_restart", "classification": "PRE_EXISTING_ON_ACCEPTED_MAIN", "cause": "live dashboard did not become healthy within 30s"}
+      ],
+      "not_fixed_here": "test_136b and test_15_to_20 are in accepted-phase test code, outside this branch's scope. Both are the same defect class this document keeps finding -- an assertion whose implementation is broader than its name -- and both are recorded so the next reader does not re-derive them."
+    }
+  },
+  "revision": 8,
   "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. Revision 6 responded to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims. Revision 7 is the FIRST revision containing anything measured on Windows: see first_windows_execution.",
   "first_windows_execution": {
     "date": "2026-08-01",
@@ -437,10 +497,19 @@
     "branch_push_authorized": true,
     "branch_pushed": true,
     "blockers": [
-      "Capture-PipelineStatusEvidence.ps1 has never completed a run.",
-      "No real runs/T2 execution evidence.",
       "Fresh independent re-audit of the final Windows-evidenced commit not yet completed."
     ],
+    "blockers_closed_at_revision_8": [
+      {
+        "was": "Capture-PipelineStatusEvidence.ps1 has never completed a run.",
+        "now": "CLOSED. Run 6 completed with exit 0 and verdict WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT, with -FullSuite and -ConnectivityScan. Runs 1-4 each threw on a real gate defect (D12, D14, D16, D18); none was resolved by weakening an assertion."
+      },
+      {
+        "was": "No real runs/T2 execution evidence.",
+        "now": "CLOSED. Real workspace, real recorded seed, stages_5_and_11_exercised=true (stage 5 READY, stage 11 STALE), and the read-only differential is clean AND correctly scoped: runs_T2_changed_by_pipeline_status=false measured across the tool's own commands alone."
+      }
+    ],
+    "only_remaining_blocker_note": "One, and it is the whole gate: this work has still only ever been judged by its author. Six runs of a script I wrote, passing on the seventh, is evidence and not acceptance.",
     "blockers_closed_at_revision_7": [
       {
         "was": "The three Windows-only tests are skipped here and must PASS on Windows.",

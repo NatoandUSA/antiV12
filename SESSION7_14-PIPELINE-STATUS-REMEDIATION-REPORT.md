@@ -678,3 +678,139 @@ script itself has still never completed, there is still no real `runs/T2` execut
 this commit has had no independent re-audit.
 
 **Acceptance remains HOLD.** A test that has been made to pass is not a gate that has run.
+
+---
+
+## 14. The gate ran — six runs, four more defects, and a clean completion
+
+`Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan`, Windows 11, bare `python`
+= `.venv\Scripts\python.exe` 3.12.10, seed `personalized nurse sweatshirt` (recorded identically
+in 7 `runs/T2` artifacts; read from the workspace, not chosen).
+
+| Run | Reached | Threw on |
+|---|---|---|
+| 1 | the refusal step | `ConvertFrom-Json` over a merged stdout+stderr capture — **D12** |
+| 2 | past the backslash refusal, with the right reason | the new double-quote step — **D14** |
+| 3 | the end of the full suite | "the pipeline-status run CHANGED real `runs/T2`" — **D16** |
+| 4 | the final required-test check | "did not run to a passing result" — **D18** |
+| 5 | complete (no `-FullSuite`) | — exit 0 |
+| 6 | **complete** | — **exit 0**, `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT` |
+
+Every throw was the gate being right about something. None was a false alarm, and none was
+resolved by weakening an assertion.
+
+### D16 — the gate blamed the wrong actor
+
+Run 3 threw `The pipeline-status run CHANGED real runs/T2`. It had not. From the script's own
+snapshots: **220 files before and after, zero added, zero removed, zero content differences, zero
+size differences.** Ten files under `phase6/6E` had been rewritten byte-identically with new
+mtimes — by the 4781-test suite, which ran *between* the two snapshots.
+
+The assertion was true and its stated cause was false. That is this branch's own subject matter:
+DEFECT A presented a wrong value as a right one, D13 recorded a refusal for the wrong reason, and
+this accused the wrong code. **An evidence script may not name a cause its measurement cannot
+support.**
+
+A third snapshot now brackets the pipeline-status commands alone. That pair still throws and is
+strictly stricter than before, because nothing else can dilute it. The span covering everything
+else is written to `runs-T2-diff-after-tests.txt` and reported as
+`runs_T2_changed_by_test_suite` — a finding about the suite, never a fact about this module.
+
+It is not nothing. **`pipeline_status` derives `STALE` purely from mtimes**, so a suite that
+advances them on real artifacts can change what the owner is told to run next. Run 6 records
+`runs_T2_changed_by_pipeline_status: false` and `runs_T2_changed_by_test_suite: true` — both true,
+and now separable.
+
+### D15 — two switches that could not both be used
+
+`scripts/connectivity_scan.py` rewrites `CONNECTED-RESEARCH-NETWORK-SCAN.json`, a **tracked**
+file. So `-ConnectivityScan` guaranteed the clean-tree assertion would fail for doing exactly what
+the flag asks. Run 3 would have thrown there had it not thrown earlier. The side effect is now
+declared by name; anything undeclared still fails. Scoping the check, not removing it.
+
+### D18 — a warning split the line the verdict was read from
+
+The required-test check scanned unittest's `-v` transcript for the test name and `... ok` **on one
+line**. unittest emits that line in pieces, so anything reaching stderr mid-test lands between
+them — here a `ResourceWarning` from a file handle leaked inside the test itself. A **passing**
+test became unreadable as passed, and the gate threw about it.
+
+Both halves were real and both are fixed: the handle is closed, and the gate now runs that one
+node on its own and reads unittest's own verdict (exit code, `Ran 1 test`, `OK`, no `skipped`).
+It also runs *before* the full suite, so the central proof now fails in seconds instead of
+nineteen minutes.
+
+### Layer separation, and what the gate no longer claims
+
+D13 and D14 were one error: proving an application's refusal *reason* by sending the value through
+a shell that rewrites it first. The two measurements are now separate artifacts.
+`shell-marshalling.json` records only what PowerShell delivers to a native child:
+
+| PowerShell value | Child received | |
+|---|---|---|
+| `personalized nurse sweatshirt` | `personalized nurse sweatshirt` | PRESERVED |
+| `nurse gift\` | `nurse gift"` | TRANSFORMED — the trap |
+| `nurse gift\\` | `nurse gift\` | TRANSFORMED — delivers the intended value |
+| `nurse"quote"` | `nursequote` | TRANSFORMED — the trap |
+| `nurse\"quote\"` | `nurse"quote"` | TRANSFORMED — delivers the intended value |
+
+The owner's real seed must arrive `PRESERVED` or the run throws; otherwise every printed command
+describes a search nobody asked for. Application validation against an exact argv with no shell in
+the path is **not** duplicated here — `tests/test_pipeline_status.py` already does it via
+`subprocess.run([sys.executable, ...])`, and repeating it in PowerShell would re-introduce the
+marshalling this step exists to isolate.
+
+### Run 6 result
+
+`verdict: WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT` · `main_unchanged: true` ·
+`runs_T2_changed_by_pipeline_status: false` · `repository_changed_undeclared: false` ·
+`powershell_execution_test_ran_and_passed: true` · `stages_5_and_11_exercised: true`
+(stage 5 `READY`, stage 11 `STALE`) · focused, boundary and connectivity exit 0 ·
+connectivity scan: **0 active Amazon-account paths**.
+
+Full suite: `Ran 4783 tests — FAILED (failures=5, errors=1, skipped=4)`.
+
+### The full-suite differential — BASELINE_EQUIVALENT, zero target-only failures
+
+Judged differentially, never absolutely. All six non-passing nodes are accounted for:
+
+| Node | Classification | How it was established |
+|---|---|---|
+| `test_52_request_size_bounded` | `PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE` | passes in isolation; prior accepted reports record the same signature |
+| `test_199e_no_acceptance_tag_yet` | permanently stale, documented | asserts no `phase7-14-*` tag exists; three do |
+| `test_136b_accepted_authorities_unmodified` | pre-existing **on this branch**, false positive | identical result at `518b516`, `06d42cc`, `36ec291` |
+| `test_15_to_20_startup_launcher_is_safe` | pre-existing **on accepted main** | worktree differential |
+| `test_16_17_23_32_33_34_full_lifecycle` | pre-existing **on accepted main** | worktree differential |
+| `test_35_live_restart` | pre-existing **on accepted main** | worktree differential |
+
+Method for the last three: worktrees at `211f2f8` and at the candidate HEAD, both outside any
+`claude`-named directory, same interpreter, same three nodes. **3 failures on each, same node IDs.**
+Worktree compared only to worktree, per the standing rule.
+
+Two of these deserve naming, because both are the same defect class this document keeps finding —
+an assertion whose implementation is broader than its name:
+
+* **`test_136b`** runs `git diff --name-only <base> -- ... core/`, which reports **additions** as
+  well as modifications. `core/pipeline_status.py` is a new file, absent from accepted `main`, so
+  the test has reported "accepted 7.3-7.12 authority modified" since `518b516` — the branch's
+  first commit, which only *added* a file.
+* **`test_15_to_20`** forbids the substring `claude` in the generated autostart `.bat`, intending
+  to catch an external AI-tool invocation. The `.bat` embeds the quoted interpreter path, and this
+  repository lives under `D:\Claude\`. **The test cannot pass for any checkout under a directory
+  named "Claude"**, which is where the owner's toolkit actually is.
+
+Neither is touched here. Both are in accepted-phase test code, outside this branch's scope, and
+both are recorded so the next reader does not re-derive them.
+
+### What is now proven, and what is not
+
+Closed: the capture completes; the three Windows-only tests pass; real `runs/T2` evidence exists
+with stages 5 and 11 exercised; the read-only differential is clean **and correctly scoped**;
+interpreter identity is recorded; full suite and connectivity scan are recorded and differentially
+clean.
+
+Still open: **no fresh independent re-audit of this commit.** That is the one remaining blocker,
+and it is the whole gate. `main` is untouched at `211f2f8`, there is no tag, nothing is merged.
+
+**Acceptance remains HOLD.** Six runs of a gate I wrote, passing on the seventh, is evidence — not
+acceptance. It has still only ever been judged by its author.

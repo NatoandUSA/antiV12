@@ -98,6 +98,77 @@ class TestStates(Base):
         self.assertEqual(r["newer_input"], "B.json")
 
 
+class TestMultiOutputStaleness(Base):
+    """A stage that declares several outputs is only as current as its OLDEST one.
+
+    Comparing the NEWEST output against the input -- as the audited d163ff0 baseline did --
+    lets a freshly rewritten sibling hide an artifact that is genuinely older than its own
+    input. STALE is this module's only derived signal, so a masked STALE is not a cosmetic
+    defect: the owner skips the re-run and every downstream stage is then built on an input
+    that never reflected the data it claims to summarise.
+    """
+
+    def test_a_stale_output_is_not_masked_by_a_fresher_sibling(self):
+        # The exact reproduction from the 2026-08-01 independent audit of d163ff0.
+        touch(os.path.join(self.ws, "IN.xlsx"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "OUT.json"), self.t0 + 500)        # older than its input
+        touch(os.path.join(self.ws, "OTHER.json"), self.t0 + 2000)     # fresher sibling
+        r = self.one(self.stage(produces=["OUT.json", "OTHER.json"], needs=["IN.xlsx"],
+                                command="c"))
+        self.assertEqual(r["state"], P.STALE)
+
+    def test_the_stale_output_is_the_one_named_to_the_owner(self):
+        """Naming the fresh sibling would send the owner to look at a file that is fine."""
+        touch(os.path.join(self.ws, "IN.xlsx"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "OUT.json"), self.t0 + 500)
+        touch(os.path.join(self.ws, "OTHER.json"), self.t0 + 2000)
+        r = self.one(self.stage(produces=["OUT.json", "OTHER.json"], needs=["IN.xlsx"],
+                                command="c"))
+        self.assertEqual(r["artifact"], "OUT.json")
+        self.assertEqual(r["newer_input"], "IN.xlsx")
+        self.assertIn("OUT.json is older than IN.xlsx",
+                      P.render(P.evaluate(self.ws, [self.stage(
+                          produces=["OUT.json", "OTHER.json"], needs=["IN.xlsx"],
+                          command="c")]), self.ws))
+
+    def test_ready_still_requires_every_output_to_beat_the_input(self):
+        touch(os.path.join(self.ws, "IN.xlsx"), self.t0)
+        touch(os.path.join(self.ws, "OUT.json"), self.t0 + 500)
+        touch(os.path.join(self.ws, "OTHER.json"), self.t0 + 2000)
+        r = self.one(self.stage(produces=["OUT.json", "OTHER.json"], needs=["IN.xlsx"],
+                                command="c"))
+        self.assertEqual(r["state"], P.READY)
+
+    def test_real_stage_5_master_keyword_list_is_not_masked(self):
+        """Stage 5 in the shipped table: a stale MASTER-KEYWORDS-LEAN.json hidden behind a
+        fresh CEREBRO-EVIDENCE-MATRIX.json is the case the owner actually hits."""
+        touch(os.path.join(self.ws, "US_AMAZON_cerebro_B0X.xlsx"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "MASTER-KEYWORDS-LEAN.json"), self.t0 + 500)
+        touch(os.path.join(self.ws, "CEREBRO-EVIDENCE-MATRIX.json"), self.t0 + 2000)
+        stage5 = [s for s in P.STAGES if s.n == 5][0]
+        self.assertEqual(P.evaluate(self.ws, [stage5])[0]["state"], P.STALE)
+
+    def test_real_stage_11_product_page_is_not_masked(self):
+        touch(os.path.join(self.ws, "LISTING-BRIEF.json"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "CLAIM-EVIDENCE.json"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "PRODUCT-PAGE.json"), self.t0 + 500)
+        touch(os.path.join(self.ws, "BACKEND-SEARCH-TERMS.json"), self.t0 + 2000)
+        stage11 = [s for s in P.STAGES if s.n == 11][0]
+        self.assertEqual(P.evaluate(self.ws, [stage11])[0]["state"], P.STALE)
+
+    def test_a_wildcard_pattern_is_satisfied_by_its_newest_match(self):
+        """Deliberate scope limit. One PATTERN contributes one artifact -- its newest match --
+        and the oldest is taken ACROSS patterns, not across every file on disk. Otherwise a
+        superseded Cerebro export the owner never deleted would mark the stage stale forever."""
+        touch(os.path.join(self.ws, "IN.json"), self.t0 + 1000)
+        touch(os.path.join(self.ws, "US_AMAZON_cerebro_old.xlsx"), self.t0 + 500)
+        touch(os.path.join(self.ws, "US_AMAZON_cerebro_new.xlsx"), self.t0 + 2000)
+        r = self.one(self.stage(produces=["US_AMAZON_cerebro_*.xlsx"], needs=["IN.json"],
+                                command="c"))
+        self.assertEqual(r["state"], P.READY)
+        self.assertEqual(r["artifact"], "US_AMAZON_cerebro_new.xlsx")
+
+
 class TestNextAction(Base):
     def rows(self, *stages):
         return P.evaluate(self.ws, list(stages))

@@ -11,10 +11,12 @@ and must not invent:
 
     MISSING   no output artifact exists yet
     STALE     an output exists but an INPUT is newer, so the output no longer reflects its input
-    READY     an output exists and is newer than every input
+    READY     every declared output exists and is newer than every input
     BLOCKED   a required input does not exist, so the stage cannot run at all
 
-STALE is the only derived signal here, and it is mechanical: output mtime < input mtime. It is not
+STALE is the only derived signal here, and it is mechanical: OLDEST output mtime < newest input
+mtime. Oldest, not newest: a stage that declares several outputs is only as current as its least
+current one, and comparing the newest would let a fresh sibling hide a stale artifact. It is not
 a quality judgement. This module never reads a metric out of an artifact, never scores anything and
 never says a listing is good -- the engines own all of that.
 
@@ -126,16 +128,38 @@ def _newest(paths):
     return best
 
 
+def _oldest_output(workspace, patterns):
+    """(mtime, path) of the LEAST current declared output, or (None, None).
+
+    A stage is only as current as its oldest artifact. Taking the newest instead lets a
+    freshly rewritten sibling mask an output that is genuinely older than its own input --
+    the one failure this module exists to catch -- so the owner skips a needed re-run and
+    every downstream stage inherits an artifact that never reflected its data.
+
+    One PATTERN contributes one artifact: its newest match. The minimum is taken ACROSS
+    patterns, never across every file on disk, because a wildcard names a set the owner
+    keeps adding to, and a superseded export they never deleted must not mark a stage stale
+    for ever.
+    """
+    worst = (None, None)
+    for pat in patterns:
+        m, p = _newest(_resolve(workspace, pat))
+        if m is None:
+            continue
+        if worst[0] is None or m < worst[0]:
+            worst = (m, p)
+    return worst
+
+
 def evaluate(workspace, stages=STAGES):
     """Status for every stage, from the filesystem alone."""
     out = []
     for st in stages:
-        produced = [f for pat in st.produces for f in _resolve(workspace, pat)]
         missing_outputs = [pat for pat in st.produces if not _resolve(workspace, pat)]
         needed = {pat: _resolve(workspace, pat) for pat in st.needs}
         missing_inputs = [pat for pat, fs in needed.items() if not fs]
 
-        out_mtime, out_path = _newest(produced)
+        out_mtime, out_path = _oldest_output(workspace, st.produces)
         in_mtime, in_path = _newest([f for fs in needed.values() for f in fs])
 
         if missing_outputs:

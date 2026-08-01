@@ -1,7 +1,13 @@
 # HANDOFF — CURRENT
 
 **Updated:** 2026-08-01 · **Branch:** `hotfix-phase7-14-stop-exit-verification`
-**main:** `a68c147` (untouched) · **Merged:** NO · **Acceptance tag:** NONE
+**Composite 7.14 launcher hotfix `56f4339`: MERGED** into `main` at merge commit `0a84fd3`,
+following an independent acceptance audit. The merge honoured the audited scope exactly —
+`569a72d`, `4c5d362` and `5a9b495` are in `main`; `d163ff0` (pipeline-status) is **not**, and
+still needs its own audit. **Acceptance tag: NONE yet** — nothing points at `56f4339` or `main`;
+the 8 existing `phase7-14-*` tags all predate this work.
+Verify: `git merge-base --is-ancestor 56f4339 main && echo merged` ·
+`git tag --points-at 56f4339` · `git merge-base --is-ancestor d163ff0 main || echo out-of-scope`
 
 This is the LIVING handoff. Each superseded version is frozen as
 `HANDOFF-<date>-<commit>.md` rather than overwritten, so review history survives —

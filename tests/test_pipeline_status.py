@@ -202,6 +202,28 @@ class TestRendering(Base):
     def test_placeholder_when_no_seed_given(self):
         self.assertIn("<seed-keyword>", P._fmt_command("x {seed}", "w", None))
 
+    def test_placeholder_is_quoted_so_cmd_does_not_redirect(self):
+        """`<` and `>` are redirection operators in cmd.exe. Printed bare, the placeholder line
+        is not a command the owner can paste -- it truncates and opens a file."""
+        self.assertIn('"<seed-keyword>"', P._fmt_command("x {seed}", "w", None))
+
+    def test_an_embedded_quote_is_doubled_not_passed_through(self):
+        """Baseline printed `--seed "nurse"; calc; #"`, which a shell splits at the second quote."""
+        out = P._fmt_command("x --seed {seed}", "w", 'nurse"; calc; #')
+        self.assertEqual(out, 'x --seed "nurse""; calc; #"')
+        self.assertNotIn('"nurse";', out)
+
+    def test_shell_metacharacters_force_quoting(self):
+        for seed in ("a;b", "a|b", "a&b", "a>b", "a$b", "a`b", "a(b)"):
+            self.assertTrue(P._quote(seed).startswith('"'), seed)
+
+    def test_a_workspace_path_with_a_space_is_quoted(self):
+        cmd = P._fmt_command("x {workspace}", r"C:\Users\Long\My Runs\T2", None)
+        self.assertIn(r'"C:\Users\Long\My Runs\T2"', cmd)
+
+    def test_an_ordinary_path_stays_bare(self):
+        self.assertEqual(P._quote("runs/T2"), "runs/T2")
+
     def test_output_is_ascii_only(self):
         """It prints into the Windows console the owner uses, whose code page mangles dashes."""
         touch(os.path.join(self.ws, "OUT.json"), self.t0)

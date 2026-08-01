@@ -197,10 +197,29 @@ def _age(mtime, now=None):
     return "today" if days <= 0 else ("1 day ago" if days == 1 else f"{days} days ago")
 
 
+# Safe to hand a shell bare. Everything else -- spaces, quotes, and the metacharacters cmd.exe and
+# PowerShell act on -- forces quoting. The audited baseline quoted on space or tab alone, so it
+# printed `--seed <seed-keyword>` with cmd.exe redirection operators bare, and echoed a seed
+# containing a quote back in a form the shell would split.
+_BARE_SAFE = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-+=/:\\")
+
+
 def _quote(value):
-    """Quote an argument that the owner will paste into a shell. A seed keyword is normally two or
-    three words, and an unquoted one silently becomes the wrong argument."""
-    return f'"{value}"' if (" " in value or "\t" in value) else value
+    """Quote an argument the owner will paste into their shell.
+
+    Scope, stated plainly because the baseline docstring overstated it: this makes the printed
+    command safe to PASTE into the Windows PowerShell and cmd.exe consoles this tool targets. It
+    is not a shell-injection boundary and does not need to be -- the seed is the owner's own text
+    going into the owner's own shell, and this module executes nothing itself. A seed keyword is
+    normally two or three words, and an unquoted one silently becomes the wrong argument.
+
+    An embedded double quote is doubled, which PowerShell and the Microsoft C runtime argument
+    parser both accept.
+    """
+    text = str(value)
+    if text and all(c in _BARE_SAFE for c in text):
+        return text
+    return '"' + text.replace('"', '""') + '"'
 
 
 def _fmt_command(cmd, workspace, seed):

@@ -7,7 +7,8 @@
     "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json",
     "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1 (reviewer draft, 2026-08-01)",
     "AMZ_FBM_PIPELINE_STATUS_REV3_SCRIPT_REVIEW_AND_WINDOWS_GATE_2026-08-01.json",
-    "AMZ_FBM_PIPELINE_STATUS_REV4_PREWINDOWS_REVIEW_2026-08-01.json"
+    "AMZ_FBM_PIPELINE_STATUS_REV4_PREWINDOWS_REVIEW_2026-08-01.json",
+    "AMZ_FBM_PIPELINE_STATUS_REV5_READY_FOR_WINDOWS_RUN_REVIEW_2026-08-01.json"
   ],
   "generated_at": "2026-08-01",
   "note": "Serves two purposes: the repo's REPORT.md + PROOF.json acceptance-evidence convention, and the owner's standing instruction to export every feedback/review response as JSON (see response_export).",
@@ -23,7 +24,8 @@
     "2894269": "review corrections C1-C5, C7",
     "018af92": "Windows PowerShell execution test + corrected capture script",
     "c3c4af2": "bug hunt -- eight defects, one blocking the Windows gate",
-    "855f4f4": "pre-Windows review: refuse unrenderable values, prove the call operator"
+    "855f4f4": "pre-Windows review: refuse unrenderable values, prove the call operator",
+    "ea2190b": "audit against rev-5 required_checks: six gaps closed"
   },
   "merged": false,
   "acceptance_tag": null,
@@ -170,7 +172,9 @@
     "revision_4_count": 58,
     "after_revision_4": "Ran 58 tests - OK (skipped=2)",
     "revision_5_count": 64,
-    "after_revision_5": "Ran 64 tests - OK (skipped=3)"
+    "after_revision_5": "Ran 64 tests - OK (skipped=3)",
+    "revision_6_count": 64,
+    "after_revision_6": "Ran 64 tests - OK (skipped=3)"
   },
   "audit_soundness_findings_reverified": {
     "correction": "C7",
@@ -306,7 +310,7 @@
       "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
     }
   },
-  "revision": 5,
+  "revision": 6,
   "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. This revision responds to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims.",
   "pushed_for_review": {
     "branch_only": true,
@@ -392,9 +396,10 @@
     "branch_pushed": true,
     "blockers": [
       "Capture-PipelineStatusEvidence.ps1 has never been executed on Windows.",
-      "The two Windows-only tests are skipped here and must PASS on Windows.",
+      "The three Windows-only tests are skipped here and must PASS on Windows.",
       "No real runs/T2 execution evidence.",
-      "Fresh independent re-audit not yet completed."
+      "Bare 'python' interpreter resolution not yet evidenced on the owner's Windows environment.",
+      "Fresh independent re-audit of the final Windows-evidenced commit not yet completed."
     ]
   },
   "windows_capture": {
@@ -606,5 +611,77 @@
       "test_no_two_declared_outputs_of_a_stage_can_match_the_same_file - required-all is defeated if one artifact fills two slots, which the _resolve overlap guard does not cover",
       "test_every_command_starts_with_a_bare_literal_token - this is WHY no printed command needs '&'. The production contract is satisfied structurally rather than by adding noise to every printed line, and the test is the tripwire if a template ever leads with a substituted value."
     ]
+  },
+  "required_checks_audit": {
+    "premise": "The rev-5 review returned stop_coding_now: true and remaining_known_static_defects: NONE_IDENTIFIED_FROM_THE_SUMMARY. That last phrase is load-bearing -- it was identified FROM THE SUMMARY. Auditing the SOURCE against each required_checks list found six that were not met. Every one maps to an explicit check; none is speculative refactoring.",
+    "gaps": [
+      {
+        "id": "A1",
+        "required_by": "reversal_review: 'the predicate is derived from the actual renderer behavior rather than from a separate approximation'",
+        "gap": "needs_quoting() re-wrote _ps_quote's bare-safe condition instead of being the one the renderer calls.",
+        "risk": "Change what renders bare and the refusal silently stops describing the behaviour it exists to describe.",
+        "fix": "_ps_quote now calls needs_quoting. One predicate."
+      },
+      {
+        "id": "A2",
+        "required_by": "reversal_review: 'the accepted bare-safe trailing-backslash value round-trips exactly on Windows'",
+        "gap": "'nurse\\\\' -- the value the tool explicitly CLAIMS to support -- was absent from the Windows corpus.",
+        "risk": "A claim of support that is never executed is the same untested assertion this work keeps finding.",
+        "fix": "Added to ADVERSARIAL_SEEDS. If PowerShell mangles it after all, the claim is wrong and the refusal must widen; the corpus is how that gets found."
+      },
+      {
+        "id": "A3",
+        "required_by": "control_character_policy: 'before command rendering, workspace lookup, and subprocess creation'",
+        "gap": "Validation ran AFTER os.path.isdir.",
+        "risk": "A path with a control character was reported 'workspace not found' -- true but useless, sending the owner to look for a missing directory instead of at the character they pasted.",
+        "fix": "Validation moved first; it touches no filesystem so nothing is lost. Verified."
+      },
+      {
+        "id": "A4",
+        "required_by": "absolute_side_effect_snapshot: 'canonical paths and hashes, not names alone'",
+        "gap": "The snapshot compared basenames.",
+        "risk": "Misses a file MODIFIED rather than created, and collapses same-named files in different directories -- a redirect that OVERWROTE the probe read as no side effect at all.",
+        "fix": "Relative path -> content hash, snapshotted per iteration after the .ps1 is written, so the deliberately-changing script file need not be excluded."
+      },
+      {
+        "id": "A5",
+        "required_by": "required_output_uniqueness: 'Windows case-insensitive path equivalence is accounted for'",
+        "gap": "Output-slot uniqueness compared case-sensitively.",
+        "risk": "PRODUCT-PAGE.json and product-page.json are one file on Windows.",
+        "fix": "Comparison lowercased."
+      },
+      {
+        "id": "A6",
+        "required_by": "final_decision.important_unverified_contract: BARE_PYTHON_INTERPRETER_IDENTITY",
+        "gap": "Every printed command begins with bare `python` -- which is WHY none needs a call operator -- but bare `python` is a PATH lookup and was never verified.",
+        "risk": "On Windows it can resolve to the Microsoft Store alias stub under WindowsApps, which OPENS THE STORE rather than running Python, or to an interpreter without this repository's dependencies. The printed command is only as good as what that name resolves to.",
+        "fix": "The capture resolves it, refuses the Store alias by path, proves it can import core.pipeline_status from the repo, and records path and version."
+      }
+    ],
+    "also_closed": [
+      "The H1 fixture asserts its path actually contains a space, not only that it needs quoting",
+      "Invoke-Capture exposes Output and LineCount; stdout and stderr are merged ON PURPOSE because their interleaving is what makes a failure readable",
+      "A non-empty but IRRELEVANT runs/T2 is recorded as not exercising stages 5 and 11 rather than passing as evidence for them",
+      "PYTHONIOENCODING process scope documented: it dies with the script and cannot leak into a later shell"
+    ],
+    "my_own_guards_that_failed_and_were_right_to": [
+      {
+        "guard": "corpus-divergence AST check",
+        "why_it_failed": "It collected EVERY `for x in name` loop, so the new tree snapshot's `for f in files` counted as a rival corpus.",
+        "fix": "ALL_CAPS module constants only."
+      },
+      {
+        "guard": "corpus shape test",
+        "why_it_failed": "It asserted every corpus seed comes back single-quoted, which the deliberately BARE 'nurse\\\\' breaks.",
+        "fix": "Asserts ROUND-TRIP through the renderer's own inverse -- the property that actually matters, and one that does not block adding a legitimately bare case.",
+        "lesson": "A test that has to be relaxed to admit a true case was asserting the wrong thing."
+      }
+    ]
+  },
+  "ambiguity_resolved": {
+    "topic": "call operator versus bare python",
+    "raised_by": "rev-5 review apparent_contract_ambiguity",
+    "resolution": "The reviewer's reading is correct. NO production next-command starts with '&', because none starts with a quoted value. The '& ' assertion applies only to the controlled Windows fixture, which deliberately invokes a quoted path under 'dir with space' to prove the hazard is real. The report previously listed both facts without distinguishing them and now carries an explicit scope note.",
+    "tripwire": "test_every_command_starts_with_a_bare_literal_token fails if a template ever leads with a substituted value, at which point the renderer must emit '&'."
   }
 }

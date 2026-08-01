@@ -503,7 +503,8 @@ depends on the environment it is being measured in.
 
 C0 controls **and** DEL enumerated and tested individually, NUL included and caught before any
 subprocess is built · refused seed emits no command, structured error in `--json` · `.ps1`
-asserted to carry a UTF-8 BOM · rendered line asserted to start with `& ` · filesystem
+asserted to carry a UTF-8 BOM · **the Windows test fixture's** rendered line asserted to start
+with `& ` (see the scope note below) · filesystem
 side-effect check made absolute rather than an allow-list · `Invoke-Capture` returns exactly one
 `[pscustomobject]` with an integer `ExitCode` rather than relying on position · an **empty
 `runs/T2` is refused** instead of satisfying the read-only differential trivially · the
@@ -523,6 +524,14 @@ changing how they decode would alter the measurement.
   noise to every printed line, and the test is the tripwire if a template ever leads with a
   substituted value.
 
+> **Scope note — `&` belongs to the test fixture, not to production output.** The rev-5 review
+> flagged an ambiguity in the previous wording, correctly. To be exact: **no production
+> next-command starts with `&`**, because none starts with a quoted value. The `& ` assertion
+> applies only to the controlled Windows fixture, which deliberately invokes a quoted path under
+> `dir with space` to prove the hazard is real. If a template ever leads with a substituted
+> value, `test_every_command_starts_with_a_bare_literal_token` fails and the renderer must then
+> emit `&`.
+
 `Ran 64 tests — OK (skipped=3)`. Module invariants unchanged: imports, `os.*` `{listdir, path}`,
 ASCII-only source.
 
@@ -530,3 +539,60 @@ ASCII-only source.
 
 Acceptance is **HOLD**. The script has still never executed and the three Windows-only tests
 have still never run. Nothing here is evidence — it is a better-instrumented candidate.
+
+---
+
+## 12. Audit against the rev-5 review's `required_checks` — six gaps
+
+The rev-5 review returned `stop_coding_now: true` and
+`remaining_known_static_defects: NONE_IDENTIFIED_FROM_THE_SUMMARY`. That last phrase is doing
+real work: it was identified *from the summary*. Auditing the **source** against each
+`required_checks` list — rather than assuming they were met — found six that were not. Every one
+maps to an explicit check. None is speculative.
+
+| | Gap | Required by |
+|---|---|---|
+| **A1** | `needs_quoting()` **re-wrote** `_ps_quote`'s bare-safe condition instead of being the one the renderer calls. Change what renders bare and the refusal silently stops describing the behaviour it exists to describe. | *"the predicate is derived from the actual renderer behavior rather than from a separate approximation"* |
+| **A2** | `nurse\` — the value the tool explicitly **claims to support** — was absent from the Windows corpus. A claim of support that is never executed is the same untested assertion this work keeps finding. | *"the accepted bare-safe trailing-backslash value round-trips exactly on Windows"* |
+| **A3** | Validation ran **after** `isdir`, so a path with a control character was reported "workspace not found" — true but useless, sending the owner to look for a missing directory instead of at the character they pasted. | *"before command rendering, workspace lookup, and subprocess creation"* |
+| **A4** | The side-effect snapshot compared **basenames**. That misses a file MODIFIED rather than created, and collapses same-named files in different directories — so a redirect that **overwrote the probe** read as no side effect at all. | *"canonical paths and hashes, not names alone"* |
+| **A5** | Output-slot uniqueness was **case-sensitive**. `PRODUCT-PAGE.json` and `product-page.json` are one file on Windows. | *"Windows case-insensitive path equivalence is accounted for"* |
+| **A6** | **Interpreter identity unverified** — the review's `important_unverified_contract`. | see below |
+
+### A6 — bare `python` is a PATH lookup, and that is a contract
+
+Every printed command begins with the bare literal `python`, which is *why* none needs a call
+operator. But bare `python` resolves through PATH, and on Windows it can resolve to the
+**Microsoft Store alias stub** under `WindowsApps` — which opens the Store rather than running
+Python — or to an interpreter without this repository's dependencies.
+
+The printed command is only as good as what that name resolves to, so the resolution is now
+evidence rather than an assumption: the capture resolves it, **refuses the Store alias by path**,
+proves it can `import core.pipeline_status` from the repo, and records the path and version.
+
+### Also closed
+
+The H1 fixture now asserts its path **actually contains a space**, rather than only that it needs
+quoting · `Invoke-Capture` exposes `Output` and `LineCount`, with stdout and stderr merged **on
+purpose** because their interleaving is what makes a failure readable · a non-empty but
+*irrelevant* `runs/T2` is recorded as **not exercising stages 5 and 11** rather than passing as
+evidence for them · `PYTHONIOENCODING`'s process scope is documented — it dies with the script
+and cannot leak into a later shell.
+
+### Two of my own tests failed on this change, and both were right to
+
+* The corpus-divergence check collected **every** `for x in name` loop, so the new tree
+  snapshot's `for f in files` counted as a rival corpus. It now considers ALL_CAPS module
+  constants only.
+* The shape test asserted every corpus seed comes back single-quoted — which the deliberately
+  **bare** `nurse\` breaks. It now asserts **round-trip** through the renderer's own inverse,
+  which is the property that actually matters and does not block adding a legitimately bare case.
+
+A test that has to be relaxed to admit a true case was asserting the wrong thing. Both are worth
+recording, because both were guards I wrote in the last two revisions.
+
+`Ran 64 tests — OK (skipped=3)`. Module invariants unchanged: imports, `os.*` `{listdir, path}`,
+ASCII-only.
+
+**Acceptance is still HOLD.** Nothing here is evidence. The script has still never executed, and
+the three Windows-only tests have still never run.

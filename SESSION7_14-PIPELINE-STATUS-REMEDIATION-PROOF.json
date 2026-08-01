@@ -2,10 +2,12 @@
   "schema_version": 1,
   "stage_id": "pipeline-status-remediation",
   "document_type": "remediation_proof_and_feedback_response_export",
-  "responds_to": "AMZ_FBM_PUSH_AND_HANDOFF_FEEDBACK_2026-08-01.json",
+  "responds_to": [
+    "AMZ_FBM_PUSH_AND_HANDOFF_FEEDBACK_2026-08-01.json",
+    "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json"
+  ],
   "generated_at": "2026-08-01",
   "note": "Serves two purposes: the repo's REPORT.md + PROOF.json acceptance-evidence convention, and the owner's standing instruction to export every feedback/review response as JSON (see response_export).",
-
   "branch": "hotfix-pipeline-status-multi-output-staleness",
   "base_commit": "211f2f8",
   "baseline_commit": "518b516",
@@ -13,13 +15,14 @@
   "commits": {
     "518b516": "d163ff0 replayed verbatim on accepted main (audited baseline)",
     "95f9b67": "DEFECT A fix - blocking",
-    "fcd6d31": "DEFECT B fix - low, non-blocking, revertable alone"
+    "fcd6d31": "DEFECT B fix - low, non-blocking, revertable alone",
+    "631a491": "revision 1 report + proof - the reviewed candidate",
+    "2894269": "review corrections C1-C5, C7"
   },
   "merged": false,
   "acceptance_tag": null,
   "independent_reaudit_required": true,
   "main_unchanged_at": "211f2f8",
-
   "prior_feedback_state_reconciliation": {
     "feedback_claimed_origin_main": "0a84fd3",
     "actual_origin_main": "211f2f8",
@@ -37,7 +40,6 @@
       "git status --porcelain -> empty"
     ]
   },
-
   "defect_a": {
     "name": "MULTI_OUTPUT_STALENESS_MASKED",
     "severity": "medium",
@@ -45,8 +47,22 @@
     "status": "CLOSED",
     "root_cause": "evaluate() took _newest() over every file produced by a stage and compared that maximum against the newest input. On a stage declaring more than one output, a fresher sibling won the max and hid an artifact genuinely older than its own input.",
     "affected_shipped_stages": [
-      {"n": 5, "title": "Master keyword list", "produces": ["MASTER-KEYWORDS-LEAN.json", "CEREBRO-EVIDENCE-MATRIX.json"]},
-      {"n": 11, "title": "Product detail page", "produces": ["PRODUCT-PAGE.json", "BACKEND-SEARCH-TERMS.json"]}
+      {
+        "n": 5,
+        "title": "Master keyword list",
+        "produces": [
+          "MASTER-KEYWORDS-LEAN.json",
+          "CEREBRO-EVIDENCE-MATRIX.json"
+        ]
+      },
+      {
+        "n": 11,
+        "title": "Product detail page",
+        "produces": [
+          "PRODUCT-PAGE.json",
+          "BACKEND-SEARCH-TERMS.json"
+        ]
+      }
     ],
     "baseline_harm_measured": {
       "method": "identical synthetic workspace driven through the real CLI on both trees",
@@ -62,19 +78,20 @@
       "consequence": "The baseline walked the owner past a Master Keyword List that never saw its Cerebro data and told them to build keyword intelligence on it. Stages 6, 8, 9 and 10 all consume that list."
     },
     "fix": {
-      "location": "core/pipeline_status.py:131 _oldest_output(), used at :162",
+      "location": "core/pipeline_status.py:149 _oldest_current_output(), used at :180",
       "rule": "each declared output PATTERN contributes its newest match; the MINIMUM is taken ACROSS patterns",
-      "code": "def _oldest_output(workspace, patterns):\n    worst = (None, None)\n    for pat in patterns:\n        m, p = _newest(_resolve(workspace, pat))\n        if m is None:\n            continue\n        if worst[0] is None or m < worst[0]:\n            worst = (m, p)\n    return worst",
+      "code": "def _oldest_current_output(workspace, patterns):\n    worst = (None, None)\n    for pat in patterns:\n        m, p = _newest(_resolve(workspace, pat))\n        if m is None:\n            continue\n        if worst[0] is None or m < worst[0]:\n            worst = (m, p)\n    return worst",
       "deliberately_preserved": [
         "One pattern contributes one artifact; the minimum is never taken across every file on disk, so a superseded Cerebro export the owner never deleted does not mark stage 4 stale for ever.",
-        "artifact now names the OLDEST output - the file the owner must look at. Naming the fresh sibling sent them to a file that was fine."
+        "artifact now names the OLDEST output - the file the owner must look at. Naming the fresh sibling sent them to a file that was fine.",
+        "Equal mtimes are READY, not STALE. Strict '<'. An engine writing inside one clock tick of its input is the normal fast case; a permanent false STALE is worse. Pinned in revision 2."
       ],
-      "docstring_updated": "The module's staleness rule read 'output mtime < input mtime', the exact ambiguity that permitted the defect. It now reads 'OLDEST output mtime < newest input mtime' and says why."
+      "docstring_updated": "The module's staleness rule read 'output mtime < input mtime', the exact ambiguity that permitted the defect. It now reads 'OLDEST output mtime < newest input mtime' and says why.",
+      "renamed_in_revision_2": "Was _oldest_output. Review C2: the name described something the function never did - it does not return the oldest matching file, it returns the oldest of the per-pattern NEWEST matches."
     }
   },
-
   "defect_b": {
-    "name": "QUOTE_NOT_CORRECT_QUOTING",
+    "name": "OWNER_COMMAND_RENDERING_NOT_PASTE_SAFE",
     "severity": "low",
     "blocking": false,
     "status": "CLOSED",
@@ -86,66 +103,94 @@
       "not_named_by_the_audit": true
     },
     "fix": {
-      "location": "core/pipeline_status.py:204 _BARE_SAFE, :207 _quote()",
-      "rule": "anything outside [A-Za-z0-9._+=/:\\-\\\\] forces quoting; an embedded double quote is doubled",
-      "code": "_BARE_SAFE = frozenset(\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-+=/:\\\\\")\n\ndef _quote(value):\n    text = str(value)\n    if text and all(c in _BARE_SAFE for c in text):\n        return text\n    return '\"' + text.replace('\"', '\"\"') + '\"'",
-      "unchanged_behaviour": ["runs/T2 still prints bare", "single-word seeds still print bare"],
-      "scope_honesty": "The docstring claimed more than the function delivered. It now states that this makes a printed command safe to PASTE into the PowerShell and cmd.exe consoles this tool targets, and that it is NOT a shell-injection boundary and does not need to be - the seed is the owner's own text going into the owner's own shell, and the module executes nothing. This matches the audit's own conclusion."
+      "target_shell": "Windows PowerShell",
+      "target_shell_constant": "core/pipeline_status.py:231 TARGET_SHELL",
+      "location": "core/pipeline_status.py:239 _ps_quote(), :265 _fmt_command()",
+      "rule": "single-quoted PowerShell literal; '' is the only escape; a leading - also forces quoting; bare only for [A-Za-z0-9._+=/:\\-\\\\]",
+      "code": "def _ps_quote(value):\n    text = str(value)\n    if text and not text.startswith(\"-\") and all(c in _BARE_SAFE for c in text):\n        return text\n    return \"'\" + text.replace(\"'\", \"''\") + \"'\"",
+      "every_printed_command_labelled": "[Windows PowerShell]",
+      "adversarial_characters_tested": 18,
+      "not_proven": "The printed commands have NOT been executed in the shell they name. pwsh is not available on this clone. Windows-side evidence, blocking."
+    },
+    "defect_found_in_revision_1_own_fix": {
+      "name": "POWERSHELL_DOUBLE_QUOTE_EXPANDS_DOLLAR",
+      "severity": "medium",
+      "detail": "Revision 1 quoted with DOUBLE quotes and doubled embedded quotes - correct for the Microsoft C runtime argv parser, wrong for PowerShell, where a double-quoted string still expands $. A seed of 'nurse $5 gift' would have reached the engine as 'nurse  gift': silent value corruption, the exact failure class the function exists to prevent.",
+      "why_revision_1_tests_missed_it": "Not one of them contained a $.",
+      "found_by": "Complying with review C4 - committing to ONE named shell. The review did not name this defect; insisting on a single target surfaced it.",
+      "pinned_by": "test_a_dollar_seed_is_not_expanded_away"
     }
   },
-
   "tests": {
     "command": "python -m unittest tests.test_pipeline_status",
-    "baseline_count": 22,
-    "final_count": 33,
+    "baseline_518b516_count": 22,
+    "revision_1_count": 33,
+    "revision_2_count": 49,
     "failing_test_first": true,
-    "before_fix": "Ran 28 tests - FAILED (failures=4)",
-    "after_fix": "Ran 33 tests - OK",
-    "before_fix_note": "28 = the 22 baseline tests plus the 6 new DEFECT A tests, run against the baseline module.",
+    "before_defect_a_fix": "Ran 28 tests - FAILED (failures=4)",
+    "after_revision_1": "Ran 33 tests - OK",
+    "after_revision_2": "Ran 49 tests - OK",
     "failed_on_baseline_passed_after": [
-      {"test": "test_a_stale_output_is_not_masked_by_a_fresher_sibling", "baseline_error": "'READY' != 'STALE'"},
-      {"test": "test_real_stage_5_master_keyword_list_is_not_masked", "baseline_error": "'READY' != 'STALE'"},
-      {"test": "test_real_stage_11_product_page_is_not_masked", "baseline_error": "'READY' != 'STALE'"},
-      {"test": "test_the_stale_output_is_the_one_named_to_the_owner", "baseline_error": "'OTHER.json' != 'OUT.json'"}
+      {
+        "test": "test_a_stale_output_is_not_masked_by_a_fresher_sibling",
+        "baseline_error": "'READY' != 'STALE'"
+      },
+      {
+        "test": "test_real_stage_5_master_keyword_list_is_not_masked",
+        "baseline_error": "'READY' != 'STALE'"
+      },
+      {
+        "test": "test_real_stage_11_product_page_is_not_masked",
+        "baseline_error": "'READY' != 'STALE'"
+      },
+      {
+        "test": "test_the_stale_output_is_the_one_named_to_the_owner",
+        "baseline_error": "'OTHER.json' != 'OUT.json'"
+      }
     ],
     "scope_guards_passing_on_both_trees_by_design": [
       "test_ready_still_requires_every_output_to_beat_the_input",
       "test_a_wildcard_pattern_is_satisfied_by_its_newest_match"
     ],
+    "baseline_assertions_changed": 3,
+    "baseline_assertions_changed_detail": "All in TestRendering, all direct consequences of the double-to-single quote change. d163ff0 is NOT accepted, so no ACCEPTED assertion was touched - but revision 1 reported 'NONE' without this nuance, so it is stated here.",
+    "verify": "git diff 518b516 HEAD -- tests/test_pipeline_status.py | grep '^-' | grep self.assert",
     "accepted_assertions_changed": "NONE",
     "accepted_assertions_weakened_or_skipped": "NONE",
-    "baseline_tests_still_passing_unmodified": 22
+    "target_only_passing_tests": "NONE"
   },
-
   "audit_soundness_findings_reverified": {
-    "imports": ["__future__", "argparse", "json", "os", "sys", "time"],
-    "os_attributes_used": ["listdir", "path"],
+    "correction": "C7",
+    "revision_1_weakness": "A bare-call-name AST scan produces false positives such as str.replace and can miss a dynamically resolved write. Revision 1 disclosed its false positive but still presented the scan as if it settled the question. It did not.",
+    "runtime_filesystem_diff": "test_the_cli_touches_no_file_in_the_workspace - recursive (size, mtime_ns) snapshot either side of a real subprocess run of the CLI over a populated workspace. Load-bearing: an AST scan can be fooled, a diff around the actual process cannot.",
+    "receiver_qualified_ast_scan": "test_no_qualified_write_or_exec_call_exists - classifies os.replace and str.replace differently, so the false positive can no longer wave a real one through.",
+    "os_surface_check": "test_only_read_only_os_functions_are_used - usage must stay within {listdir, path}",
+    "imports": [
+      "__future__",
+      "argparse",
+      "json",
+      "os",
+      "sys",
+      "time"
+    ],
     "ascii_only_source": true,
     "printed_m_modules_referenced": 12,
     "printed_m_modules_missing_on_disk": 0,
     "files_added": 2,
-    "existing_files_modified": 0,
-    "blocked_never_offered_as_next": true,
-    "disclosure": {
-      "finding": "A naive AST scan for write/exec-capable call NAMES now reports one hit that the audit's original scan did not: text.replace('\"', '\"\"') at core/pipeline_status.py:222.",
-      "resolution": "That is str.replace on a local string, not os.replace. Disambiguated by the os_attributes_used list above containing only listdir and path. It is not a filesystem call.",
-      "why_disclosed": "The audit recorded zero write/exec hits; without this note the change reads as a regression in auditability."
-    }
+    "existing_files_modified": 0
   },
-
   "known_limitations": [
-    "NO REAL-ARTIFACT RUN. runs/T2 does not exist on this macOS clone; the workspace is on the Windows machine. The before/after is a synthetic workspace driven through the real CLI - it proves the logic and the owner-facing output, not behaviour against the owner's actual files. Run `python -m core.pipeline_status --seed \"<seed>\"` against the real runs/T2 on Windows before accepting.",
-    "Pre-existing ResourceWarning in the baseline's test_module_makes_no_network_or_amazon_call (open(...).read() without closing). One line to fix, deliberately left alone to keep the diff inside the audited scope.",
+    "BLOCKING - NO REAL-ARTIFACT RUN. runs/T2 does not exist on this macOS clone. The before/after is a synthetic workspace driven through the real CLI: it proves the logic and the owner-facing output, not behaviour against the owner's actual files.",
+    "BLOCKING - PRINTED COMMANDS NOT EXECUTED IN THE SHELL THEY NAME. pwsh is not available here. _ps_quote implements PowerShell's documented single-quoted literal rule and is unit-tested against it, but 'the seed arrives as one argument with its exact value' has not been demonstrated by running the line.",
+    "The pre-existing ResourceWarning in test_module_makes_no_network_or_amazon_call was fixed in 2894269 while that test was already being edited for C7. Revision 1 said it was left alone.",
     "The audit's separate stage-3 observation (ASIN-CANDIDATES newer than ASIN-BATCHES) concerns a single-output stage and is untouched.",
-    "Windows mtime granularity not exercised; all tests set mtimes explicitly via os.utime. Not measured on NTFS.",
-    "Nothing here is accepted. Not merged, no tag, main unchanged at 211f2f8."
+    "Windows mtime granularity not measured on NTFS. The equal-mtime boundary is pinned as READY.",
+    "Nothing here is accepted. Not merged, no tag, main unchanged at 211f2f8. Branch pushed for review only."
   ],
-
   "does_not_unlock": [
     "This is NOT the Pipeline Observer V1 from the 2026-07-31 review. That is a 10-state model with block reasons, prerequisites, freshness and source dates - a derivation layer that does not exist yet and must be scoped and tested as new logic or it will invent status. This module has four states and says so.",
     "Read-only-first still requires CLI execution, so this does not yet deliver the no-PowerShell owner experience."
   ],
-
   "response_export": {
     "analysis": [
       "The feedback's push decision was already executed; all five expected post-push values verified as matching, so no push action was taken or needed.",
@@ -154,11 +199,26 @@
       "The audit's 'zero write/exec calls' AST result is now one apparent hit via str.replace; disclosed rather than left for the re-auditor to trip over."
     ],
     "decisions": [
-      {"decision": "Branch off accepted main and cherry-pick d163ff0 rather than branch off feature-pipeline-status", "why": "d163ff0's parent 56f4339 is already an ancestor of main, so the cherry-pick is conflict-free and the branch is exactly accepted-main + audited-baseline + fix. It excludes 2f4c929, a now-superseded pre-acceptance handoff doc."},
-      {"decision": "DEFECT A and DEFECT B in separate commits", "why": "A is blocking, B is not. Separate commits let the re-auditor accept or revert either alone."},
-      {"decision": "Test committed together with its fix, not as a red commit", "why": "Matches repo convention (5a9b495). The failing-test-first evidence is recorded here instead of leaving a broken commit on the branch."},
-      {"decision": "Per-pattern newest, then minimum across patterns - not a naive min over all produced files", "why": "A wildcard names a set the owner keeps adding to. A naive min would mark stage 4 stale for ever over a superseded export they never deleted. Pinned by test_a_wildcard_pattern_is_satisfied_by_its_newest_match."},
-      {"decision": "Did not fix the pre-existing ResourceWarning", "why": "Out of the audited scope; every extra diff line is something the re-auditor must check."}
+      {
+        "decision": "Branch off accepted main and cherry-pick d163ff0 rather than branch off feature-pipeline-status",
+        "why": "d163ff0's parent 56f4339 is already an ancestor of main, so the cherry-pick is conflict-free and the branch is exactly accepted-main + audited-baseline + fix. It excludes 2f4c929, a now-superseded pre-acceptance handoff doc."
+      },
+      {
+        "decision": "DEFECT A and DEFECT B in separate commits",
+        "why": "A is blocking, B is not. Separate commits let the re-auditor accept or revert either alone."
+      },
+      {
+        "decision": "Test committed together with its fix, not as a red commit",
+        "why": "Matches repo convention (5a9b495). The failing-test-first evidence is recorded here instead of leaving a broken commit on the branch."
+      },
+      {
+        "decision": "Per-pattern newest, then minimum across patterns - not a naive min over all produced files",
+        "why": "A wildcard names a set the owner keeps adding to. A naive min would mark stage 4 stale for ever over a superseded export they never deleted. Pinned by test_a_wildcard_pattern_is_satisfied_by_its_newest_match."
+      },
+      {
+        "decision": "Did not fix the pre-existing ResourceWarning",
+        "why": "Out of the audited scope; every extra diff line is something the re-auditor must check."
+      }
     ],
     "suggestions": [
       "Run the real-workspace smoke check on Windows against runs/T2 before accepting - it is the one limitation this Mac clone cannot close.",
@@ -175,11 +235,141 @@
       "python -m core.pipeline_status --seed \"<seed keyword>\"    # on Windows, against the real runs/T2"
     ],
     "next_steps": [
-      {"order": 1, "action": "Independent re-audit of this branch against 518b516", "blocking": true},
-      {"order": 2, "action": "Real-workspace run on Windows against runs/T2", "blocking": true},
-      {"order": 3, "action": "Merge and tag core/pipeline_status.py only after both", "blocking": false},
-      {"order": 4, "action": "Then the 14-day pilot, per the 2026-07-31 recommended_sequence order 4", "blocking": false}
+      {
+        "order": 1,
+        "action": "Push the C1-C7 correction commits",
+        "blocking": false
+      },
+      {
+        "order": 2,
+        "action": "On Windows: run against real runs/T2 with an interactively entered seed, capturing stdout/stderr, exit code, stage statuses, mtimes and a before/after filesystem diff",
+        "blocking": true
+      },
+      {
+        "order": 3,
+        "action": "On Windows: execute the printed command in PowerShell with adversarial seeds and prove the seed arrives as one argument, exact value, with no extra command and no redirection-created file",
+        "blocking": true
+      },
+      {
+        "order": 4,
+        "action": "Follow-up docs/proof commit with the real Windows evidence; do not rewrite history",
+        "blocking": true
+      },
+      {
+        "order": 5,
+        "action": "Fresh independent re-audit from a new session and fresh worktrees",
+        "blocking": true
+      },
+      {
+        "order": 6,
+        "action": "Only after acceptance: merge and tag, as a separate owner-approved step",
+        "blocking": false
+      }
     ],
-    "not_authorized_here": ["merge to main", "acceptance tag", "push of this branch without the owner asking"]
+    "not_authorized_here": [
+      "merge to main",
+      "acceptance tag",
+      "push of this branch without the owner asking"
+    ],
+    "review_disposition": {
+      "C1": "ACCEPTED - stated on Stage, proved behaviourally against the shipped table",
+      "C2": "ACCEPTED - renamed _oldest_current_output",
+      "C3": "ACCEPTED - missing-output and equal-mtime boundary pinned",
+      "C4": "ACCEPTED - one named shell; surfaced a real defect in revision 1's own fix; execution proof deferred to Windows and recorded as blocking",
+      "C5": "ACCEPTED - no command printed without a real seed, in text and in JSON",
+      "C6": "ACCEPTED - provenance proved by patch-id and blob hashes",
+      "C7": "ACCEPTED - runtime filesystem diff plus receiver-qualified AST scan",
+      "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
+    }
+  },
+  "revision": 2,
+  "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. This revision responds to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims.",
+  "pushed_for_review": {
+    "branch_only": true,
+    "head": "631a491 at push time",
+    "authorized_by": "remediation review branch_push_authorized: true",
+    "merge": false,
+    "tag": false,
+    "main_after_push": "211f2f8"
+  },
+  "cherry_pick_provenance_proved": {
+    "correction": "C6",
+    "revision_1_error": "Inferred byte-identity from a conflict-free cherry-pick. The claim was true; the inference was not valid. The review was right to reject it.",
+    "patch_id_d163ff0": "7c7594d2a81a339848fd122a80f4b1449442f2a9",
+    "patch_id_518b516": "7c7594d2a81a339848fd122a80f4b1449442f2a9",
+    "patch_ids_match": true,
+    "changed_path_sets_match": true,
+    "blob_core_pipeline_status_py": "e2e139acb44351acfb629bba59eddc9007773786",
+    "blob_tests_test_pipeline_status_py": "71091d792ca2f6eb8a77685d20d9d553176fd8a2",
+    "blobs_match": true,
+    "git_diff_check": "clean over 518b516^..631a491",
+    "unrelated_feature_branch_files_entered": 0,
+    "excluded_commit": "2f4c929"
+  },
+  "defect_c5_placeholder": {
+    "correction": "C5",
+    "problem": "Quoting <seed-keyword> made it syntactically safe and left it semantically misleading: it still looks pasteable and would run the engine with the literal placeholder as the seed.",
+    "fix": "_fmt_command returns None rather than a placeholder; render prints an instruction naming what is missing plus the command that produces the real line; --json emits next_command: null and next_command_needs_seed: true.",
+    "machine_consumer_protected": true
+  },
+  "output_pattern_semantics": {
+    "corrections": [
+      "C1",
+      "C3"
+    ],
+    "semantics": "required-all",
+    "required_any_supported": false,
+    "optional_outputs_supported": false,
+    "why_it_matters": "The staleness minimum is only correct if every declared output is a required current artifact. An optional pattern in the same flat list would produce a false STALE.",
+    "was_true_before": true,
+    "was_documented_or_tested_before": false,
+    "stated_at": "core/pipeline_status.py:44 Stage docstring",
+    "proved_by": "test_every_declared_output_is_required - behavioural, against the SHIPPED table: each output of each multi-output stage is removed in turn and must stop the stage being READY.",
+    "missing_required_output": "reports MISSING or BLOCKED and never reaches a staleness verdict; evaluate() resolves missing_outputs BEFORE any timestamp compare",
+    "equal_mtime_boundary": "READY, deliberately. An engine writing inside one clock tick of its input is the normal fast case; a permanent false STALE is worse. Strict '<'. Pinned by test_equal_mtimes_are_ready_not_stale."
+  },
+  "revision_1_superseded_claims": [
+    {
+      "claim": "'anything outside [A-Za-z0-9._+=/:\\-\\\\] forces quoting, and an embedded quote is doubled, the form both PowerShell and the Microsoft C runtime argument parser accept'",
+      "status": "WRONG_AND_REPLACED",
+      "why": "Correct for the MSVCRT argv parser, wrong for PowerShell: a double-quoted PowerShell string expands $. See defect_b.defect_found_in_revision_1_own_fix."
+    },
+    {
+      "claim": "'safe to PASTE into the Windows PowerShell and cmd.exe consoles this tool targets'",
+      "status": "WITHDRAWN",
+      "why": "Quoting is not portable between them. The renderer now targets ONE named shell."
+    },
+    {
+      "claim": "'_oldest_output'",
+      "status": "RENAMED",
+      "why": "It never returned the oldest matching file. Now _oldest_current_output."
+    },
+    {
+      "claim": "'518b516 is byte-identical to the audited code' inferred from a conflict-free cherry-pick",
+      "status": "TRUE_BUT_NOW_PROVED_INSTEAD_OF_INFERRED",
+      "why": "See cherry_pick_provenance_proved."
+    },
+    {
+      "claim": "'accepted_assertions_changed: NONE' with no further detail",
+      "status": "STILL_TRUE_BUT_INCOMPLETE",
+      "why": "3 unaccepted baseline assertions were changed in revision 2. d163ff0 is not accepted, so the original statement holds, but the nuance was missing."
+    },
+    {
+      "claim": "The AST scan settles the read-only question",
+      "status": "SUPERSEDED",
+      "why": "Replaced by a runtime filesystem diff plus a receiver-qualified scan."
+    }
+  ],
+  "acceptance_gate": {
+    "status": "HOLD",
+    "merge_authorized": false,
+    "acceptance_tag_authorized": false,
+    "branch_push_authorized": true,
+    "branch_pushed": true,
+    "blockers": [
+      "No real Windows runs/T2 execution evidence.",
+      "Printed commands not executed in Windows PowerShell with adversarial seeds.",
+      "Fresh independent re-audit not yet completed."
+    ]
   }
 }

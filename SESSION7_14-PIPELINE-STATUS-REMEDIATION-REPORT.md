@@ -596,3 +596,85 @@ ASCII-only.
 
 **Acceptance is still HOLD.** Nothing here is evidence. The script has still never executed, and
 the three Windows-only tests have still never run.
+
+---
+
+## 13. The three Windows-only tests ran — two defects, one of them real
+
+`Ran 66 tests — OK (skipped=0)`, Windows 11, `python` = `.venv\Scripts\python.exe` (3.12.10),
+repo root, `PYTHONDONTWRITEBYTECODE=1`. Every previous count in this document was
+`64 — OK (skipped=3)` measured where the Windows tests **cannot run**, so it is not comparable
+with this one and does not become wrong: it describes a different set of executed tests.
+
+The prediction in §9 was that the capture script would need a first-run fix. What it actually
+needed was two, and the second one was hiding behind the first.
+
+### DEFECT 1 — the execution proof was unsatisfiable by construction
+
+`test_windows_powershell_renderer_preserves_exact_seed` asserted, in the same loop body:
+
+```
+assertEqual(argv, ["--seed", seed])     # the seed arrives VERBATIM
+assertNotIn("PWNED", run.stdout)        # the marker does not appear
+```
+
+Four corpus seeds contain `PWNED` literally. A correct renderer is exactly what makes the marker
+appear in the probe's argv echo, so the two assertions could never both hold. The test could not
+pass on any machine — and nothing said so for as long as it was skipped, which was everywhere,
+because it had never run on the one platform it targets.
+
+Fixed by asserting the property that was actually meant: the probe prints exactly ONE line, so a
+second line is output PowerShell produced on its own. That is strictly stronger than the marker
+check — it catches an injected command that prints anything at all, and assertion 1 reads only
+the LAST line, so extra output above it would previously have hidden.
+
+The regression guard is `test_the_execution_proof_cannot_assert_the_marker_is_absent_from_stdout`,
+and it runs on **every** platform on purpose: a guard that only runs on Windows would have the
+same blind spot as the defect it guards. Applied by AST to the pre-fix file it fires on both
+sites, lines 524 and 545; on the fixed file it is silent.
+
+### DEFECT 2 — a real one, masked by the first
+
+With the loop able to proceed past the third seed, it reached `nurse"quote"` and found the
+renderer's contract genuinely broken:
+
+```
+rendered  'nurse"quote"'        -> child receives  nursequote
+```
+
+The owner would have searched a keyword they never typed, with nothing on screen to show it. That
+is worse than an error, and it is the same failure class as DEFECT A: a wrong value presented as
+a right one.
+
+Measured through real `powershell.exe`, all three renderings:
+
+| Rendering | Child receives |
+|---|---|
+| `'nurse"quote"'` — what `_ps_quote` emits | `nursequote` — both quotes dropped |
+| `"nurse` `` ` ``\`"quote…"` — double-quoted | three arguments |
+| `'nurse\"quote\"'` — backslash-escaped in the literal | `nurse"quote"` — byte-exact |
+
+**Refused, and the reason is a choice rather than an impossibility.** The third form works, so
+unlike the trailing backslash this value *is* renderable. Emitting it means carrying the C
+runtime's backslash-doubling rules inside a renderer whose job is a two-word keyword, and each of
+those rules would need its own Windows proof. A double quote is not part of any real Amazon search
+term. Owner decision, taken explicitly rather than assumed, recorded here so it can be reversed
+the same way: refuse.
+
+`unsupported_value()` now has **three** refusals. The docstrings state that this one is
+renderable-in-principle — a refusal that claims impossibility it has not got would be the same
+overstatement this document has corrected twice already.
+
+`DOUBLE_QUOTE_SEED` moves out of the execution corpus and is pinned out of it by name, next to
+`TRAILING_BACKSLASH_SEED`: a refused value inside the gate corpus fails the gate for a limitation
+the renderer is not allowed to fix.
+
+### What this changes about the five blockers
+
+Blocker 2 is closed — the three Windows-only tests ran, and pass. Blocker 4 is closed **for this
+shell**: bare `python` resolves to `.venv\Scripts\python.exe`, not the Microsoft Store alias, and
+it resolves identically under `powershell.exe -NoProfile`. Blockers 1, 3 and 5 stand: the capture
+script itself has still never completed, there is still no real `runs/T2` execution evidence, and
+this commit has had no independent re-audit.
+
+**Acceptance remains HOLD.** A test that has been made to pass is not a gate that has run.

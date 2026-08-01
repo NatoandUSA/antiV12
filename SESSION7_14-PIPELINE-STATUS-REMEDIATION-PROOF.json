@@ -174,7 +174,11 @@
     "revision_5_count": 64,
     "after_revision_5": "Ran 64 tests - OK (skipped=3)",
     "revision_6_count": 64,
-    "after_revision_6": "Ran 64 tests - OK (skipped=3)"
+    "after_revision_6": "Ran 64 tests - OK (skipped=3)",
+    "revision_7_count": 66,
+    "after_revision_7": "Ran 66 tests - OK (skipped=0)",
+    "revision_7_environment": "Windows 11, python=.venv\\Scripts\\python.exe 3.12.10, repo root, PYTHONDONTWRITEBYTECODE=1. Every count above was measured where the Windows-only tests CANNOT run, so none of them is comparable with this one and none of them becomes wrong: they describe a different set of executed tests. skipped=0 is the point of this revision.",
+    "revision_7_first_windows_result": "Ran 64 tests - FAILED (failures=2). Both Windows-only execution proofs failed on their first execution anywhere."
   },
   "audit_soundness_findings_reverified": {
     "correction": "C7",
@@ -310,8 +314,46 @@
       "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
     }
   },
-  "revision": 6,
-  "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. This revision responds to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims.",
+  "revision": 7,
+  "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. Revision 6 responded to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims. Revision 7 is the FIRST revision containing anything measured on Windows: see first_windows_execution.",
+  "first_windows_execution": {
+    "date": "2026-08-01",
+    "what_ran": "python -m unittest discover -s tests -p 'test*pipeline*status*.py' on Windows 11, where the three skipUnless(win32) tests execute for the first time since the file was written.",
+    "first_result": "Ran 64 tests - FAILED (failures=2)",
+    "final_result": "Ran 66 tests - OK (skipped=0)",
+    "defects_found": 2,
+    "prediction_check": "Section 9 predicted the capture script would need a first-run fix. It needed two, and the second was masked by the first -- the same shape as DEFECT A, where a fresher sibling masked a stale artifact.",
+    "defect_1": {
+      "id": "UNSATISFIABLE_EXECUTION_PROOF",
+      "severity": "test-only, but it disabled the gate's central proof",
+      "sites": ["test_windows_powershell_renderer_preserves_exact_seed", "test_windows_powershell_runs_the_real_next_command_shape"],
+      "defect": "Each asserted argv == ['--seed', seed] AND assertNotIn('PWNED', run.stdout) in the same body. Four corpus seeds contain PWNED literally, so a CORRECT renderer is exactly what makes the marker appear in the probe's argv echo. The two assertions could never both hold on any machine.",
+      "why_invisible": "It only ran under skipUnless(win32), and it had never run on Windows. A test that only runs on a machine you do not have is a test you have not run.",
+      "fix": "Assert the property actually meant: the probe prints exactly ONE line, so a second line is output PowerShell produced on its own. Strictly stronger than the marker check -- it catches an injected command that prints anything, and assertion 1 reads only the LAST line, so extra output above it previously hid.",
+      "regression_guard": "test_the_execution_proof_cannot_assert_the_marker_is_absent_from_stdout",
+      "guard_runs_on": "every platform, deliberately -- a guard that only ran on Windows would share the blind spot it guards against",
+      "guard_has_teeth": "Applied by AST to the pre-fix file it fires at lines 524 and 545; on the fixed file it returns []."
+    },
+    "defect_2": {
+      "id": "DOUBLE_QUOTE_SILENTLY_DROPPED",
+      "severity": "real product defect, same class as DEFECT A -- a wrong value presented as a right one",
+      "masked_by": "defect_1, which aborted the seed loop at index 2 before it reached this seed at index 3",
+      "defect": "_ps_quote renders nurse\"quote\" as 'nurse\"quote\"'; PowerShell 5.1 rebuilds the native command line without escaping the embedded quote and the C runtime reads it as a delimiter. The child receives nursequote. The owner would have searched a keyword they never typed, with nothing on screen to show it.",
+      "measured_renderings": [
+        {"rendered": "'nurse\"quote\"'", "child_receives": "nursequote", "note": "what _ps_quote emits today"},
+        {"rendered": "\"nurse`\\\"quote`\\\"\"", "child_receives": "three separate arguments", "note": "double-quoted rendering is worse"},
+        {"rendered": "'nurse\\\"quote\\\"'", "child_receives": "nurse\"quote\"", "note": "byte-exact -- so this value IS renderable"}
+      ],
+      "resolution": "REFUSED at the CLI boundary, as a third entry in unsupported_value(). Exit 2, structured UNSUPPORTED_VALUE, next_command null, no engine command in text mode -- verified end-to-end through the real shell.",
+      "refusal_is_a_choice_not_an_impossibility": "Unlike the trailing backslash, this value can be rendered exactly. Emitting it means carrying the C runtime's backslash-doubling rules inside a renderer whose job is a two-word keyword, each rule needing its own Windows proof. A double quote is not part of any real Amazon search term. The docstrings state this explicitly: a refusal claiming an impossibility it has not got would be the same overstatement this document has corrected twice.",
+      "owner_decision": "Taken explicitly by the owner on 2026-08-01, presented against the alternative of escaping. Recorded so it can be reversed the same way.",
+      "corpus_change": "DOUBLE_QUOTE_SEED moved out of ADVERSARIAL_SEEDS and pinned out of it by name beside TRAILING_BACKSLASH_SEED. A refused value inside the gate corpus fails the gate for a limitation the renderer is not allowed to fix.",
+      "single_quote_unaffected": "nurse's gift still renders 'nurse''s gift' and is still supported. The refusal is exactly as wide as the character."
+    },
+    "blast_radius": "core/pipeline_status.py and tests/test_pipeline_status.py. No other file in the repository references pipeline_status or unsupported_value.",
+    "boundary_tests": "Ran 47 tests - OK (test_amazon_boundary, test_network_policy, test_connectivity_policy)",
+    "not_evidence": "None of this is the Windows capture. The gate script itself has still never completed a run."
+  },
   "pushed_for_review": {
     "branch_only": true,
     "head": "631a491 at push time",
@@ -395,12 +437,21 @@
     "branch_push_authorized": true,
     "branch_pushed": true,
     "blockers": [
-      "Capture-PipelineStatusEvidence.ps1 has never been executed on Windows.",
-      "The three Windows-only tests are skipped here and must PASS on Windows.",
+      "Capture-PipelineStatusEvidence.ps1 has never completed a run.",
       "No real runs/T2 execution evidence.",
-      "Bare 'python' interpreter resolution not yet evidenced on the owner's Windows environment.",
       "Fresh independent re-audit of the final Windows-evidenced commit not yet completed."
-    ]
+    ],
+    "blockers_closed_at_revision_7": [
+      {
+        "was": "The three Windows-only tests are skipped here and must PASS on Windows.",
+        "now": "CLOSED. All three ran on Windows and pass: Ran 66 tests - OK (skipped=0). Two failed on first execution; see first_windows_execution."
+      },
+      {
+        "was": "Bare 'python' interpreter resolution not yet evidenced on the owner's Windows environment.",
+        "now": "CLOSED FOR THIS SHELL, and the scope matters. Bare 'python' resolves to D:\\...\\.venv\\Scripts\\python.exe (3.12.10), NOT the Microsoft Store alias under WindowsApps, and it resolves identically under 'powershell.exe -NoProfile' -- which is the closer approximation of a console the owner opens themselves. It is not evidence for a shell whose PATH differs, and the capture script re-checks it at run time rather than trusting this record."
+      }
+    ],
+    "blockers_count_note": "Five became three. The two closed are recorded above rather than deleted, so a re-auditor can see what changed and on what evidence."
   },
   "windows_capture": {
     "script": "Capture-PipelineStatusEvidence.ps1",

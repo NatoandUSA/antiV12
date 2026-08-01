@@ -192,6 +192,24 @@ class TestNextAction(Base):
         self.assertIsNone(P.next_action(self.rows(self.stage(produces=["A.json"], command="a"))))
 
 
+# Seeds chosen to break a renderer in a DIFFERENT way each. Shared by the platform-independent
+# shape tests and by the Windows execution proof, so the corpus cannot drift apart between them.
+ADVERSARIAL_SEEDS = (
+    "nurse sweatshirt",                 # spaces: the ordinary case that breaks unquoted
+    "nurse $5 gift",                    # $ expands inside a PowerShell DOUBLE-quoted string
+    "nurse'; Write-Host PWNED; #",      # closes a single-quoted literal, then injects
+    'nurse"quote"',                     # double quotes inside a single-quoted literal
+    "nurse > sentinel.txt",             # redirection: creates a file if quoting fails
+    "nurse | Write-Host PWNED",         # pipeline injection
+    "nurse; Write-Host PWNED",          # statement separator
+    "nurse & Write-Host PWNED",         # call operator / cmd-style separator
+    "nurse `n tab",                     # backtick: PowerShell's escape character
+    "nurse (sub) [idx] {blk}",          # grouping, index and script-block syntax
+    "nurse @splat %var !bang ^caret",   # splat, cmd var, delayed expansion, cmd escape
+    "-shirt",                           # leading dash: read as a parameter name if bare
+)
+
+
 class TestRendering(Base):
     def test_multi_word_seed_is_quoted(self):
         """Unquoted, `--seed nurse sweatshirt` silently becomes a different argument."""
@@ -302,6 +320,91 @@ class TestNoCommandWithoutARealSeed(Base):
         doc = self._json("--seed", "nurse sweatshirt")
         self.assertIn("'nurse sweatshirt'", doc["next_command"])
         self.assertFalse(doc["next_command_needs_seed"])
+
+
+class TestWindowsPowerShellExecution(Base):
+    """EXECUTION proof for the rendered command, not a shape assertion.
+
+    Everything else about `_ps_quote` checks the string it produces. That is an argument from
+    PowerShell's documented single-quoted-literal rule, not evidence. This class pastes the
+    production-rendered line into a real `powershell.exe` and reads back what the process
+    actually received in argv.
+
+    The probe is harmless: a Python script that prints its own argv as JSON and does nothing
+    else. Nothing here runs an engine, touches the workspace, or contacts anything.
+    """
+
+    def _probe(self):
+        path = os.path.join(self.ws, "argv_probe.py")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("import json, sys\nprint(json.dumps(sys.argv[1:]))\n")
+        return path
+
+    def test_the_seed_corpus_is_covered_by_the_shape_tests_on_every_platform(self):
+        """Runs everywhere, so a non-Windows CI still exercises the whole corpus. It proves the
+        renderer emits a single-quoted literal with the right escaping -- not that PowerShell
+        parses it back, which is what the Windows test below is for."""
+        for seed in ADVERSARIAL_SEEDS:
+            rendered = P._ps_quote(seed)
+            self.assertTrue(rendered.startswith("'") and rendered.endswith("'"), seed)
+            self.assertEqual(rendered[1:-1].replace("''", "\x00"), seed.replace("'", "\x00"), seed)
+
+    @unittest.skipUnless(sys.platform == "win32",
+                         "Windows PowerShell execution proof; the renderer targets that shell")
+    def test_windows_powershell_renderer_preserves_exact_seed(self):
+        exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        # On Windows this must EXIST. Skipping here would let a missing shell read as proof.
+        self.assertTrue(os.path.isfile(exe), f"powershell.exe not found at {exe}")
+
+        probe = self._probe()
+        ps1 = os.path.join(self.ws, "paste.ps1")
+        sentinel = os.path.join(self.ws, "sentinel.txt")
+
+        for seed in ADVERSARIAL_SEEDS:
+            # Rendered by the PRODUCTION helper. If _ps_quote is wrong, this line is wrong.
+            line = "{py} {probe} --seed {seed}".format(
+                py=P._ps_quote(sys.executable), probe=P._ps_quote(probe), seed=P._ps_quote(seed))
+            with open(ps1, "w", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+
+            run = subprocess.run(
+                [exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1],
+                capture_output=True, text=True, cwd=self.ws)
+
+            self.assertEqual(run.returncode, 0, f"{seed!r}: {run.stderr}")
+            argv = json.loads(run.stdout.strip().splitlines()[-1])
+            # 1. the seed arrives as ONE argument, 2. with its exact value
+            self.assertEqual(argv, ["--seed", seed], f"{seed!r} was mangled: {argv!r}")
+            # 3. no extra command executed
+            self.assertNotIn("PWNED", run.stdout, seed)
+            self.assertNotIn("PWNED", run.stderr, seed)
+            # 4. no redirection-created file
+            self.assertFalse(os.path.exists(sentinel), f"{seed!r} created {sentinel}")
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell execution proof")
+    def test_windows_powershell_runs_the_real_next_command_shape(self):
+        """The same proof through `_fmt_command` rather than `_ps_quote` directly, so the
+        template-substitution path is covered too, workspace argument included."""
+        exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        self.assertTrue(os.path.isfile(exe), exe)
+        probe = self._probe()
+        seed = "nurse'; Write-Host PWNED; # $5"
+        line = P._fmt_command(
+            "{py} {probe} --workspace {{workspace}} --seed {{seed}}".format(
+                py=P._ps_quote(sys.executable), probe=P._ps_quote(probe)),
+            self.ws, seed)
+        ps1 = os.path.join(self.ws, "paste2.ps1")
+        with open(ps1, "w", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        run = subprocess.run(
+            [exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1],
+            capture_output=True, text=True, cwd=self.ws)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(json.loads(run.stdout.strip().splitlines()[-1]),
+                         ["--workspace", self.ws, "--seed", seed])
+        self.assertNotIn("PWNED", run.stdout)
 
 
 class TestOutputPatternSemantics(Base):

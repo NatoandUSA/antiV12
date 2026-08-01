@@ -200,7 +200,6 @@ ADVERSARIAL_SEEDS = (
     "nurse sweatshirt",                 # spaces: the ordinary case that breaks unquoted
     "nurse $5 gift",                    # $ expands inside a PowerShell DOUBLE-quoted string
     "nurse'; Write-Host PWNED; #",      # closes a single-quoted literal, then injects
-    'nurse"quote"',                     # double quotes inside a single-quoted literal
     "nurse > sentinel.txt",             # redirection: creates a file if quoting fails
     "nurse | Write-Host PWNED",         # pipeline injection
     "nurse; Write-Host PWNED",          # statement separator
@@ -226,6 +225,18 @@ ADVERSARIAL_SEEDS = (
 # the wrong value, so putting this in the gate corpus would fail the acceptance test for a
 # PowerShell limitation the renderer cannot fix. Shape asserted; behaviour documented.
 TRAILING_BACKSLASH_SEED = "nurse gift\\"
+
+# Also outside the execution corpus, and it was INSIDE it until the first Windows run of this
+# file. `'nurse"quote"'` arrives at the child as `nursequote` -- PowerShell 5.1 rebuilds the
+# native command line without escaping an embedded quote and the C runtime eats it. The seed sat
+# in the corpus unexercised from the day it was written, because the only test that would have
+# caught it is skipped everywhere except the machine it had never run on.
+#
+# It differs from TRAILING_BACKSLASH_SEED in one way worth keeping straight: that value cannot be
+# rendered exactly, this one can (`'nurse\\"quote\\"'` was measured byte-exact). It is refused by
+# choice -- see `unsupported_value()` -- so the shape test below asserts the REFUSAL, not a
+# round-trip.
+DOUBLE_QUOTE_SEED = 'nurse"quote"'
 
 
 class TestRendering(Base):
@@ -453,6 +464,35 @@ class TestWindowsPowerShellExecution(Base):
         self.assertEqual(looped, {"ADVERSARIAL_SEEDS"},
                          f"every seed loop must iterate the one corpus; found {looped}")
         self.assertNotIn(TRAILING_BACKSLASH_SEED, ADVERSARIAL_SEEDS)
+        # A refused value in the execution corpus would fail the gate for a limitation the
+        # renderer is not allowed to fix. Both refused seeds are pinned out of it by name.
+        self.assertNotIn(DOUBLE_QUOTE_SEED, ADVERSARIAL_SEEDS)
+
+    def test_the_execution_proof_cannot_assert_the_marker_is_absent_from_stdout(self):
+        """Regression for the defect the FIRST Windows run of this file found, and it runs on
+        EVERY platform on purpose.
+
+        The two execution proofs asserted `PWNED not in run.stdout` while also requiring the seed
+        echoed back verbatim. Four corpus seeds carry that marker literally, so the two could
+        never hold at once: a correct renderer is what makes the marker appear. The proof was
+        unsatisfiable by construction, and it stayed invisible for as long as it was skipped --
+        which was everywhere, because it had never run on Windows. The property that actually
+        matters is that no EXTRA OUTPUT appeared, which is what those tests count now.
+
+        Asserted by AST rather than by substring, so this test cannot match its own source.
+        """
+        marked = [s for s in ADVERSARIAL_SEEDS if "PWNED" in s]
+        self.assertTrue(marked, "the corpus must keep at least one injection-marker seed")
+        cls = next(n for n in ast.parse(inspect.getsource(sys.modules[__name__])).body
+                   if isinstance(n, ast.ClassDef) and n.name == "TestWindowsPowerShellExecution")
+        unsatisfiable = [n for n in ast.walk(cls)
+                         if isinstance(n, ast.Call)
+                         and isinstance(n.func, ast.Attribute) and n.func.attr == "assertNotIn"
+                         and len(n.args) >= 2
+                         and isinstance(n.args[0], ast.Constant) and n.args[0].value == "PWNED"
+                         and isinstance(n.args[1], ast.Attribute) and n.args[1].attr == "stdout"]
+        self.assertEqual(unsatisfiable, [],
+                         "an unsatisfiable stdout assertion came back; count the lines instead")
 
     def test_a_trailing_backslash_renders_correctly_even_though_powershell_mangles_it(self):
         """Known limitation, pinned so it cannot be mistaken for an untested case. The literal is
@@ -520,8 +560,14 @@ class TestWindowsPowerShellExecution(Base):
             # 1. one argument, 2. exact value -- no normalising, no trimming
             self.assertEqual(argv, ["--seed", seed], f"{seed!r} was mangled: {argv!r}")
             self.assertEqual(len(argv), 2, argv)
-            # 3. no extra command executed
-            self.assertNotIn("PWNED", run.stdout, seed)
+            # 3. no extra command executed. The probe prints exactly ONE line -- its argv echo --
+            #    so a second line is output PowerShell produced on its own. Substring-matching
+            #    "PWNED" in stdout cannot work here and never could: four corpus seeds carry that
+            #    marker literally and assertion 1 requires it echoed back verbatim. Counting lines
+            #    is also stricter -- it catches an injected command that prints anything at all,
+            #    and assertion 1 reads only the LAST line, so extra output above it would hide.
+            printed = [ln for ln in run.stdout.splitlines() if ln.strip()]
+            self.assertEqual(len(printed), 1, f"{seed!r} produced extra stdout: {printed!r}")
             self.assertNotIn("PWNED", run.stderr, seed)
             # 4. no filesystem side effect ANYWHERE: added, removed, or modified. A single
             #    sentinel check would miss a redirect whose target name came from the seed.
@@ -542,7 +588,10 @@ class TestWindowsPowerShellExecution(Base):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(json.loads(run.stdout.strip().splitlines()[-1]),
                          ["--workspace", self.ws, "--seed", seed])
-        self.assertNotIn("PWNED", run.stdout)
+        # No extra command executed -- by line count, not by marker substring. This seed carries
+        # the marker too, so its absence from stdout would contradict the exact echo above.
+        printed = [ln for ln in run.stdout.splitlines() if ln.strip()]
+        self.assertEqual(len(printed), 1, f"extra stdout: {printed!r}")
 
 
 class TestInputHygiene(Base):
@@ -574,6 +623,22 @@ class TestInputHygiene(Base):
         self.assertIn("backslash", P.unsupported_value("nurse gift\\"))
         self.assertIn("backslash", P.unsupported_value("nurse'gift\\"))
         self.assertEqual(P.unsupported_value("nurse gift"), "")
+
+    def test_a_double_quote_is_refused_not_silently_dropped(self):
+        """Found by the FIRST Windows execution of the gate, 2026-08-01 -- a real defect that had
+        been masked by a second one in the test that should have caught it.
+
+        `'nurse"quote"'` reaches the child as `nursequote`. The owner would have searched a
+        keyword they never typed and had no way to see it, which is worse than an error.
+
+        Refused by choice rather than by impossibility: `'nurse\\"quote\\"'` was measured to arrive
+        byte-exact, so the assertion here is that the tool declines to render a value it COULD
+        render, and says why. The refusal is exactly as wide as the character -- a single quote,
+        the far more likely one in a real keyword, is still escaped and supported."""
+        self.assertIn("double quote", P.unsupported_value(DOUBLE_QUOTE_SEED))
+        self.assertIn("double quote", P.unsupported_value('say "hi"', "workspace"))
+        self.assertEqual(P.unsupported_value("nurse's gift"), "")      # single quote: supported
+        self.assertEqual(P._ps_quote("nurse's gift"), "'nurse''s gift'")
 
     def test_the_workspace_is_validated_on_the_same_terms_as_the_seed(self):
         """It is substituted into the same printed line and carries the same hazards."""

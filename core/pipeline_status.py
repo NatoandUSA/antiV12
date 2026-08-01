@@ -259,13 +259,16 @@ def _ps_quote(value):
 
     A leading `-` also forces quoting: bare, PowerShell reads it as a parameter name.
 
-    TWO LIMITS THIS FUNCTION CANNOT FIX, because they are not about quoting. Both are REFUSED
+    THREE LIMITS THIS FUNCTION CANNOT FIX, because they are not about quoting. All are REFUSED
     by `unsupported_value()` at the CLI boundary rather than emitted and hoped over -- a value
     the tool cannot render exactly must not be rendered at all:
 
       * a control character corrupts the printed line itself, whatever the quoting;
       * a quote-requiring value that ENDS in a backslash is mangled by PowerShell's native
-        argument marshalling, downstream of this string.
+        argument marshalling, downstream of this string;
+      * a value containing a DOUBLE QUOTE loses it to the same marshalling. Unlike the two
+        above it is renderable in principle -- see `unsupported_value()` for why the tool
+        refuses it anyway rather than carry the C runtime's escaping rules.
     """
     text = str(value)
     if not needs_quoting(text):
@@ -292,7 +295,7 @@ def unsupported_value(value, label="seed"):
     and emits nothing -- silently shipping a value that arrives at the engine changed is the one
     outcome worse than refusing.
 
-    Two refusals, both demonstrated rather than assumed:
+    Three refusals, each demonstrated rather than assumed:
 
     1. CONTROL CHARACTERS. A seed pasted out of a spreadsheet can carry a newline or tab. Printed,
        it splits the command across lines and the second line reads as a separate command. No
@@ -304,6 +307,19 @@ def unsupported_value(value, label="seed"):
        and the argument runs on into the next one. A BARE value ending in a backslash -- `nurse\\`
        with no space -- is NOT affected: unquoted, there is no quote for the runtime to mis-parse,
        and it is therefore still supported. The refusal is exactly as wide as the defect.
+
+    3. A DOUBLE QUOTE. Found by the FIRST Windows execution of the gate, 2026-08-01, on a seed the
+       corpus had carried unexercised since the file was written. `'nurse"quote"'` reaches the
+       child as `nursequote`: PowerShell 5.1 rebuilds the native command line without escaping an
+       embedded quote, and the C runtime then reads it as a delimiter. Measured, all three forms:
+       the single-quoted literal loses both quotes; a double-quoted rendering splits the value
+       into three arguments.
+
+       Refused BY CHOICE, not by impossibility -- and the distinction is the point. `'nurse\\"quote\\"'`
+       was measured to arrive byte-exact, so this value is renderable. Emitting it means owning the
+       C runtime's backslash-doubling rules inside a renderer whose job is a two-word keyword, and
+       every one of those rules would need its own Windows proof. A quote is not part of any real
+       Amazon search term, so the trade is one unrealistic seed against a quoting engine.
     """
     text = str(value)
     bad = unsupported_characters(text)
@@ -314,6 +330,9 @@ def unsupported_value(value, label="seed"):
         return (f"{label} ends in a backslash and also needs quoting, which Windows PowerShell "
                 f"cannot pass to a program unchanged\nremove the trailing backslash "
                 f"(a {label} ending in a backslash with no spaces or symbols is fine)")
+    if '"' in text:
+        return (f'{label} contains a double quote, which Windows PowerShell drops on the way to '
+                f'a program\nretype the {label} without it')
     return ""
 
 

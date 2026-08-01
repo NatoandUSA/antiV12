@@ -6,7 +6,8 @@
     "AMZ_FBM_PUSH_AND_HANDOFF_FEEDBACK_2026-08-01.json",
     "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json",
     "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1 (reviewer draft, 2026-08-01)",
-    "AMZ_FBM_PIPELINE_STATUS_REV3_SCRIPT_REVIEW_AND_WINDOWS_GATE_2026-08-01.json"
+    "AMZ_FBM_PIPELINE_STATUS_REV3_SCRIPT_REVIEW_AND_WINDOWS_GATE_2026-08-01.json",
+    "AMZ_FBM_PIPELINE_STATUS_REV4_PREWINDOWS_REVIEW_2026-08-01.json"
   ],
   "generated_at": "2026-08-01",
   "note": "Serves two purposes: the repo's REPORT.md + PROOF.json acceptance-evidence convention, and the owner's standing instruction to export every feedback/review response as JSON (see response_export).",
@@ -21,7 +22,8 @@
     "631a491": "revision 1 report + proof - the reviewed candidate",
     "2894269": "review corrections C1-C5, C7",
     "018af92": "Windows PowerShell execution test + corrected capture script",
-    "c3c4af2": "bug hunt -- eight defects, one blocking the Windows gate"
+    "c3c4af2": "bug hunt -- eight defects, one blocking the Windows gate",
+    "855f4f4": "pre-Windows review: refuse unrenderable values, prove the call operator"
   },
   "merged": false,
   "acceptance_tag": null,
@@ -164,9 +166,11 @@
     "target_only_passing_tests": "NONE",
     "revision_3_count": 52,
     "after_revision_3": "Ran 52 tests - OK (skipped=2)",
-    "skips": "The 2 skips are the Windows-only execution proofs. Correct on macOS, an ACCEPTANCE BLOCKER on Windows - the capture script throws if either skips there.",
+    "skips": "The 3 skips are the Windows-only proofs: the call-operator hazard, the argv round-trip, and the _fmt_command path. Correct on macOS, an ACCEPTANCE BLOCKER on Windows.",
     "revision_4_count": 58,
-    "after_revision_4": "Ran 58 tests - OK (skipped=2)"
+    "after_revision_4": "Ran 58 tests - OK (skipped=2)",
+    "revision_5_count": 64,
+    "after_revision_5": "Ran 64 tests - OK (skipped=3)"
   },
   "audit_soundness_findings_reverified": {
     "correction": "C7",
@@ -205,7 +209,7 @@
   },
   "known_limitations": [
     "BLOCKING - NO REAL-ARTIFACT RUN. runs/T2 does not exist on this macOS clone. The before/after is a synthetic workspace driven through the real CLI: it proves the logic and the owner-facing output, not behaviour against the owner's actual files.",
-    "BLOCKING - PRINTED COMMANDS NOT YET EXECUTED IN THE SHELL THEY NAME. The test that will do it now exists (test_windows_powershell_renderer_preserves_exact_seed) but SKIPS on macOS. Until it passes on Windows, 'the seed arrives as one argument with its exact value' is an argument from PowerShell's documented literal-string rule, not evidence.",
+    "BLOCKING - PRINTED COMMANDS NOT YET EXECUTED IN THE SHELL THEY NAME. Three Windows-only tests now exist and all SKIP on macOS. Until they pass on Windows, exact-value round-trip is an argument from PowerShell's documented rules, not evidence.",
     "The pre-existing ResourceWarning in test_module_makes_no_network_or_amazon_call was fixed in 2894269 while that test was already being edited for C7. Revision 1 said it was left alone.",
     "The audit's separate stage-3 observation (ASIN-CANDIDATES newer than ASIN-BATCHES) concerns a single-output stage and is untouched.",
     "Windows mtime granularity not measured on NTFS. The equal-mtime boundary is pinned as READY.",
@@ -262,7 +266,7 @@
     "next_steps": [
       {
         "order": 1,
-        "action": "On Windows, from the remediation branch: .\\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan",
+        "action": ".\\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan  on Windows, from the remediation branch. Nothing further should be changed here: no known blocker remains, and the review's policy is to stop speculative work at that point.",
         "blocking": true
       },
       {
@@ -302,7 +306,7 @@
       "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
     }
   },
-  "revision": 4,
+  "revision": 5,
   "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. This revision responds to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims.",
   "pushed_for_review": {
     "branch_only": true,
@@ -549,6 +553,58 @@
       "probe prints machine-readable JSON only, no logging or banner",
       "temp files isolated in a mkdtemp workspace removed on failure via addCleanup",
       "missing powershell.exe FAILS on Windows rather than skipping"
+    ]
+  },
+  "prewindows_review_disposition": {
+    "verdict_received": "STRONG_PREWINDOWS_HARDENING_ACCEPTANCE_STILL_BLOCKED",
+    "overrule_judgment_returned": "CORRECT",
+    "policy_adopted": "Do not knowingly run a deterministic defective gate. A concrete, reproducible defect found before the environment run may be fixed with a focused test and a branch-only commit. Do not continue speculative refactoring once no known blocker remains.",
+    "reversal": {
+      "topic": "quote-required trailing backslash",
+      "my_previous_position": "Document it as a PowerShell native-marshalling limitation below the renderer and exclude it from the execution corpus.",
+      "status": "WRONG_AND_REVERSED",
+      "why": "Calling it a shell limitation does not remove it from the paste-safety contract. A value that looks supported and arrives at the engine changed is exactly the failure class this work exists to close.",
+      "decision": "Option B - reject with a structured error and test the refusal.",
+      "implementation": "unsupported_value() refuses a value that BOTH requires quoting AND ends in a backslash. Exit 2, no command emitted, structured UNSUPPORTED_VALUE in --json with next_command null.",
+      "refusal_is_exactly_as_wide_as_the_defect": "A bare 'nurse\\' needs no quoting, so there is no quote for the C runtime to mis-parse, and it stays SUPPORTED (exit 0). Only the quote-required form is refused.",
+      "workspace_validated_on_the_same_terms": true
+    },
+    "holes_the_contracts_found_in_my_own_fixes": [
+      {
+        "id": "H1",
+        "from": "B1 required_contract",
+        "hole": "The Windows test used sys.executable, which may or may not contain a space on any given machine, so the `&` fix could have passed without ever being exercised.",
+        "class": "Same as the D2 skipped-test gate: a check that can silently not check.",
+        "fix": "test_a_quoted_executable_needs_the_call_operator_to_run_at_all uses a CONTROLLED fixture under 'dir with space' and asserts BOTH directions - without `&` PowerShell echoes the path, with `&` it runs. A test that only checked the fix would never show the hazard is real."
+      },
+      {
+        "id": "H2",
+        "from": "B3 required_contract",
+        "hole": "I fixed the redirected-stdout encoding trap in the capture script and LEFT IT LIVE IN THE TEST. The argv probe used print(), and its stdout there is a pipe, so on Windows the non-ASCII seed would have raised UnicodeEncodeError inside the probe and the failure would have read as a renderer defect.",
+        "fix": "The probe encodes UTF-8 bytes itself, independent of the environment it is measured in."
+      }
+    ],
+    "also_implemented": [
+      "C0 controls AND DEL enumerated and tested individually; NUL caught before any subprocess is built, which is the only place it can be caught",
+      "a refused seed emits no command and reports structured UNSUPPORTED_VALUE in --json with next_command null",
+      ".ps1 asserted to carry a UTF-8 BOM",
+      "rendered line asserted to start with '& '",
+      "filesystem side-effect check made absolute rather than an allow-list",
+      "Invoke-Capture returns exactly one [pscustomobject] with an integer ExitCode rather than relying on position",
+      "an EMPTY runs/T2 is refused instead of satisfying the read-only differential trivially",
+      "the trailing-backslash refusal captured as Windows evidence in its own right"
+    ],
+    "authoritative_encoding_mechanism": {
+      "chosen": "PYTHONIOENCODING=utf-8",
+      "rejected": [
+        "PYTHONUTF8=1",
+        "-X utf8"
+      ],
+      "why": "UTF-8 mode also changes the FILESYSTEM encoding, and this tool's entire job is reading filenames. Changing how they decode would alter the measurement. Narrower is correct: stdio only. Per the review's caution against stacking overrides, this is the only encoding override set."
+    },
+    "table_invariants_added": [
+      "test_no_two_declared_outputs_of_a_stage_can_match_the_same_file - required-all is defeated if one artifact fills two slots, which the _resolve overlap guard does not cover",
+      "test_every_command_starts_with_a_bare_literal_token - this is WHY no printed command needs '&'. The production contract is satisfied structurally rather than by adding noise to every printed line, and the test is the tripwire if a template ever leads with a substituted value."
     ]
   }
 }

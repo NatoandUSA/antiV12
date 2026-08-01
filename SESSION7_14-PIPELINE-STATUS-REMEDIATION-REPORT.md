@@ -433,9 +433,9 @@ bare-safe, so it renders **unquoted** and there is no quote for the C runtime to
 hazard needs a value that **both** requires quoting **and** ends in a backslash —
 `nurse gift\` → `'nurse gift\'` → `"nurse gift\"`. Both cases are now pinned by test.
 
-It stays **out** of the execution corpus on purpose: it is a PowerShell native-marshalling
-limitation *below* the renderer, and failing the acceptance gate on something `_ps_quote`
-cannot fix would be wrong.
+> **Superseded by §11.** I then argued it should stay *out* of the execution corpus because it
+> is a PowerShell limitation below the renderer. The pre-Windows review rejected that, correctly,
+> and it is now **refused** at the CLI boundary instead.
 
 ### Review items also implemented
 
@@ -448,3 +448,85 @@ rather than by counting source occurrences, which counted its own assertion · `
 
 `Ran 58 tests — OK (skipped=2)`. Module invariants re-verified after the changes: imports
 unchanged, `os.*` still `{listdir, path}`, source ASCII-only.
+
+---
+
+## 11. Pre-Windows review — one reversal, two holes in my own fixes
+
+The 2026-08-01 pre-Windows review confirmed the overrule was justified and set a policy worth
+keeping: *do not knowingly run a deterministic defective gate; fix a concrete reproducible
+defect with a focused test; stop once no known blocker remains.* It also landed one decision
+against me and two contract items that found holes in what I had already "fixed".
+
+### The reversal: trailing backslash is now REFUSED
+
+I argued it should be documented as a PowerShell limitation below the renderer and left out of
+the corpus. **That was wrong, and the review said so plainly:** calling it a shell limitation
+does not remove it from the paste-safety contract. A value that looks supported and arrives at
+the engine changed is precisely the failure class this entire line of work exists to close.
+
+Option B, implemented: [`unsupported_value()`](core/pipeline_status.py#L279) refuses a value
+that **both** requires quoting **and** ends in a backslash. Exit 2, no command emitted, and in
+`--json` a structured `UNSUPPORTED_VALUE` error with `next_command: null`.
+
+The refusal is **exactly as wide as the defect** — a bare `nurse\` needs no quoting, so there is
+no quote for the C runtime to mis-parse, and it stays supported:
+
+```
+--seed 'nurse\'        exit 0   supported, renders bare
+--seed 'nurse gift\'   exit 2   "ends in a backslash and also needs quoting..."
+```
+
+The workspace is validated on the same terms. It is substituted into the same printed line and
+carries the same hazard.
+
+### B1's contract found a hole in my own B1 fix
+
+The Windows test used `sys.executable` — which **may or may not contain a space on any given
+machine**, so the `&` fix could have passed without ever being exercised. That is the same class
+of mistake as the D2 skipped-test gate: a check that can silently not check.
+
+`test_a_quoted_executable_needs_the_call_operator_to_run_at_all` now uses a controlled fixture
+under `dir with space` and asserts **both directions** — without `&` PowerShell echoes the path
+instead of running it; with `&` it runs. A test that only checked the fix would never show the
+hazard is real.
+
+### B3's contract found the same bug still live inside the test
+
+I fixed the redirected-stdout encoding trap in the capture script and **left it in the test.**
+The argv probe used `print()`, and its stdout there is a pipe, not a console — so on Windows the
+`café naïve müg` seed would have raised `UnicodeEncodeError` *inside the probe*, and the failure
+would have read as a renderer defect. The probe now encodes UTF-8 bytes itself and no longer
+depends on the environment it is being measured in.
+
+### Also implemented
+
+C0 controls **and** DEL enumerated and tested individually, NUL included and caught before any
+subprocess is built · refused seed emits no command, structured error in `--json` · `.ps1`
+asserted to carry a UTF-8 BOM · rendered line asserted to start with `& ` · filesystem
+side-effect check made absolute rather than an allow-list · `Invoke-Capture` returns exactly one
+`[pscustomobject]` with an integer `ExitCode` rather than relying on position · an **empty
+`runs/T2` is refused** instead of satisfying the read-only differential trivially · the
+trailing-backslash refusal captured as Windows evidence in its own right.
+
+**`PYTHONIOENCODING` is the single authoritative encoding mechanism**, per the review's caution
+against stacking overrides. `PYTHONUTF8=1` and `-X utf8` were rejected deliberately: UTF-8 mode
+also changes the *filesystem* encoding, and this tool's entire job is reading filenames —
+changing how they decode would alter the measurement.
+
+### Two table invariants replace assumptions with proof
+
+* **No two declared outputs of a stage can be satisfied by one file.** Required-all is defeated
+  if a single artifact fills two slots, and the `_resolve` overlap guard does not cover that.
+* **Every shipped command starts with a bare literal `python`** — which is *why* no printed
+  command needs `&`. The production contract is satisfied structurally rather than by adding
+  noise to every printed line, and the test is the tripwire if a template ever leads with a
+  substituted value.
+
+`Ran 64 tests — OK (skipped=3)`. Module invariants unchanged: imports, `os.*` `{listdir, path}`,
+ASCII-only source.
+
+### Unchanged
+
+Acceptance is **HOLD**. The script has still never executed and the three Windows-only tests
+have still never run. Nothing here is evidence — it is a better-instrumented candidate.

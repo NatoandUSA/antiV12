@@ -1,7 +1,13 @@
 # HANDOFF — CURRENT
 
 **Updated:** 2026-08-01 · **Branch:** `hotfix-phase7-14-stop-exit-verification`
-**main:** `a68c147` (untouched) · **Merged:** NO · **Acceptance tag:** NONE
+**Composite 7.14 launcher hotfix `56f4339`: MERGED** into `main` at merge commit `0a84fd3`,
+following an independent acceptance audit. The merge honoured the audited scope exactly —
+`569a72d`, `4c5d362` and `5a9b495` are in `main`; `d163ff0` (pipeline-status) is **not**, and
+still needs its own audit. **Acceptance tag: NONE yet** — nothing points at `56f4339` or `main`;
+the 8 existing `phase7-14-*` tags all predate this work.
+Verify: `git merge-base --is-ancestor 56f4339 main && echo merged` ·
+`git tag --points-at 56f4339` · `git merge-base --is-ancestor d163ff0 main || echo out-of-scope`
 
 This is the LIVING handoff. Each superseded version is frozen as
 `HANDOFF-<date>-<commit>.md` rather than overwritten, so review history survives —
@@ -293,10 +299,39 @@ gate stays — the UI should say exactly which economics fields are missing, not
 | Commits | 36 docs / 29 feat / 14 fix / 12 test |
 | Empty packages | `analytics/`, `feasibility/`, `positioning/`, `reports/` — 0 lines |
 
-Full suite: `python -m unittest discover -s tests` → 4668 ran, 1 failure, 4 skipped, ~19 min.
+**Historical, pre-environment-repair, in place:** `python -m unittest discover -s tests` →
+4668 ran, 1 failure, 4 skipped, ~19 min. **DO NOT QUOTE AS THE CURRENT OR CANONICAL SUITE
+RESULT.** It was produced before the environment repair, under a different interpreter and
+dependency state, so it is not comparable with anything measured since. It is kept, not deleted,
+because earlier documents cite it.
 The single failure is `test_199e_no_acceptance_tag_yet`, **permanently stale** (it asserts no
 `phase7-14-*` acceptance tag exists; three do, all predating this branch). Two prior audits
 recommended retiring it. Not a regression.
+
+No single absolute pass count replaces the historical figure above, deliberately — a bare count
+with no interpreter attached is what made it misleading in the first place. For authoritative
+figures use the repaired-environment, matched-worktree, **exact-ID differentials** in
+`SESSION7_14-NULL-START-TOKEN-HOTFIX-REPORT.md` and
+`SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-REPORT.md`, and record the interpreter alongside any
+number you quote. Note that a fresh detached worktree does not contain the gitignored `runs/T2/`
+fixtures, so its collection and skip totals legitimately differ from an in-place run; worktree
+figures are only ever compared worktree-to-worktree.
+
+**Known Windows loopback flakes — do not read these as regressions.** Two nodes fail
+intermittently under full-suite load and pass in isolation:
+`test_phase7_13_unified_owner_console.TestBody.test_52_request_size_bounded` and
+`test_phase7_4_owner_dashboard.HttpSecurity.test_post_to_unknown_endpoint_rejected`, both with
+`ConnectionAbortedError: [WinError 10053]`. Classification:
+**`PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE`**. An independent audit of the composite 7.14
+hotfix observed `test_52` **once** on the target; the console source and its test are identical
+git blobs across baseline and target, 12/12 isolated runs passed on both trees, a second target
+full-suite sample did not reproduce it, and prior accepted reports already record the same
+signature. Confirm cheaply in that order — identical blobs, isolation, second sample — before
+treating either as a regression. Full detail in
+`SESSION7_14-NULL-START-TOKEN-HOTFIX-REPORT.md` and
+`SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-REPORT.md`.
+
+The suite remains **non-green**: the known non-passing tests above remain non-passing.
 
 Known verification weakness: an accepted browser gate scored 44/44 on a console where 226 of
 259 controls were unclickable. Judge this codebase by real use, not by its proof volume.

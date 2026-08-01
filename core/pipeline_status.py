@@ -259,21 +259,55 @@ def _ps_quote(value):
 
     A leading `-` also forces quoting: bare, PowerShell reads it as a parameter name.
 
-    TWO LIMITS THIS FUNCTION CANNOT FIX, because they are not about quoting:
+    TWO LIMITS THIS FUNCTION CANNOT FIX, because they are not about quoting. Both are REFUSED
+    by `unsupported_value()` at the CLI boundary rather than emitted and hoped over -- a value
+    the tool cannot render exactly must not be rendered at all:
 
-      * A control character (newline, tab, NUL) inside a value corrupts the printed line
-        itself, whatever the quoting. `unsupported_characters()` rejects those at the CLI
-        boundary instead, so a corrupted command is never printed.
-      * A value ending in an odd number of backslashes is mangled by PowerShell's NATIVE
-        argument marshalling, downstream of this string: PowerShell hands `'a\'` to the child
-        as `"a\"`, and the Microsoft C runtime reads `\"` as an escaped quote. The literal this
-        function emits is correct; what the child receives is not. Documented, not silently
-        worked around -- see the report's known limitations.
+      * a control character corrupts the printed line itself, whatever the quoting;
+      * a quote-requiring value that ENDS in a backslash is mangled by PowerShell's native
+        argument marshalling, downstream of this string.
     """
     text = str(value)
     if text and not text.startswith("-") and all(c in _BARE_SAFE for c in text):
         return text
     return "'" + text.replace("'", "''") + "'"
+
+
+def needs_quoting(value):
+    text = str(value)
+    return not (text and not text.startswith("-") and all(c in _BARE_SAFE for c in text))
+
+
+def unsupported_value(value, label="seed"):
+    """Why `value` cannot be rendered as a pasteable argument, or '' if it can.
+
+    The tool promises the owner an exact command. Where it cannot keep that promise it says so
+    and emits nothing -- silently shipping a value that arrives at the engine changed is the one
+    outcome worse than refusing.
+
+    Two refusals, both demonstrated rather than assumed:
+
+    1. CONTROL CHARACTERS. A seed pasted out of a spreadsheet can carry a newline or tab. Printed,
+       it splits the command across lines and the second line reads as a separate command. No
+       quoting reaches this; it is the printed text that is broken.
+
+    2. A QUOTE-REQUIRING VALUE ENDING IN A BACKSLASH. Windows PowerShell 5.1 wraps such an
+       argument for a native child without escaping the trailing backslash, so `nurse gift\\`
+       goes out as `"nurse gift\\"`; the Microsoft C runtime then reads `\\"` as an escaped quote
+       and the argument runs on into the next one. A BARE value ending in a backslash -- `nurse\\`
+       with no space -- is NOT affected: unquoted, there is no quote for the runtime to mis-parse,
+       and it is therefore still supported. The refusal is exactly as wide as the defect.
+    """
+    text = str(value)
+    bad = unsupported_characters(text)
+    if bad:
+        return (f"{label} contains characters that cannot be printed in a command: {bad}\n"
+                f"retype the {label} without them")
+    if text.endswith("\\") and needs_quoting(text):
+        return (f"{label} ends in a backslash and also needs quoting, which Windows PowerShell "
+                f"cannot pass to a program unchanged\nremove the trailing backslash "
+                f"(a {label} ending in a backslash with no spaces or symbols is fine)")
+    return ""
 
 
 def unsupported_characters(value):
@@ -367,13 +401,21 @@ def main(argv=None):
         print(f"workspace not found: {a.workspace}", file=sys.stderr)
         return 2
 
-    # Reject rather than print a corrupted command. A seed pasted out of a spreadsheet can carry
-    # a newline or tab, and no amount of quoting keeps a printed command line intact through one.
-    if a.seed:
-        bad = unsupported_characters(a.seed)
-        if bad:
-            print(f"seed contains characters that cannot be printed in a command: {bad}\n"
-                  f"retype the seed keyword without them", file=sys.stderr)
+    # Refuse rather than print a command whose values will not arrive intact. The workspace is
+    # checked too: it is substituted into the same printed line and carries the same hazards.
+    for label, value in (("seed", a.seed), ("workspace", a.workspace)):
+        reason = unsupported_value(value, label) if value else ""
+        if reason:
+            if a.json:
+                # A machine consumer must get a structured refusal, not a stderr string it would
+                # have to scrape -- and next_command stays null so nothing can be run from it.
+                print(json.dumps({"error": "UNSUPPORTED_VALUE", "field": label,
+                                  "detail": reason.replace("\n", " "),
+                                  "workspace": a.workspace, "target_shell": TARGET_SHELL,
+                                  "next": None, "next_command": None,
+                                  "next_command_needs_seed": False},
+                                 indent=2, sort_keys=True))
+            print(reason, file=sys.stderr)
             return 2
 
     rows = evaluate(a.workspace)

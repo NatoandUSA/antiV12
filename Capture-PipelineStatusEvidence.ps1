@@ -49,10 +49,19 @@
        a console, which is exactly what Tee-Object does. A non-ASCII seed would have raised
        UnicodeEncodeError and aborted the capture on an encoding detail. PYTHONIOENCODING=utf-8.
 
+    D9 Invoke-Capture now returns exactly ONE [pscustomobject] with an integer ExitCode. A
+       PowerShell function returns everything on its success stream, so routing display output to
+       the host is necessary but not sufficient -- the contract has to be a single object, not a
+       positional value that happens to be last.
+
+    D10 An EMPTY runs/T2 satisfied the read-only differential trivially and proved nothing about
+       behaviour on real artifacts. That is now refused rather than reported as evidence.
+
     Also: StrictMode Latest throws on a missing JSON property, so Get-JsonProperty reports which
     property was absent instead; origin/<branch> existence is checked before it is dereferenced;
-    stages 5 and 11 are recorded by name in the summary; and -FullSuite / -ConnectivityScan close
-    B5 and B6 in the same sitting when asked.
+    stages 5 and 11 are recorded by name in the summary; the trailing-backslash REFUSAL is
+    captured as evidence in its own right; and -FullSuite / -ConnectivityScan close B5 and B6 in
+    the same sitting when asked.
 
     NOT CHECKED HERE, deliberately: nothing in this script authorizes a merge or an acceptance
     tag, and it refuses to run if one already points at HEAD.
@@ -104,7 +113,13 @@ function Get-JsonProperty {
 }
 
 function Invoke-Capture {
-    <# D1. Native stderr must not become a terminating error. Returns the real exit code. #>
+    <# D1/D6. Native stderr must not become a terminating error, and the success stream must
+       carry EXACTLY one object out of here.
+
+       A PowerShell function returns everything written to the success stream, so a bare
+       `... | Tee-Object` would combine the captured lines with the intended exit code and the
+       caller's `$Rc` would be an array whose last element happens to be an integer. Display
+       output goes to the host; one [pscustomobject] with an integer ExitCode comes back. #>
     param(
         [Parameter(Mandatory = $true)][string]$File,
         [Parameter(Mandatory = $true)][string[]]$Arguments
@@ -112,10 +127,14 @@ function Invoke-Capture {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        # Out-Host, not a bare Tee-Object: without it every captured line becomes part of this
-        # function's return value and the caller's exit-code variable is an array of output.
         & python @Arguments 2>&1 | Tee-Object -FilePath $File | Out-Host
-        return $LASTEXITCODE
+        $code = $LASTEXITCODE
+        if ($null -eq $code) { $code = -1 }        # no output and no exit code is still a result
+        return [pscustomobject]@{
+            ExitCode = [int]$code
+            File     = $File
+            Command  = "python $($Arguments -join ' ')"
+        }
     }
     finally {
         $ErrorActionPreference = $previous
@@ -189,6 +208,10 @@ $Env:PYTHONDONTWRITEBYTECODE = "1"     # keeps __pycache__ out of the git-status
 # to a console -- which is exactly what Tee-Object does. A seed containing a non-ASCII character,
 # e.g. "cafe" with an acute accent, would then raise UnicodeEncodeError and abort the capture on
 # an encoding detail rather than on anything about the tool.
+# PYTHONIOENCODING is the AUTHORITATIVE mechanism here and the only one set. PYTHONUTF8=1 and
+# -X utf8 were rejected deliberately: UTF-8 mode also changes the FILESYSTEM encoding, and this
+# tool's entire job is listing filenames -- changing how they decode would alter the measurement.
+# Narrower is correct: stdio only.
 $Env:PYTHONIOENCODING = "utf-8"
 
 [ordered]@{
@@ -207,6 +230,11 @@ $Env:PYTHONIOENCODING = "utf-8"
 } | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "metadata.json")
 
 $BeforeSnapshot = @(Get-TreeSnapshot -Root $RunsT2)
+# B7. An EMPTY runs/T2 would satisfy the read-only differential trivially and prove nothing about
+# the tool's behaviour on real artifacts. Refuse to call that business evidence.
+if ($BeforeSnapshot.Count -eq 0) {
+    throw "runs/T2 exists but contains no files. An empty workspace is not acceptance evidence."
+}
 $BeforeSnapshot | ConvertTo-Json -Depth 6 |
     Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-before.json")
 
@@ -218,10 +246,10 @@ $AdversarialText = Join-Path $EvidenceDir "pipeline-status-adversarial-seed.txt"
 $TestOutput      = Join-Path $EvidenceDir "pipeline-status-tests.txt"
 $BoundaryOutput  = Join-Path $EvidenceDir "boundary-tests.txt"
 
-$TextRc = Invoke-Capture -File $TextOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed)
+$TextRc = (Invoke-Capture -File $TextOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed)).ExitCode
 if ($TextRc -ne 0) { throw "Text pipeline-status command failed with exit code $TextRc." }
 
-$JsonRc = Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed, "--json")
+$JsonRc = (Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed, "--json")).ExitCode
 if ($JsonRc -ne 0) { throw "JSON pipeline-status command failed with exit code $JsonRc." }
 try { $JsonDoc = Get-Content -Raw -LiteralPath $JsonOutput | ConvertFrom-Json }
 catch { throw "The --json output is not valid JSON: $($_.Exception.Message)" }
@@ -240,9 +268,9 @@ if ($null -eq $Stage5 -or $null -eq $Stage11) {
 }
 
 # D3 -- C5 evidence: with NO seed there must be no pasteable engine command anywhere.
-$NoSeedTextRc = Invoke-Capture -File $NoSeedText -Arguments @("-m", "core.pipeline_status")
+$NoSeedTextRc = (Invoke-Capture -File $NoSeedText -Arguments @("-m", "core.pipeline_status")).ExitCode
 if ($NoSeedTextRc -ne 0) { throw "No-seed pipeline-status command failed with exit code $NoSeedTextRc." }
-$NoSeedJsonRc = Invoke-Capture -File $NoSeedJson -Arguments @("-m", "core.pipeline_status", "--json")
+$NoSeedJsonRc = (Invoke-Capture -File $NoSeedJson -Arguments @("-m", "core.pipeline_status", "--json")).ExitCode
 if ($NoSeedJsonRc -ne 0) { throw "No-seed JSON command failed with exit code $NoSeedJsonRc." }
 $NoSeedText_Content = Get-Content -Raw -LiteralPath $NoSeedText
 if ($NoSeedText_Content -match "<seed-keyword>") {
@@ -257,22 +285,43 @@ if ($null -ne $NoSeedCommand -and $NoSeedNeeds) {
 
 # D4 -- C4 evidence end-to-end: an adversarial seed against the real workspace.
 $AdversarialSeed = "nurse'; Write-Host PWNED; # `$5 > sentinel.txt"
-$AdvRc = Invoke-Capture -File $AdversarialText -Arguments @("-m", "core.pipeline_status", "--seed", $AdversarialSeed)
+$AdvRc = (Invoke-Capture -File $AdversarialText -Arguments @("-m", "core.pipeline_status", "--seed", $AdversarialSeed)).ExitCode
 if ($AdvRc -ne 0) { throw "Adversarial-seed command failed with exit code $AdvRc." }
 if (Test-Path -LiteralPath (Join-Path $Repo "sentinel.txt")) {
     throw "C4 REGRESSION: rendering an adversarial seed created sentinel.txt."
 }
 
-$FocusedRc = Invoke-Capture -File $TestOutput -Arguments @("-m", "unittest", "discover", "-s", "tests", "-p", "test*pipeline*status*.py", "-v")
+# Evidence for the option-B decision taken under the 2026-08-01 pre-Windows review: a value the
+# tool cannot pass through PowerShell unchanged must be REFUSED, not emitted with a caveat.
+$RefusedText = Join-Path $EvidenceDir "pipeline-status-refused-seed.txt"
+$RefusedJson = Join-Path $EvidenceDir "pipeline-status-refused-seed.json"
+$RefusedRc = (Invoke-Capture -File $RefusedText -Arguments @("-m", "core.pipeline_status", "--seed", "nurse gift\")).ExitCode
+if ($RefusedRc -ne 2) {
+    throw "A quote-requiring trailing-backslash seed must exit 2, got $RefusedRc."
+}
+if ((Get-Content -Raw -LiteralPath $RefusedText) -match "python -m research") {
+    throw "A refused seed emitted an engine command. It must emit none."
+}
+$RefusedJsonRc = (Invoke-Capture -File $RefusedJson -Arguments @("-m", "core.pipeline_status", "--json", "--seed", "nurse gift\")).ExitCode
+if ($RefusedJsonRc -ne 2) { throw "Refused seed in --json mode must exit 2, got $RefusedJsonRc." }
+$RefusedDoc = Get-Content -Raw -LiteralPath $RefusedJson | ConvertFrom-Json
+if ((Get-JsonProperty -Object $RefusedDoc -Name "error") -ne "UNSUPPORTED_VALUE") {
+    throw "Refused seed did not report a structured UNSUPPORTED_VALUE error."
+}
+if ($null -ne (Get-JsonProperty -Object $RefusedDoc -Name "next_command")) {
+    throw "A refused seed left next_command non-null."
+}
+
+$FocusedRc = (Invoke-Capture -File $TestOutput -Arguments @("-m", "unittest", "discover", "-s", "tests", "-p", "test*pipeline*status*.py", "-v")).ExitCode
 if ($FocusedRc -ne 0) { throw "Pipeline-status focused tests failed with exit code $FocusedRc." }
 
-$BoundaryRc = Invoke-Capture -File $BoundaryOutput -Arguments @("-m", "unittest", "tests.test_amazon_boundary", "tests.test_network_policy", "tests.test_connectivity_policy", "-v")
+$BoundaryRc = (Invoke-Capture -File $BoundaryOutput -Arguments @("-m", "unittest", "tests.test_amazon_boundary", "tests.test_network_policy", "tests.test_connectivity_policy", "-v")).ExitCode
 if ($BoundaryRc -ne 0) { throw "Boundary tests failed with exit code $BoundaryRc." }
 
 $ConnectivityRc = $null
 if ($ConnectivityScan) {                                   # B6
     $ConnectivityOutput = Join-Path $EvidenceDir "connectivity-scan.txt"
-    $ConnectivityRc = Invoke-Capture -File $ConnectivityOutput -Arguments @("scripts/connectivity_scan.py")
+    $ConnectivityRc = (Invoke-Capture -File $ConnectivityOutput -Arguments @("scripts/connectivity_scan.py")).ExitCode
     if ($ConnectivityRc -ne 0) { throw "Connectivity scan failed with exit code $ConnectivityRc." }
 }
 
@@ -280,7 +329,7 @@ $FullSuiteRc = $null
 if ($FullSuite) {                                          # B5 -- roughly 19 minutes
     Write-Host "Running the full suite. This takes ~19 minutes." -ForegroundColor Yellow
     $FullSuiteOutput = Join-Path $EvidenceDir "full-suite.txt"
-    $FullSuiteRc = Invoke-Capture -File $FullSuiteOutput -Arguments @("-m", "unittest", "discover", "-s", "tests")
+    $FullSuiteRc = (Invoke-Capture -File $FullSuiteOutput -Arguments @("-m", "unittest", "discover", "-s", "tests")).ExitCode
     # NOT thrown on: the known-stale test_199e_no_acceptance_tag_yet fails on main too, so a
     # nonzero code here is not by itself a regression. It is recorded for the differential and
     # the re-auditor compares it against the same run on the audited baseline.
@@ -349,6 +398,8 @@ $Verdict = if ($RanAndPassed -and -not $TreeChanged -and $StatusAfter.Count -eq 
     no_seed_text_exit_code         = $NoSeedTextRc
     no_seed_json_exit_code         = $NoSeedJsonRc
     adversarial_seed_exit_code     = $AdvRc
+    refused_seed_exit_code         = $RefusedRc
+    refused_seed_json_exit_code    = $RefusedJsonRc
     focused_test_exit_code         = $FocusedRc
     boundary_test_exit_code        = $BoundaryRc
     runs_T2_changed                = $TreeChanged

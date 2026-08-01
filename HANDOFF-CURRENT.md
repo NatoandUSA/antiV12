@@ -298,6 +298,22 @@ The single failure is `test_199e_no_acceptance_tag_yet`, **permanently stale** (
 `phase7-14-*` acceptance tag exists; three do, all predating this branch). Two prior audits
 recommended retiring it. Not a regression.
 
+**Known Windows loopback flakes — do not read these as regressions.** Two nodes fail
+intermittently under full-suite load and pass in isolation:
+`test_phase7_13_unified_owner_console.TestBody.test_52_request_size_bounded` and
+`test_phase7_4_owner_dashboard.HttpSecurity.test_post_to_unknown_endpoint_rejected`, both with
+`ConnectionAbortedError: [WinError 10053]`. Classification:
+**`PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE`**. An independent audit of the composite 7.14
+hotfix observed `test_52` **once** on the target; the console source and its test are identical
+git blobs across baseline and target, 12/12 isolated runs passed on both trees, a second target
+full-suite sample did not reproduce it, and prior accepted reports already record the same
+signature. Confirm cheaply in that order — identical blobs, isolation, second sample — before
+treating either as a regression. Full detail in
+`SESSION7_14-NULL-START-TOKEN-HOTFIX-REPORT.md` and
+`SESSION7_14-STOP-EXIT-VERIFICATION-HOTFIX-REPORT.md`.
+
+The suite remains **non-green**: the known non-passing tests above remain non-passing.
+
 Known verification weakness: an accepted browser gate scored 44/44 on a console where 226 of
 259 controls were unclickable. Judge this codebase by real use, not by its proof volume.
 

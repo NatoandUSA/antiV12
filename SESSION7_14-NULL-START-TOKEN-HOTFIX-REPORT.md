@@ -203,6 +203,10 @@ share none of its members.
 **Verdict: `BASELINE_EQUIVALENT_OUTSIDE_CHANGED_MODULE`. 7.14 regressions: none.**
 +30 tests, +0 problems.
 
+The `0` above counts **persistent** target-only nodes. For the one transient node a later
+independent audit observed once under full-suite load, and why it is not a regression, see
+*Known Windows loopback flakes — disclosure preserved* below.
+
 Structural corroboration, independent of the run: an exhaustive search of every `.py`, `.ps1`,
 `.bat`, `.json`, `.md` and `.js` in the repository finds `phase7_owner_launcher` referenced only by
 the module itself, `tests/test_phase7_14_owner_usability_pilot_readiness.py`, and the three
@@ -280,6 +284,42 @@ Remaining 20, identical on both sides: `test_session5d_certification` (7+1),
 > the modules above fail for want of that workspace rather than for want of correct code. Worktree
 > figures are only ever compared worktree-to-worktree. An absolute "the suite is green" number would
 > need a separate in-place run on the repaired environment and must be reported as its own figure.
+
+#### Known Windows loopback flakes — disclosure preserved
+
+The `0` cells above, and both `BASELINE_EQUIVALENT_OUTSIDE_CHANGED_MODULE` verdicts, mean **zero
+PERSISTENT target-only non-passing nodes** on the canonical exact-ID differential. They do **not**
+mean that no node was ever observed once. One was, and it is recorded here rather than dropped.
+
+| | |
+|---|---|
+| Node observed | `test_phase7_13_unified_owner_console.TestBody.test_52_request_size_bounded` |
+| Documented sibling, same failure class | `test_phase7_4_owner_dashboard.HttpSecurity.test_post_to_unknown_endpoint_rejected` |
+| Signature | `ConnectionAbortedError: [WinError 10053]` |
+| Observation | appeared **once**, on the target, under full-suite load |
+| Classification | **`PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE`** |
+
+Evidence that this is not a launcher regression:
+
+* `production/phase7_unified_owner_console.py` and `tests/test_phase7_13_unified_owner_console.py`
+  are **identical git blobs** at baseline and target — the code under test and the test itself are
+  the same bytes, so a regression there is impossible by construction. The whole merge scope
+  changes exactly two code files, and neither is the console;
+* **12/12 isolated runs passed on both trees**;
+* a **second full-suite sample on the target did not reproduce it**, and returned zero target-only
+  non-passing nodes;
+* prior **accepted** reports already record this same node and this same
+  `ConnectionAbortedError` / `WinError 10053` class as a load-dependent loopback flake — one of
+  them measuring it failing in isolation on *both* sides, not just the feature side.
+
+Mechanism: the test POSTs an oversized body and expects HTTP 413. The server correctly rejects the
+body and closes; when it closes before the client has finished writing, Windows aborts the
+connection and the client never reads the response. That is pure timing, which is why it surfaces
+under full-suite load and vanishes in isolation.
+
+**This suite is not green and is not reported as green** — the known non-passing tests listed above
+remain non-passing. A single appearance of either node should be read as this flake class and
+confirmed the cheap way first: identical blobs, then isolation, then a second full-suite sample.
 
 ### 3.7 `dashboard/app.py` — pre-existing retirement evidence ONLY
 

@@ -515,6 +515,40 @@ exactly. The failure set, the error count and the skip count are all unchanged.
 
 **This suite is not green, and is not reported as green.**
 
+#### Known Windows loopback flakes — disclosure preserved
+
+`BASELINE_EQUIVALENT_NONZERO` means the differential found **zero PERSISTENT target-only
+non-passing nodes**. It does not mean no node was ever observed once. A later independent
+acceptance audit of the composite hotfix at `56f4339` did observe one, and it is recorded here
+rather than dropped.
+
+| | |
+|---|---|
+| Node observed | `test_phase7_13_unified_owner_console.TestBody.test_52_request_size_bounded` |
+| Documented sibling, same failure class | `test_phase7_4_owner_dashboard.HttpSecurity.test_post_to_unknown_endpoint_rejected` |
+| Signature | `ConnectionAbortedError: [WinError 10053]` |
+| Observation | appeared **once**, on the target, under full-suite load |
+| Classification | **`PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE`** |
+
+Evidence that this is not a launcher regression:
+
+* `production/phase7_unified_owner_console.py` and `tests/test_phase7_13_unified_owner_console.py`
+  are **identical git blobs** at baseline and target — same bytes for both the code under test and
+  the test itself, so a regression there is impossible by construction;
+* **12/12 isolated runs passed on both trees**;
+* a **second full-suite sample on the target did not reproduce it**, and returned zero target-only
+  non-passing nodes;
+* prior **accepted** reports already record this node and this `WinError 10053` class as a
+  load-dependent loopback flake, one of them measuring it in isolation on *both* sides.
+
+Mechanism: the test POSTs an oversized body expecting HTTP 413. The server correctly rejects and
+closes; if it closes before the client finishes writing, Windows aborts the connection and the
+client never reads the response — timing, hence load-dependent and invisible in isolation.
+
+The suite remains non-green because the known non-passing tests recorded in this report remain
+non-passing. Read a single appearance of either node as this flake class, and confirm it cheaply —
+identical blobs, then isolation, then a second sample — before calling it a regression.
+
 ### 5.2 The known stale failure, reported honestly
 
 `test_199e_no_acceptance_tag_yet` **fails, and is expected to fail.** Classification:

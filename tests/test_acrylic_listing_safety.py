@@ -115,15 +115,31 @@ class AcrylicClaimVocabulary(unittest.TestCase):
         r = PA.audit_listing(_listing("tumbler", title="Made to last tumbler"))
         self.assertTrue(any("made to last" in m for m in _unsupported(r)))
 
-    def test_a_verified_claim_still_publishes_the_phrase(self):
-        """This is a check on EVIDENCE, not a banned-words list. If the owner can verify it, it
-        publishes -- otherwise the gate would just teach people to route around it."""
-        phrases = PA.unsafe_claim_phrases_for("acrylic")
-        self.assertIn("dishwasher safe", phrases)
+    def _dishwasher_failures(self, evidence_block=None):
         listing = _listing("acrylic", title="Acrylic tray dishwasher safe")
-        listing["verified_claim_texts"] = ["dishwasher safe"]
-        r = PA.audit_listing(listing)
-        self.assertIsInstance(r["hard_failures"], list)
+        if evidence_block is not None:
+            listing["claim_evidence"] = evidence_block
+        return [m for m in _unsupported(PA.audit_listing(listing)) if "dishwasher" in m]
+
+    def test_a_verified_claim_publishes_the_phrase_and_an_unrelated_one_does_not(self):
+        """This is a check on EVIDENCE, not a banned-words list. If the owner can verify it, it
+        publishes -- otherwise the gate would only teach people to route around it.
+
+        The important half is the third assertion. A reviewer asked whether VERIFIED is a
+        category-wide bypass: does holding *any* verified claim unlock *every* guarded phrase?
+        Measured, it does not -- the match is against the verified claim TEXT, so evidence for
+        "made in vietnam" leaves "dishwasher safe" blocked.
+
+        An earlier version of this test set `verified_claim_texts`, which the auditor does not
+        read, and asserted only that the result was a list. It passed while proving nothing.
+        """
+        self.assertIn("dishwasher safe", PA.unsafe_claim_phrases_for("acrylic"))
+        self.assertTrue(self._dishwasher_failures(),
+                        "with no evidence the phrase must be blocked")
+        self.assertEqual(self._dishwasher_failures({"verified": [{"text": "dishwasher safe"}]}), [],
+                         "a VERIFIED claim naming the phrase must publish it")
+        self.assertTrue(self._dishwasher_failures({"verified": [{"text": "made in vietnam"}]}),
+                        "an UNRELATED verified claim must not unlock a guarded acrylic phrase")
 
 
 class AcrylicAPlusIsWithheld(unittest.TestCase):

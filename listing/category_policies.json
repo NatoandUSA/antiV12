@@ -56,6 +56,24 @@
       "unsupported_catalog_fields": [],
       "policy_source": "Owner working value for jewelry, aligned to the Amazon US non-media title rule effective 2026-07-27. Verify your exact category in Seller Central.",
       "policy_verified_at": "2026-07-16"
+    },
+    {
+      "schema_version": "1.0.0",
+      "marketplace": "US",
+      "product_category": "acrylic",
+      "category_identifier": "US:acrylic",
+      "title_hard_limit": 75,
+      "title_recommended_target": 65,
+      "bullet_count": 5,
+      "bullet_character_limit": 500,
+      "description_character_limit": 2000,
+      "backend_byte_ceiling": 249,
+      "item_highlights_max_count": 5,
+      "item_highlights_character_limit": 125,
+      "supported_catalog_fields": ["title", "bullet_points", "description", "backend_search_terms", "item_highlights"],
+      "unsupported_catalog_fields": [],
+      "policy_source": "Owner working value for acrylic, aligned to the Amazon US non-media title rule effective 2026-07-27. The LIMITS here match the other categories deliberately - they are the same Amazon rule, not a claim that acrylic behaves like apparel. What differs for acrylic is the CLAIM vocabulary, which lives in page_auditor.UNSAFE_CLAIM_PHRASES_BY_CATEGORY. Verify your exact category in Seller Central.",
+      "policy_verified_at": "2026-08-02"
     }
   ],
   "fallback_policy": {

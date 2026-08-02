@@ -114,6 +114,66 @@ except Exception:
 
 # curated claim phrases that assert a product fact and therefore require verified backing. A phrase here
 # is a hard failure ONLY when it appears in visible copy without a VERIFIED claim carrying the same text.
+# ---------------------------------------------------------------- category-specific claim risk
+#
+# UNSAFE_CLAIM_PHRASES below is the shared vocabulary, and it grew up around embroidered apparel:
+# comfort, fading, stitching, fit. Acrylic fails in completely different ways, and none of its
+# failure language was listed anywhere -- measured on 2026-08-02, a draft reading
+# "Shatterproof acrylic keychain, unbreakable and will not yellow, dishwasher safe" tripped ZERO
+# unsafe-claim checks.
+#
+# These are not marketing adjectives. Each one is a DURABILITY OR SAFETY claim about a brittle
+# plastic, and the owner sells acrylic today:
+#
+#   * shatterproof / unbreakable  -- acrylic cracks and shatters on hard impact. A safety claim
+#     about a product that can produce sharp edges is the kind that gets a listing pulled.
+#   * won't yellow / UV proof     -- acrylic yellows under prolonged UV. This is a lifetime claim
+#     nobody can support from a supplier listing.
+#   * scratch proof               -- acrylic scratches more easily than glass, not less.
+#   * dishwasher / microwave safe -- a heat claim. Acrylic deforms well below dishwasher
+#     temperatures, and this one has a plausible injury path.
+#   * food safe / BPA free        -- a regulatory claim requiring documentation the owner does
+#     not have from a print supplier.
+#
+# Every phrase remains publishable when a VERIFIED claim backs it -- that is the existing
+# mechanism and it is unchanged. What this fixes is acrylic language passing UNCHECKED because
+# nobody had written it down.
+UNSAFE_CLAIM_PHRASES_BY_CATEGORY = {
+    "acrylic": (
+        # impact / breakage -- the safety claim class
+        "shatterproof", "shatter proof", "shatter resistant", "unbreakable", "break proof",
+        "break resistant", "impact resistant", "virtually indestructible", "indestructible",
+        "will not crack", "wont crack", "never cracks", "crack proof",
+        # optical lifetime
+        "will not yellow", "wont yellow", "never yellows", "yellow resistant", "non yellowing",
+        "uv proof", "uv resistant", "fade proof", "will not warp", "wont warp",
+        # surface
+        "scratch proof", "scratch resistant", "scratch free",
+        # heat / cleaning -- injury and ruin paths
+        "dishwasher safe", "microwave safe", "oven safe", "heat resistant", "heat proof",
+        "top rack safe",
+        # regulatory / contact
+        "food safe", "food grade", "bpa free", "non toxic", "child safe", "baby safe",
+        "toy safe", "medical grade",
+        # optical quality asserted as fact
+        "crystal clear", "optically clear", "glass like clarity", "clearer than glass",
+        # material substitution
+        "real glass", "genuine glass", "tempered",
+    ),
+}
+
+
+def unsafe_claim_phrases_for(category):
+    """Shared unsafe phrases plus anything specific to this product category.
+
+    Additive on purpose. An acrylic listing must still not claim "made to last"; it must ALSO not
+    claim "shatterproof". A category that swapped the vocabulary instead of extending it would
+    quietly drop the shared protections.
+    """
+    extra = UNSAFE_CLAIM_PHRASES_BY_CATEGORY.get((category or "").strip().lower(), ())
+    return UNSAFE_CLAIM_PHRASES + tuple(extra)
+
+
 UNSAFE_CLAIM_PHRASES = (
     # comfort / softness (never inferred from material or measurements)
     "soft and comfortable", "comfortable fit", "soft against the skin", "buttery soft",
@@ -285,14 +345,16 @@ def _audit_keywords(a, listing, copy_tokens, backend, keyword_source, results):
     results["keyword_results"] = kw
 
 
-def _audit_claims(a, listing, copy_text, copy_tokens, claim_evidence, results):
+def _audit_claims(a, listing, copy_text, copy_tokens, claim_evidence, results, category=None):
     cr = {"unsupported": [], "owner_review_in_copy": [], "prohibited": [], "unresolved_placeholders": [],
           "missing_lineage": []}
     verified_norm = _verified_texts(listing, claim_evidence)
     verified_tokens = verified_norm.split()
 
     # unsupported factual claims: an unsafe phrase present in copy but not in any verified claim text.
-    for phrase in UNSAFE_CLAIM_PHRASES:
+    # The vocabulary is category-aware: acrylic fails as a brittle plastic, not as a garment, and
+    # none of its durability or safety language was listed before 2026-08-02.
+    for phrase in unsafe_claim_phrases_for(category):
         pt = _norm(phrase).split()
         if _contains_phrase(copy_tokens, pt) and not _contains_phrase(verified_tokens, pt):
             cr["unsupported"].append(phrase)
@@ -1006,7 +1068,8 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
                f"item_highlights {len(item_highlights)} chars > {ITEM_HIGHLIGHTS_MAX}")
 
     _audit_keywords(a, listing, copy_tokens, listing.get("backend") or "", keyword_source, results)
-    _audit_claims(a, listing, copy_text, copy_tokens, claim_evidence, results)
+    _audit_claims(a, listing, copy_text, copy_tokens, claim_evidence, results,
+                  category=policy.product_category)
     _audit_title(a, listing, policy, results)
     _audit_bullets(a, listing, claim_evidence, results)
     _audit_description(a, listing, results)

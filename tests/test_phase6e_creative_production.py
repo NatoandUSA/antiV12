@@ -105,14 +105,27 @@ class TestDependencies(Phase6EBase):
                 CPP.load_phase6e_dependencies(ws)
 
     def test_upstream_artifacts_not_modified(self):
+        """Writes 6E and proves 6A-6D are untouched -- in a CLONE, never the real run.
+
+        This test used to pass `workspace_dir=RUN`, so proving that 6E generation leaves upstream
+        alone was done by generating 6E *into the owner's real workspace*. It guarded 6A-6D and
+        clobbered 6E, the one stage it did not check, with `completed_at="t"`.
+
+        That is exactly the `"t"` found in the real STAGE-6E-MANIFEST.json on 2026-08-02. The
+        clone helper directly above already existed and says "so write / tamper tests never touch
+        the real run"; this test simply did not use it.
+        """
+        parent = tempfile.mkdtemp(prefix="6e-upstream-")
+        self.addCleanup(shutil.rmtree, parent, ignore_errors=True)
+        ws = _clone_workspace(os.path.join(parent, "T2"))
         before = {}
         for stage in ("6A", "6B", "6C", "6D"):
-            d = os.path.join(RUN, "phase6", stage)
+            d = os.path.join(ws, "phase6", stage)
             for f in os.listdir(d):
                 p = os.path.join(d, f)
                 if os.path.isfile(p):
                     before[p] = CPP._file_sha256(p)
-        CPP.write_phase6e_artifacts(CPP.assemble_phase6e(RUN), workspace_dir=RUN,
+        CPP.write_phase6e_artifacts(CPP.assemble_phase6e(ws), workspace_dir=ws,
                                     started_at="t", completed_at="t")
         for p, h in before.items():
             self.assertEqual(CPP._file_sha256(p), h, f"upstream artifact changed: {p}")

@@ -193,6 +193,35 @@ class TestNextAction(Base):
         touch(os.path.join(self.ws, "A.json"), self.t0)
         self.assertIsNone(P.next_action(self.rows(self.stage(produces=["A.json"], command="a"))))
 
+    def test_a_stale_stage_is_offered_and_never_skipped(self):
+        """`evaluate` returning STALE is pinned by five tests. The layer that SURFACES it was
+        pinned by NONE -- every case above uses only MISSING, BLOCKED and READY -- so
+        `next_action` could be changed to ignore STALE with the entire suite still green, and the
+        owner would be told everything is up to date over a stale stage. That is precisely the
+        failure the multi-output remediation exists to prevent, reintroduced one layer higher.
+        Found by mutation testing, not by reading.
+        """
+        touch(os.path.join(self.ws, "A.json"), self.t0)
+        touch(os.path.join(self.ws, "OUT.json"), self.t0)
+        touch(os.path.join(self.ws, "IN.json"), self.t0 + 100)          # newer than the output
+        rows = self.rows(self.stage(n=1, produces=["A.json"], command="a"),
+                         self.stage(n=2, produces=["OUT.json"], needs=["IN.json"], command="b"))
+        self.assertEqual(rows[1]["state"], P.STALE)
+        nxt = P.next_action(rows)
+        self.assertIsNotNone(nxt, "a STALE stage must be offered: STALE is the only signal this "
+                                  "module derives, and skipping it silently discards it")
+        self.assertEqual(nxt["n"], 2)
+
+    def test_render_never_claims_up_to_date_while_a_stage_is_stale(self):
+        """The same defect at the surface the owner actually reads."""
+        touch(os.path.join(self.ws, "OUT.json"), self.t0)
+        touch(os.path.join(self.ws, "IN.json"), self.t0 + 100)
+        rows = self.rows(self.stage(n=1, produces=["OUT.json"], needs=["IN.json"], command="c"))
+        out = P.render(rows, self.ws, seed="nurse sweatshirt")
+        text = out if isinstance(out, str) else "\n".join(out)
+        self.assertNotIn("Every stage is up to date", text)
+        self.assertIn("stale", text)
+
 
 # Seeds chosen to break a renderer in a DIFFERENT way each. Shared by the platform-independent
 # shape tests and by the Windows execution proof, so the corpus cannot drift apart between them.
@@ -1019,6 +1048,45 @@ class TestSafety(Base):
                 head = st.command.split()[0]
                 self.assertEqual(head, "python", f"stage {st.n} leads with {head!r}")
                 self.assertNotIn("{", head, st.command)
+
+    def test_every_printed_command_satisfies_its_target_module_cli(self):
+        """This module's ENTIRE job is printing the command to run next, and nothing checked that
+        those commands run. `test_every_command_starts_with_a_bare_literal_token` above inspects
+        the FIRST token only, which a command missing its required positional also passes.
+
+        Measured when this test was written: 7 of 12 printed commands failed with argparse exit 2
+        because the template omitted the workspace positional the target module declares -- among
+        them the first command a fresh workspace emits, and the command the multi-output
+        staleness remediation sends the owner to after correctly detecting STALE.
+
+        The workspace is deliberately a path that does NOT exist, so a module whose CLI contract
+        IS satisfied fails on the missing directory rather than doing real work. Only an argparse
+        contract failure is reported here.
+        """
+        missing_ws = os.path.join(self.ws, "no-such-workspace")
+        env = {**os.environ, "PYTHONPATH": ROOT, "PYTHONDONTWRITEBYTECODE": "1"}
+        broken = []
+        for st in P.STAGES:
+            if not st.command:
+                continue
+            argv = ["nurse sweatshirt" if t == "{seed}" else
+                    missing_ws if t == "{workspace}" else t
+                    for t in st.command.split()]
+            run = subprocess.run([sys.executable] + argv[1:], cwd=self.ws, env=env,
+                                 capture_output=True, text=True, timeout=120)
+            blob = (run.stderr or "") + (run.stdout or "")
+            # Every way a printed command can be malformed, not just the one that was shipped.
+            # A missing positional was the live defect; a command naming a module that does not
+            # exist is exactly as broken, and the first version of this test did not catch it --
+            # measured by mutating stage 11 to a nonexistent module and watching this pass.
+            for symptom in ("the following arguments are required", "unrecognized arguments",
+                            "No module named", "invalid choice", "expected one argument"):
+                if symptom in blob:
+                    last = [ln for ln in blob.strip().splitlines() if ln.strip()][-1]
+                    broken.append(f"  stage {st.n:>2} | {st.command}\n       -> {last.strip()}")
+                    break
+        self.assertEqual(broken, [], "printed commands that cannot run as printed:\n"
+                                     + "\n".join(broken))
 
     def test_json_mode_is_valid_json(self):
         out = subprocess.run([sys.executable, "-m", "scripts.pipeline_status",

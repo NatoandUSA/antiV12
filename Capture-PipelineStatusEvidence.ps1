@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Captures the Windows-side acceptance evidence for core/pipeline_status.py.
+    Captures the Windows-side acceptance evidence for scripts/pipeline_status.py.
 
 .DESCRIPTION
     Read-only. Runs nothing that writes to runs/T2 and proves it with a SHA256 tree snapshot
@@ -63,7 +63,7 @@
        the Microsoft Store alias stub under WindowsApps, which opens the Store rather than
        running Python, or to an interpreter without this repository's dependencies. The script
        now resolves it, refuses the Store alias by path, proves it can import
-       core.pipeline_status from the repo, and records the path and version. The printed command
+       scripts.pipeline_status from the repo, and records the path and version. The printed command
        is only as good as what that name resolves to.
 
     D12 FOUND BY RUNNING IT. The captured file merges stdout and stderr (D1/D6), so it is not
@@ -294,9 +294,9 @@ if ($PythonPath -like "*\WindowsApps\*") {
     throw "`python` resolves to the Microsoft Store alias at $PythonPath, which opens the Store rather than running Python. The printed commands would not work for the owner."
 }
 $PythonVersion = (& python --version 2>&1 | Out-String).Trim()
-& python -c "import core.pipeline_status" | Out-Host
+& python -c "import scripts.pipeline_status" | Out-Host
 if ($LASTEXITCODE -ne 0) {
-    throw "The resolved interpreter at $PythonPath cannot import core.pipeline_status from $Repo."
+    throw "The resolved interpreter at $PythonPath cannot import scripts.pipeline_status from $Repo."
 }
 
 $Seed = Read-Host "Enter the real T2 seed keyword"
@@ -350,7 +350,7 @@ $Env:PYTHONIOENCODING = "utf-8"
 #
 # Layer 2, application validation against an EXACT argv with no shell in the path, is not
 # duplicated here: tests/test_pipeline_status.py already does it via
-# subprocess.run([sys.executable, "-m", "core.pipeline_status", ...]). Repeating it in PowerShell
+# subprocess.run([sys.executable, "-m", "scripts.pipeline_status", ...]). Repeating it in PowerShell
 # would only re-introduce the marshalling this step exists to isolate.
 # ---------------------------------------------------------------------------------------------
 $ProbePath = Join-Path $EvidenceDir "argv_probe.py"
@@ -408,10 +408,10 @@ $AdversarialText = Join-Path $EvidenceDir "pipeline-status-adversarial-seed.txt"
 $TestOutput      = Join-Path $EvidenceDir "pipeline-status-tests.txt"
 $BoundaryOutput  = Join-Path $EvidenceDir "boundary-tests.txt"
 
-$TextRc = (Invoke-Capture -File $TextOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed)).ExitCode
+$TextRc = (Invoke-Capture -File $TextOutput -Arguments @("-m", "scripts.pipeline_status", "--seed", $Seed)).ExitCode
 if ($TextRc -ne 0) { throw "Text pipeline-status command failed with exit code $TextRc." }
 
-$JsonRun = Invoke-Capture -File $JsonOutput -Arguments @("-m", "core.pipeline_status", "--seed", $Seed, "--json")
+$JsonRun = Invoke-Capture -File $JsonOutput -Arguments @("-m", "scripts.pipeline_status", "--seed", $Seed, "--json")
 $JsonRc  = $JsonRun.ExitCode
 if ($JsonRc -ne 0) { throw "JSON pipeline-status command failed with exit code $JsonRc." }
 $JsonDoc = ConvertFrom-CapturedStdout -Capture $JsonRun
@@ -440,10 +440,10 @@ if (-not $Stages5And11Exercised) {
 }
 
 # D3 -- C5 evidence: with NO seed there must be no pasteable engine command anywhere.
-$NoSeedTextRun = Invoke-Capture -File $NoSeedText -Arguments @("-m", "core.pipeline_status")
+$NoSeedTextRun = Invoke-Capture -File $NoSeedText -Arguments @("-m", "scripts.pipeline_status")
 $NoSeedTextRc  = $NoSeedTextRun.ExitCode
 if ($NoSeedTextRc -ne 0) { throw "No-seed pipeline-status command failed with exit code $NoSeedTextRc." }
-$NoSeedJsonRun = Invoke-Capture -File $NoSeedJson -Arguments @("-m", "core.pipeline_status", "--json")
+$NoSeedJsonRun = Invoke-Capture -File $NoSeedJson -Arguments @("-m", "scripts.pipeline_status", "--json")
 $NoSeedJsonRc  = $NoSeedJsonRun.ExitCode
 if ($NoSeedJsonRc -ne 0) { throw "No-seed JSON command failed with exit code $NoSeedJsonRc." }
 # Both streams: a placeholder must not appear anywhere the owner can see it.
@@ -460,7 +460,7 @@ if ($null -ne $NoSeedCommand -and $NoSeedNeeds) {
 
 # D4 -- C4 evidence end-to-end: an adversarial seed against the real workspace.
 $AdversarialSeed = "nurse'; Write-Host PWNED; # `$5 > sentinel.txt"
-$AdvRc = (Invoke-Capture -File $AdversarialText -Arguments @("-m", "core.pipeline_status", "--seed", $AdversarialSeed)).ExitCode
+$AdvRc = (Invoke-Capture -File $AdversarialText -Arguments @("-m", "scripts.pipeline_status", "--seed", $AdversarialSeed)).ExitCode
 if ($AdvRc -ne 0) { throw "Adversarial-seed command failed with exit code $AdvRc." }
 if (Test-Path -LiteralPath (Join-Path $Repo "sentinel.txt")) {
     throw "C4 REGRESSION: rendering an adversarial seed created sentinel.txt."
@@ -483,7 +483,7 @@ if (Test-Path -LiteralPath (Join-Path $Repo "sentinel.txt")) {
 # anything at all goes wrong, which is the failure mode this script exists to refuse.
 $RefusedText = Join-Path $EvidenceDir "pipeline-status-refused-seed.txt"
 $RefusedJson = Join-Path $EvidenceDir "pipeline-status-refused-seed.json"
-$RefusedRun = Invoke-Capture -File $RefusedText -Arguments @("-m", "core.pipeline_status", "--seed", "nurse gift\\")
+$RefusedRun = Invoke-Capture -File $RefusedText -Arguments @("-m", "scripts.pipeline_status", "--seed", "nurse gift\\")
 $RefusedRc  = $RefusedRun.ExitCode
 if ($RefusedRc -ne 2) {
     throw "A quote-requiring trailing-backslash seed must exit 2, got $RefusedRc."
@@ -497,7 +497,7 @@ if ($RefusedTextContent -match "python -m research") {
 if ($RefusedTextContent -notmatch "ends in a backslash") {
     throw "The trailing-backslash seed was refused for a DIFFERENT reason than the backslash. Exit 2 alone is not the proof this step claims. See $RefusedText."
 }
-$RefusedJsonRun = Invoke-Capture -File $RefusedJson -Arguments @("-m", "core.pipeline_status", "--json", "--seed", "nurse gift\\")
+$RefusedJsonRun = Invoke-Capture -File $RefusedJson -Arguments @("-m", "scripts.pipeline_status", "--json", "--seed", "nurse gift\\")
 $RefusedJsonRc  = $RefusedJsonRun.ExitCode
 if ($RefusedJsonRc -ne 2) { throw "Refused seed in --json mode must exit 2, got $RefusedJsonRc." }
 $RefusedDoc = ConvertFrom-CapturedStdout -Capture $RefusedJsonRun
@@ -527,7 +527,7 @@ if ($null -ne (Get-JsonProperty -Object $RefusedDoc -Name "next_command")) {
 #     nurse gift\\      -> child receives  nurse gift\      (trailing backslash: double it)
 #     nurse\"quote\"    -> child receives  nurse"quote"     (embedded quote: backslash-escape it)
 $QuoteRefusedText = Join-Path $EvidenceDir "pipeline-status-refused-quote-seed.txt"
-$QuoteRefusedRun = Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "core.pipeline_status", "--seed", 'nurse\"quote\"')
+$QuoteRefusedRun = Invoke-Capture -File $QuoteRefusedText -Arguments @("-m", "scripts.pipeline_status", "--seed", 'nurse\"quote\"')
 $QuoteRefusedRc  = $QuoteRefusedRun.ExitCode
 if ($QuoteRefusedRc -ne 2) { throw "A double-quote seed must exit 2, got $QuoteRefusedRc." }
 $QuoteRefusedContent = $QuoteRefusedRun.Stdout + "`n" + $QuoteRefusedRun.Stderr
@@ -660,7 +660,7 @@ $SuiteDelta = Compare-Snapshot -Reference $MiddleComparable -Difference $AfterCo
 $SuiteDelta.Diff | Out-String |
     Set-Content -Encoding UTF8 (Join-Path $EvidenceDir "runs-T2-diff-after-tests.txt")
 if ($SuiteDelta.Changed) {
-    Write-Warning "The TEST SUITE changed real runs/T2 (not core.pipeline_status, which was already proved clean above). This is a finding about the suite writing into the owner's real workspace, and it matters here because pipeline_status derives STALE from mtimes. See runs-T2-diff-after-tests.txt."
+    Write-Warning "The TEST SUITE changed real runs/T2 (not scripts.pipeline_status, which was already proved clean above). This is a finding about the suite writing into the owner's real workspace, and it matters here because pipeline_status derives STALE from mtimes. See runs-T2-diff-after-tests.txt."
 }
 if ($TreeChanged) {
     throw "The pipeline-status COMMANDS changed real runs/T2, measured across those commands alone. Review runs-T2-diff.txt in $EvidenceDir."

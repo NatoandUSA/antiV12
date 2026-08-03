@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for core.pipeline_status - the read-only "what do I run next?" map.
+"""Tests for scripts.pipeline_status - the read-only "what do I run next?" map.
 
 The risk this module carries is not that it crashes; it is that it says READY about a stage that
 is not, or invents a status it cannot derive from the filesystem. These tests pin the four states
@@ -22,7 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from core import pipeline_status as P                                # noqa: E402
+from scripts import pipeline_status as P                                # noqa: E402
 
 
 def touch(path, when=None):
@@ -325,13 +325,13 @@ class TestNoCommandWithoutARealSeed(Base):
         rows = P.evaluate(self.ws, [self.stage(command="python -m research.x --seed {seed}")])
         out = P.render(rows, self.ws, None)
         self.assertIn("needs your seed keyword", out)
-        self.assertIn("python -m core.pipeline_status", out)
+        self.assertIn("python -m scripts.pipeline_status", out)
 
     def _json(self, *extra):
         """Stage 1 is owner-input and carries no command; satisfy it so the next actionable
         stage is stage 2, whose command does take a seed."""
         touch(os.path.join(self.ws, "Helium_10_Xray_a.xlsx"), self.t0)
-        out = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+        out = subprocess.run([sys.executable, "-m", "scripts.pipeline_status",
                               "--workspace", self.ws, "--json", *extra],
                              capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(out.returncode, 0, out.stderr)
@@ -658,7 +658,7 @@ class TestCaptureScriptContract(unittest.TestCase):
         forbid exactly the evidence it wants. Scope the claim to where the claim applies.
         """
         return [ln for ln in self._code().splitlines()
-                if "core.pipeline_status" in ln and "Invoke-Capture" in ln]
+                if "scripts.pipeline_status" in ln and "Invoke-Capture" in ln]
 
     def test_the_trailing_backslash_seed_is_doubled(self):
         """D13. `--seed "nurse gift\\"` cannot test the trailing-backslash refusal: PowerShell's
@@ -732,7 +732,7 @@ class TestCaptureScriptContract(unittest.TestCase):
     def test_the_read_only_claim_is_measured_across_the_tool_alone(self):
         """D16. The snapshot pair used to span the whole run -- focused tests, boundary tests,
         connectivity scan and the 4781-test suite included -- while the throw named
-        `core.pipeline_status` as the thing that changed the workspace.
+        `scripts.pipeline_status` as the thing that changed the workspace.
 
         Run 3 fired it on a workspace the module had not touched: zero content differences, zero
         size differences, ten files under phase6/6E rewritten byte-identically with new mtimes by
@@ -810,7 +810,7 @@ class TestInputHygiene(Base):
 
     def _refused(self, *args):
         touch(os.path.join(self.ws, "Helium_10_Xray_a.xlsx"), self.t0)
-        return subprocess.run([sys.executable, "-m", "core.pipeline_status",
+        return subprocess.run([sys.executable, "-m", "scripts.pipeline_status",
                                "--workspace", self.ws, *args],
                               capture_output=True, text=True, cwd=ROOT)
 
@@ -908,7 +908,7 @@ class TestSafety(Base):
         self.assertEqual(sorted(os.listdir(self.ws)), before)
 
     def test_module_makes_no_network_or_amazon_call(self):
-        with open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8") as fh:
+        with open(os.path.join(ROOT, "scripts", "pipeline_status.py"), encoding="utf-8") as fh:
             src = fh.read()
         for bad in ("requests", "urllib.request", "http.client", "socket",
                     "sellercentral", "amazon.com", "subprocess"):
@@ -934,7 +934,7 @@ class TestSafety(Base):
             return out
 
         before = snapshot()
-        run = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+        run = subprocess.run([sys.executable, "-m", "scripts.pipeline_status",
                               "--workspace", self.ws, "--seed", "nurse sweatshirt"],
                              capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(run.returncode, 0, run.stderr)
@@ -944,7 +944,7 @@ class TestSafety(Base):
         """Classifies the RECEIVER, not the bare attribute name. The earlier scan flagged
         `text.replace` as if it were `os.replace`; this one distinguishes them, so a real
         `os.replace` cannot hide behind that false positive being waved through."""
-        with open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8") as fh:
+        with open(os.path.join(ROOT, "scripts", "pipeline_status.py"), encoding="utf-8") as fh:
             tree = ast.parse(fh.read())
         banned_os = {"remove", "unlink", "mkdir", "makedirs", "rmdir", "rename", "replace",
                      "utime", "chmod", "system", "popen", "walk"}
@@ -962,7 +962,7 @@ class TestSafety(Base):
         self.assertEqual(offenders, [], offenders)
 
     def test_only_read_only_os_functions_are_used(self):
-        with open(os.path.join(ROOT, "core", "pipeline_status.py"), encoding="utf-8") as fh:
+        with open(os.path.join(ROOT, "scripts", "pipeline_status.py"), encoding="utf-8") as fh:
             tree = ast.parse(fh.read())
         used = {n.attr for n in ast.walk(tree)
                 if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
@@ -970,7 +970,7 @@ class TestSafety(Base):
         self.assertTrue(used <= {"listdir", "path"}, sorted(used))
 
     def test_missing_workspace_is_an_error_not_a_crash(self):
-        out = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+        out = subprocess.run([sys.executable, "-m", "scripts.pipeline_status",
                               "--workspace", os.path.join(self.ws, "nope")],
                              capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(out.returncode, 2)
@@ -1021,7 +1021,7 @@ class TestSafety(Base):
                 self.assertNotIn("{", head, st.command)
 
     def test_json_mode_is_valid_json(self):
-        out = subprocess.run([sys.executable, "-m", "core.pipeline_status",
+        out = subprocess.run([sys.executable, "-m", "scripts.pipeline_status",
                               "--workspace", self.ws, "--json"],
                              capture_output=True, text=True, cwd=ROOT)
         import json

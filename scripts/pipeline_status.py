@@ -403,7 +403,7 @@ def render(rows, workspace, seed=None, now=None):
             # would look pasteable and would run with the placeholder as the seed.
             lines.append("       This step needs your seed keyword, so there is no command to")
             lines.append("       paste yet. Re-run with it and the exact line appears here:")
-            lines.append(f"         [{TARGET_SHELL}] python -m core.pipeline_status "
+            lines.append(f"         [{TARGET_SHELL}] python -m scripts.pipeline_status "
                          f"--workspace {_ps_quote(workspace)} --seed 'your seed keyword'")
         later = [r for r in rows if r is not nxt and r["state"] in (MISSING, STALE)]
         if later:
@@ -414,7 +414,7 @@ def render(rows, workspace, seed=None, now=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        prog="python -m core.pipeline_status",
+        prog="python -m scripts.pipeline_status",
         description="Read-only: which pipeline stage is done, which is stale, what to run next. "
                     "Runs no stage, writes no file and never contacts Amazon.")
     ap.add_argument("--workspace", default=WORKSPACE_DEFAULT,

@@ -1,39 +1,156 @@
 # HANDOFF — CURRENT
 
-**Updated:** 2026-08-01 · **Branch:** `hotfix-phase7-14-stop-exit-verification`
-**Composite 7.14 launcher hotfix `56f4339`: MERGED** into `main` at merge commit `0a84fd3`,
-following an independent acceptance audit. The merge honoured the audited scope exactly —
-`569a72d`, `4c5d362` and `5a9b495` are in `main`; `d163ff0` (pipeline-status) is **not**, and
-still needs its own audit. **Acceptance tag: NONE yet** — nothing points at `56f4339` or `main`;
-the 8 existing `phase7-14-*` tags all predate this work.
-Verify: `git merge-base --is-ancestor 56f4339 main && echo merged` ·
-`git tag --points-at 56f4339` · `git merge-base --is-ancestor d163ff0 main || echo out-of-scope`
+**Updated:** 2026-08-01, after the first Windows execution of the pipeline-status gate.
+Supersedes the version at `e99de03` (branch `docs-handoff-post-acceptance-2026-08-01`), which is
+**superseded, not disposable** — see §13 for the diff that establishes it and for the three things
+carried forward late. Do not delete that branch; closing it is a separate owner-approved step.
 
-This is the LIVING handoff. Each superseded version is frozen as
-`HANDOFF-<date>-<commit>.md` rather than overwritten, so review history survives —
-see `HANDOFF-2026-07-31-a493e22.md`. It exists so another AI can verify this work
+| | |
+|---|---|
+| Composite 7.14 launcher hotfix `56f4339` | **ACCEPTED** — independent audit, 0 code defects |
+| `main` | `211f2f8`, **pushed**; `origin/main` matches |
+| Acceptance tag | `phase7-14-composite-launcher-safety-hotfix-accepted-211f2f8`, **pushed** |
+| `d163ff0` (pipeline-status) | audited → REMEDIATION_REQUIRED → **remediated on a branch**, still OUT of `main` (§11, §12) |
+| Active branch | `hotfix-pipeline-status-multi-output-staleness` — pushed, **not merged, not tagged**. No hash pinned here on purpose: it would self-invalidate on the next commit, including this one. Verify local == origin instead |
+| Acceptance of that branch | **HOLD** — was five blockers, now **two**: an independent re-audit, and one target-only test failure needing an owner decision (§12, §14) |
+| Windows gate | **COMPLETED** — `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT`, run 6 of 6 (§14) |
+
+Verify:
+```
+git rev-parse --short main origin/main                       # both 211f2f8
+git tag --points-at main
+git merge-base --is-ancestor d163ff0 main || echo d163ff0-correctly-out
+git rev-parse --short hotfix-pipeline-status-multi-output-staleness \
+               origin/hotfix-pipeline-status-multi-output-staleness   # two lines, must be EQUAL
+git tag --points-at hotfix-pipeline-status-multi-output-staleness     # empty
+```
+
+That last pair prints two hashes and says nothing about what they should be, on purpose. An
+earlier version of this block ended `# both c6cbdb9` two lines under a header promising no pinned
+hash, and it was already wrong when it was committed — the commit that wrote it moved the branch.
+**A handoff cannot name its own HEAD.** Check equality, never a value.
+
+This is the LIVING handoff. Each superseded version is frozen as `HANDOFF-<date>-<commit>.md`
+rather than overwritten, so review history survives. It exists so another AI can verify this work
 instead of trusting it. Every claim below has a command to check it.
+
+**What the frozen files are, because the filename alone is ambiguous.**
+`HANDOFF-2026-08-01-211f2f8.md` is byte-identical to `HANDOFF-CURRENT.md` **as it stands at
+accepted `main` `211f2f8`** — it holds no candidate-branch state, and its own content is
+deliberately stale (it still says "Acceptance tag: NONE yet", which was true when it was written
+and is not now). That is what a freeze is for. The identity is checkable, which is the whole
+value of not editing it:
+
+```
+git rev-parse HEAD:HANDOFF-2026-08-01-211f2f8.md   # 3918615e…
+git rev-parse main:HANDOFF-CURRENT.md              # same blob
+```
+
+`HANDOFF-2026-07-31-a493e22.md` does **not** follow that rule: no handoff file existed at
+`a493e22`, so it is named for the HEAD current when the content was handed over, not for a file
+you can diff against that commit. The two conventions differ; do not assume either from the name.
+For anything frozen from here on, name it for the date and the scope and state the scope inside
+the file — a filename is not metadata.
+
+---
+
+## START HERE
+
+**Nothing is half-finished. The tree is clean, everything is committed and pushed, `main` is
+untouched.** The Windows gate has now **completed** (§14). There is exactly ONE next action and
+it is not something this session can do for itself.
+
+### The one thing to do
+
+**Commission a fresh independent re-audit of the candidate HEAD, from new worktrees.**
+
+It cannot be closed from inside this branch, because the thing needing review is work that has so
+far only ever been judged by its author: six runs of a gate I wrote, passing on the fifth and
+sixth.
+
+Give the auditor: `SESSION7_14-PIPELINE-STATUS-REMEDIATION-REPORT.md` §§13–14, `-PROOF.json`
+(`windows_gate_execution` holds the run-by-run record and the differential), and the verification
+block at the top of this file.
+
+**Point them at §14's differential first, and tell them revision 8 got it wrong.** It claimed zero
+target-only failures; there is one. That correction came from an external reviewer noticing an
+internal inconsistency, not from the author re-checking — which is the strongest available
+argument for why this step exists.
+
+**Then decide the `test_136b` question** (§14). It is a real merge blocker and it is an owner
+call, not an auditor one.
+
+### To reproduce the gate
+
+```powershell
+git checkout hotfix-pipeline-status-multi-output-staleness
+.\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan
+```
+
+**It asks for the seed and waits** (`Read-Host`). Run it from a real console you are sitting at —
+a piped or non-interactive invocation gets EOF and the seed arrives empty. The recorded T2 seed is
+`personalized nurse sweatshirt`, identical in 7 `runs/T2` artifacts; confirm it rather than
+assuming it, because a silently changed seed measures a workspace nobody asked about. Expect
+~20 minutes with `-FullSuite`, and `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT` at the
+end.
+
+**A throw is evidence of a real failure condition — it is not a pass.** If it fires: preserve the
+evidence directory, fix only the demonstrated defect with a focused test, commit to the branch,
+push branch-only, rerun the **complete** gate from a clean state, and keep acceptance on **HOLD**.
+A gate that has been made to stop throwing is not a gate that has run. Do not weaken a gate,
+convert a throw to a warning, merge, tag, or bypass a Windows test. Four of the six runs threw,
+every throw was real, and none was resolved by softening an assertion — that is the standard.
+
+### What NOT to do
+
+Do not merge or tag anything — **not even now that the gate passes.** A green gate is the
+precondition for the audit, not a substitute for it. Do not start Phase 7.15, Phase 8, or the full
+Pipeline Observer (§8). Do not do further static hardening on the branch; the policy is to stop
+once no known blocker remains, and the only one left needs another pair of eyes, not more code.
+
+Do not "fix" `test_136b_accepted_authorities_unmodified` or
+`test_15_to_20_startup_launcher_is_safe` as part of this branch (§14). Both are pre-existing false
+positives in accepted-phase test code, both are recorded, and both are out of scope here.
+
+### If you cannot get to Windows
+
+Nothing else on this branch can progress. The useful alternatives are §6 (acrylic — the one open
+gap that could produce a listing you have to pull) or the deferred items in §8.
 
 ## 0. Since the last version
 
-An independent review (`AMZ_FBM_TOOLKIT_HANDOFF_REVIEW_FEEDBACK.json`, 2026-07-31)
-returned **STRONG_BUT_REQUIRES_REVISION_BEFORE_IMPLEMENTATION_AUTHORITY**. Its
-corrections C1, C2, C4, C5, C8 and C9 are applied below; §3, §4 and §8 are the
-sections that changed. Its immediate next action —
-`FINISH_AND_INDEPENDENTLY_ACCEPT_NULL_TOKEN_LAUNCHER_REMEDIATION` — is **done and
-awaiting independent audit**: see `SESSION7_14-NULL-START-TOKEN-HOTFIX-REPORT.md`.
+Two things closed, one opened.
 
-Two of its findings I amended rather than accepted, with evidence:
+**The composite Phase 7.14 launcher hotfix is ACCEPTED, merged, tagged, and now PUSHED.**
+`origin/main` is `211f2f8` and the annotated tag resolves there. The previous handoff's warning
+about local-only acceptance history is resolved; nothing is unpublished.
 
-* `proc.poll()` **is** conclusive when it returns non-`None` — `Popen` owns the child,
-  so a reaped exit code cannot describe a different process. The invalid inference is
-  the other direction. The strong half of C7 — read through the owned handle — is what
-  was implemented.
-* The Pipeline Observer is **not** a thin read adapter. A 10-state status model with
-  block reasons, prerequisites and freshness is a derivation layer that does not exist
-  today, and must be scoped and tested as new logic or it will invent status.
+**`d163ff0`'s two audit defects are remediated** on `hotfix-pipeline-status-multi-output-staleness`,
+which then went through four more independent reviews. It is pushed, unmerged, untagged, and on
+**HOLD** pending Windows evidence. Full state in §12.
 
----
+**What that sequence cost, and why it was worth it.** Six review rounds found defects that static
+review on a macOS clone could not: a PowerShell parsing rule that would have failed the gate for
+the wrong reason, an encoding trap that would have aborted the capture, a gate that could pass on
+a *skipped* test, and a `python` PATH resolution that can silently open the Microsoft Store. Four
+of those were in code I had already called finished. The lesson worth carrying: **a test that
+only runs on a machine you do not have is a test you have not run.**
+
+**Then the tests ran, and proved that lesson twice more** (§13). Six static rounds had left an
+execution proof that could not pass on any machine, and behind it a real defect that dropped a
+character out of the owner's seed. Neither was findable by reading.
+
+**On the reviews themselves.** Several are external artifacts and are **not repository-verifiable**
+— the JSON files they arrived in are not in this repo and never were
+(`git log --all -- '*REVIEW*FEEDBACK*'` and `'*CONSOLIDATION_REVIEW*'` are both empty). What is
+verifiable is what each one saw and what was done about it, so every correction is stated in full
+where it is applied and the text stands without the source file. Treat a quoted review verdict in
+this document as a claim about an unversioned artifact.
+
+**Two review findings were amended rather than accepted, with evidence, and neither should be
+quietly re-accepted.** `proc.poll()` **is** conclusive when it returns non-`None`: `Popen` owns
+the child, so a reaped exit code cannot describe a different process — the invalid inference runs
+the other way. And the Pipeline Observer is **not** a thin read adapter (§8 #3).
 
 ## 1. Owner's stated goal (recorded 2026-07-31)
 
@@ -167,7 +284,7 @@ Verify: `grep -rln "instance_manager" --include=*.py . | grep -v test`
 
 ---
 
-## 5. `NULL_RECORDED_START_TOKEN` — FIXED, awaiting independent audit
+## 5. `NULL_RECORDED_START_TOKEN` — FIXED, AUDITED, ACCEPTED, MERGED, TAGGED
 
 Full evidence: `SESSION7_14-NULL-START-TOKEN-HOTFIX-REPORT.md` + `-PROOF.json`.
 
@@ -190,9 +307,19 @@ handle was validated **against itself**.
 | 2 | `_clear_stale_pid` | reuse branch skipped; unreadable live token wrongly cleared the record | three distinct answers, record kept when nothing is proven |
 | 3 | `status` | `launcher_owned: true`, unverified | verified or not claimed |
 
+**Why a truthiness test was the wrong gate**, carried forward because it is the transferable part:
+only **falsy** tokens (`None`, `""`) slipped the old check. `"   "` and `12345` were refused
+incidentally — non-empty values are truthy, so the `!=` comparison still ran and still rejected
+them. The gate appeared to work because the cases that reached it were the ones truthiness happens
+to handle. That is why one shared `valid_identity_token()` now governs all four sites rather than
+four local `if token:` tests.
+
 One shared `valid_identity_token()` at all four. 30 new tests (26 failed against the unfixed
 module), real-Windows bystander proof, real end-to-end console cycle recording
-`identity_source: popen_handle`.
+`identity_source: popen_handle`. The audit's own measurement, on three trees against a bystander
+process it spawned itself: two baselines reported success or failure while **killing** a real
+unrelated process with `identity_verified: true`; only `56f4339` reported `STOP_REFUSED` with
+`identity_verified: false` and left it alive.
 
 Verify:
 ```
@@ -252,13 +379,24 @@ The three hardest owner requirements are enforced in code today:
 
 ## 8. Plan — reordered by the 2026-07-31 review, and by what is now done
 
-**#1 — Launcher identity defects. DONE, awaiting independent audit** (§5). The review made
-this the immediate next action and it is complete: all four sites, one shared validator,
-Start-side handle read, real-process bystander proof, truthful owner recovery copy.
+**#1 — Launcher identity defects. DONE, AUDITED, ACCEPTED, MERGED, TAGGED, PUSHED** (§5, §0).
+All four sites, one shared validator, Start-side handle read, real-process bystander proof,
+truthful owner recovery copy. Tag `phase7-14-composite-launcher-safety-hotfix-accepted-211f2f8`,
+on `origin`. Nothing left to do here.
 
-**#2 — Merge and run the real 14-day pilot.** Three attempts, never reached Day 1. Measure:
-time to identify the current stage, incorrect or stale status, missing artifacts, how often
-the CLI is still needed, which stages most want a Run button, dead navigation, confidence.
+**#1b — `d163ff0` defects. REMEDIATED, ON HOLD** (§11, §12). Both closed on
+`hotfix-pipeline-status-multi-output-staleness`, plus a third the first Windows run found (§13).
+**The only remaining work is the Windows evidence run** — see START HERE. Do not lean on the CLI
+status output from `main`; `main` has no `core/pipeline_status.py` at all.
+
+**#2 — Use the CLI on a real product, then run the pilot.** The console covers steps 12–13 and its
+decision queue is legitimately empty: 114 real ads rows produced 113 `INSUFFICIENT_DATA` and 1
+`PROMISING_LOW_DATA`, so the engine declined to recommend rather than fabricate. **The pilot could
+never have reached Day 1** — not only because of launcher defects, but because the screen it opens
+on has nothing to review, and will not until more PPC data exists. More data means more weeks of
+live campaigns, not more software. Get products live, feed PPC reports in weekly, let the queue
+fill. Then measure: time to identify the current stage, stale status, missing artifacts, how often
+the CLI is still needed, dead navigation, confidence.
 
 **#3 — Read-only Pipeline Observer** ("Pipeline Observer V1"). Pipeline navigation and
 canonical artifact state only; **no engine execution from the browser**; `Run` / `Re-run` /
@@ -346,3 +484,278 @@ Known verification weakness: an accepted browser gate scored 44/44 on a console 
    economics gate?
 3. Does retiring `core/instance_manager.py` break the `amz_fbm` CLI install path
    (`core/local_install.py`, `core/windows_integration.py`)? Not yet traced.
+4. Did the re-run of `ASIN-CANDIDATES.json` actually change the candidate set? If not, steps
+   3/4/6/14 can be left alone and no Cerebro credits need spending. Answerable in minutes.
+
+---
+
+## 11. `d163ff0` — remediated, no longer the blocker it was
+
+`core/pipeline_status.py` — the read-only "where am I in the pipeline, what do I run next" map.
+
+```
+python -m core.pipeline_status --seed "<seed keyword>"      # add --json for machine use
+```
+
+**Both audited defects are closed** on the branch in §12, and are NOT in `main`:
+
+* **DEFECT A, blocking — `MULTI_OUTPUT_STALENESS_MASKED`.** `evaluate()` compared the *newest*
+  output against the newest input, so on a multi-output stage a fresher sibling hid an artifact
+  genuinely older than its own input. Measured on an identical workspace through the real CLI:
+  the baseline reported stage 5 `ok` and sent the owner to **step 6**; fixed, it reports `STALE`
+  and sends them back to **step 5**. It was walking the owner past a Master Keyword List that had
+  never seen its Cerebro data. Affected stages 5 and 11.
+* **DEFECT B — command rendering.** Now targets ONE named shell (Windows PowerShell), refuses
+  values it cannot pass through unchanged, and prints no command at all when the seed is unknown.
+
+**The old workaround is obsolete.** The previous handoff said to treat `READY` on stages 5 and 11
+as unproven and check them by hand. On the branch that is fixed. On `main` it is **not
+applicable** — `main` has no `core/pipeline_status.py` at all, so there is no status output there
+to distrust. An earlier wording said the workaround "still applies" on `main` and then explained
+that nothing there produces one; a workaround for a file that does not exist is not a live caveat.
+
+
+---
+
+## 12. The active branch — `hotfix-pipeline-status-multi-output-staleness`
+
+**Pushed. Not merged. No tag. `main` untouched at `211f2f8`.**
+
+The head hash is deliberately not written here — a document that names its own commit is wrong
+the moment it is committed. What matters is checkable:
+
+```
+git rev-parse --short HEAD origin/hotfix-pipeline-status-multi-output-staleness   # must match
+git tag --points-at HEAD                                                         # must be empty
+git merge-base --is-ancestor 518b516 HEAD && echo descends-from-audited-baseline
+```
+
+### Commit stack
+
+| Commit | What |
+|---|---|
+| `518b516` | `d163ff0` cherry-picked **verbatim** — the audited baseline, replayed on accepted `main`. Byte-identity proved by patch-id `7c7594d2…` and matching blob hashes, not inferred from a clean cherry-pick |
+| `95f9b67` | DEFECT A — blocking |
+| `fcd6d31` | DEFECT B — separable, `git revert` removes it alone |
+| `631a491` | report + proof, revision 1 |
+| `2894269` | review corrections C1–C5, C7 |
+| `5104904` | revision 2 |
+| `018af92` | Windows PowerShell execution test + capture script |
+| `cabab15` | revision 3 |
+| `c3c4af2` | bug hunt — eight defects |
+| `89e28e0` | revision 4 |
+| `855f4f4` | refuse unrenderable values; prove the call operator |
+| `f36a2ca` | revision 5 |
+| `ea2190b` | audit against `required_checks` — six gaps |
+| `c6cbdb9` | revision 6 |
+| `06d42cc` | handoff |
+| `9d6ef86` | first Windows execution — unsatisfiable proof + dropped double quote (§13) |
+| `a7bea7b` | revision 7 + the consolidation review's C1–C4 |
+| `7af2df5` | D12/D13 — the gate exited 2 for the wrong reason |
+| `36ec291` | D14 — D13 again, one step lower |
+| `69095b0` | D16/D15 — the gate blamed the wrong actor; layer separation |
+| `cbf288e` | D18 — a warning split the verdict line |
+| *this commit* | revision 8 — the gate completed (§14) |
+
+`72 tests — OK (skipped=0)` **on Windows**, the current focused count; it was 66 at the first
+Windows execution (§13) and 64 before that. The 64 figure reads `OK (skipped=3)` throughout the
+earlier report and is not comparable with either: it was measured where the Windows-only tests
+*cannot* run, so it describes a different set of executed tests rather than a worse result. Read
+`SESSION7_14-PIPELINE-STATUS-REMEDIATION-REPORT.md` (§§10–14 are the review history) and
+`-PROOF.json` (machine-readable; `first_windows_execution` holds §13, `windows_gate_execution`
+holds §14 and the differential, `response_export` holds decisions and next steps).
+
+### The blockers — was five, now two
+
+1. No fresh independent re-audit of the final Windows-evidenced commit.
+2. One **target-only** test failure needing an owner decision before merge:
+   `test_136b_accepted_authorities_unmodified` passes on `211f2f8` and fails here (§14).
+
+Closed by the gate completing (§14), recorded rather than deleted:
+
+* ~~`Capture-PipelineStatusEvidence.ps1` has never completed a run.~~ **Run 6 completed, exit 0.**
+  Runs 1–4 each threw on a real gate defect; none was resolved by weakening an assertion.
+* ~~No real `runs/T2` execution evidence.~~ **Real workspace, real recorded seed, stages 5 and 11
+  exercised**, and the read-only differential is clean *and correctly scoped*.
+
+Closed earlier on 2026-08-01, also recorded rather than deleted:
+
+* ~~The three Windows-only tests must pass on Windows.~~ **They ran and pass** — and two of them
+  failed first. §13.
+* ~~Bare `python` interpreter resolution unevidenced.~~ **Resolved in this repo's shell** to
+  `.venv\Scripts\python.exe` 3.12.10, not the Store alias, identically under `-NoProfile`. Scope
+  it that way: it is not evidence for a shell with a different PATH, which is why the capture
+  script still checks at run time.
+5. No fresh independent re-audit of the final Windows-evidenced commit.
+
+### Decisions a new session must not silently reverse
+
+These are two different kinds of thing and were previously one list, which is how a permanent
+safety contract gets traded away in a refactor that only meant to change a policy.
+
+**PERMANENT INVARIANTS — not changeable by a design decision.** Reversing any of these is a
+safety regression regardless of what it buys:
+
+* **No silently changed owner seed.** The seed is measured, echoed and refused — never
+  normalised, trimmed or substituted. §13's defect 2 is what breaks this in practice.
+* **No command emitted without its real required values.** A placeholder that looks pasteable is
+  worse than no command.
+* **One explicitly named shell per rendered command.** A renderer naming no shell is correct
+  for none.
+* **No Amazon Seller Central or Amazon API connection.** Not from this module, not from anything
+  it prints.
+* **Read-only pipeline status stays read-only.** `core/pipeline_status.py` executes nothing;
+  proved at runtime, not by name scan (report §4).
+
+**CURRENT POLICIES — changeable, but only through an explicit issue, a failing test, a proof
+update and a fresh review.** They are decisions with reasons, not contracts:
+
+* **Refuse rather than render inexactly.** A seed that both needs quoting and ends in a
+  backslash is rejected with exit 2 and a structured `UNSUPPORTED_VALUE` in `--json`, because
+  PowerShell cannot pass it to a child unchanged. A **bare** `nurse\` is unaffected and stays
+  supported. Extended on 2026-08-01 to the **double quote** (§13) — that one is refused by
+  *choice*, since it can be rendered exactly; the two cases are not the same and the docstrings
+  say so.
+* **`&` belongs to the test fixture, not production.** No production command starts with `&`,
+  because none starts with a quoted value. `test_every_command_starts_with_a_bare_literal_token`
+  is the tripwire if that changes.
+* **Normal production commands begin with bare `python`.** Which makes PATH resolution a
+  contract, not an assumption — hence the capture script's interpreter check.
+* **`produces` is required-all.** Optional or any-of outputs would produce a false `STALE`.
+* **Equal mtimes are `READY`.** Strict `<`. A permanent false `STALE` is worse.
+
+### After a successful Windows run
+
+Follow-up docs/proof commit with the real evidence — **do not rewrite history**, revisions 1–7
+are preserved at the commits above. Push branch-only. Then a fresh independent re-audit from new
+worktrees. Merge and tag only after that, as a separate owner-approved step.
+
+---
+
+## 13. The Windows-only tests finally ran — and found two defects
+
+Full detail in the report §13 and in `-PROOF.json` → `first_windows_execution`.
+
+`Ran 66 tests — OK (skipped=0)`, Windows 11, bare `python` = `.venv\Scripts\python.exe` 3.12.10.
+First result on the same command: `Ran 64 tests — FAILED (failures=2)`.
+
+**Defect 1 — the execution proof could not pass on any machine.** Both Windows execution tests
+asserted `argv == ["--seed", seed]` *and* `assertNotIn("PWNED", run.stdout)` in the same loop
+body. Four corpus seeds contain `PWNED` literally, so a **correct** renderer is precisely what
+puts the marker in the probe's argv echo. Unsatisfiable by construction, and invisible for as
+long as it was skipped — which was everywhere. Now it counts output lines instead, which is
+strictly stronger. The regression guard runs on **every** platform on purpose.
+
+**Defect 2 — real, and hidden behind defect 1.** With the loop able to reach the fourth seed,
+`nurse"quote"` rendered as `'nurse"quote"'` arrived at the child as **`nursequote`**. PowerShell
+5.1 rebuilds the native command line without escaping an embedded quote and the C runtime eats
+it. The owner would have searched a keyword they never typed with nothing on screen to show it —
+the same failure class as DEFECT A, a wrong value presented as a right one.
+
+**Refused, by owner decision, and the reason is a choice not an impossibility.** Measured through
+real `powershell.exe`: `'nurse\"quote\"'` arrives byte-exact, so this value *is* renderable —
+unlike the trailing backslash. Emitting it would mean carrying the C runtime's backslash-doubling
+rules inside a renderer whose job is a two-word keyword. A double quote is not part of any real
+Amazon search term, so `unsupported_value()` gained a third refusal instead. A single quote —
+`nurse's gift` — is unaffected and still renders `'nurse''s gift'`.
+
+Blast radius: `core/pipeline_status.py` and its test, the only two files in the repo that
+reference either.
+
+### The `docs-handoff-post-acceptance-2026-08-01` branch — superseded, not disposable
+
+Checked before saying so, because "logically superseded" and "safe to delete" are different
+claims:
+
+```
+git log --left-right --cherry-pick --oneline \
+  hotfix-pipeline-status-multi-output-staleness...docs-handoff-post-acceptance-2026-08-01
+git diff --name-status docs-handoff-post-acceptance-2026-08-01..hotfix-pipeline-status-multi-output-staleness
+```
+
+It holds **one** unique commit, `e99de03`, touching **one** file, `HANDOFF-CURRENT.md`. No unique
+proof artifact, no command transcript, nothing else to lose. But its handoff was not merged into
+this one — it was re-authored from `main`'s copy — so three still-true things had been dropped and
+are restored above: the falsy-vs-truthy explanation of why the old identity gate looked like it
+worked (§5), the note that the review artifacts are external and not repository-verifiable (§0),
+and the `proc.poll()` amendment (§0). **Deletion remains a separate owner-approved step.**
+
+---
+
+## 14. The gate ran — six runs, four more defects, then a clean completion
+
+Full detail in the report §14 and `-PROOF.json` → `windows_gate_execution`.
+
+Runs 1–4 each threw. **Every throw was the gate being right about something, and none was
+resolved by weakening an assertion.**
+
+* **D12** — captures merged stdout and stderr, then parsed the result as JSON. Every refusal
+  writes a sentence to stderr and the document to stdout, so it could never parse. stdout is now
+  captured on its own; `captures.json` keeps exit code, stdout, stderr and duration per command.
+* **D14** — the double-quote step passed a bare `nurse"quote"`, which arrives as `nursequote`.
+  D13 repeated one step lower, in the fix for D13.
+* **D16 — the gate blamed the wrong actor.** It threw *"the pipeline-status run CHANGED real
+  `runs/T2`"*. It had not: 220 files before and after, **zero** content and **zero** size
+  differences. Ten files under `phase6/6E` were rewritten byte-identically with new mtimes by the
+  4781-test suite, which ran *between* the two snapshots. True assertion, false stated cause —
+  this branch's own subject matter. A third snapshot now brackets the tool's own commands and
+  still throws; everything else is reported separately as a finding about the **suite**.
+  It still matters: this module derives `STALE` purely from mtimes, so a suite that advances them
+  can change what you are told to run next.
+* **D18** — a `ResourceWarning` from a leaked handle landed between the test name and its `... ok`,
+  so a **passing** test was unreadable as passed. Handle closed; the gate now reads unittest's own
+  verdict, and does it before the full suite instead of after.
+
+**Run 6:** `WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT`, exit 0. `main_unchanged: true`,
+`runs_T2_changed_by_pipeline_status: false`, `repository_changed_undeclared: false`, stage 5
+`READY`, stage 11 `STALE`, connectivity scan **0 active Amazon-account paths**.
+
+**Full suite `Ran 4783 — failures=5, errors=1, skipped=4`. The differential is
+`BASELINE_EQUIVALENT_EXCEPT_ONE` — exactly ONE target-only failure.**
+
+An earlier version of this section claimed **zero**, and that was wrong. It folded two different
+measurements into one headline: the worktree differential covered only the three launcher nodes,
+while `test_136b` was classified by a separate method that never compared against a tree lacking
+this branch's file. An external reviewer caught it from the internal inconsistency alone. Every
+node has now been run in **both** worktrees:
+
+| Node | `211f2f8` | Candidate | |
+|---|---|---|---|
+| `test_52_request_size_bounded` | PASS | PASS | flake, only under load |
+| `test_15_to_20_startup_launcher_is_safe` | FAIL | FAIL | equivalent |
+| `test_16_17_23_32_33_34_full_lifecycle` | FAIL | FAIL | equivalent |
+| `test_35_live_restart` | FAIL | FAIL | equivalent |
+| `test_199e_no_acceptance_tag_yet` | FAIL | FAIL | equivalent |
+| `test_136b_accepted_authorities_unmodified` | **PASS** | **FAIL** | **TARGET-ONLY** |
+
+**This one needs an owner decision before any merge.** `git diff --name-status 3f758de HEAD --
+core/` returns exactly `A core/pipeline_status.py` — an **addition**. The test's stated intent,
+accepted authorities *unmodified*, is not violated; its implementation reports additions too. But
+**merging this branch turns a passing test on `main` into a failing one**, and that is not
+something this branch gets to wave away. Three options, none taken here: accept a documented
+target-only failure; correct `test_136b` to compare modifications rather than any diff (the honest
+one, and out of scope); or move `core/pipeline_status.py` outside what it guards.
+
+`test_15_to_20_startup_launcher_is_safe` needs no decision — it forbids the substring `claude` in
+the generated autostart `.bat` to catch an external AI-tool call, and the `.bat` embeds the
+interpreter path. **It cannot pass for any checkout under a directory named "Claude"** — which is
+where this toolkit lives. It fails identically on both trees.
+
+**Six runs total: 1–4 threw, 5 and 6 passed** (5 abbreviated, 6 complete). Stage evidence was
+captured ~17 minutes *before* the suite ran — `pipeline-status.json` at 00:17:57, `full-suite.txt`
+at 00:35:14 — so it cannot have been contaminated. The suite touched **ten** files, not 220; 220
+is the total file count in `runs/T2`.
+
+### Backlog, logged not fixed — the suite writes into the real workspace
+
+The full suite rewrites ten files under `runs/T2/phase6/6E` byte-identically with new mtimes.
+**`pipeline_status` derives `STALE` purely from mtimes**, so running the test suite can change
+what the tool tells you to do next without changing a single byte of content. Not a
+`pipeline_status` defect and not fixed here; the fix is to point those tests at temporary
+workspaces. Recorded in `-PROOF.json` → `backlog_test_isolation`.
+
+### What is still not proven
+
+**Nothing has been independently audited since the gate started passing**, and the one
+target-only failure above is an owner decision that has not been taken. Those are the remaining
+blockers. **Acceptance stays HOLD.**

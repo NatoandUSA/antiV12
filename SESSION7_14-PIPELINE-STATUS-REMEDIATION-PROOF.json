@@ -1,0 +1,843 @@
+{
+  "schema_version": 1,
+  "stage_id": "pipeline-status-remediation",
+  "document_type": "remediation_proof_and_feedback_response_export",
+  "responds_to": [
+    "AMZ_FBM_PUSH_AND_HANDOFF_FEEDBACK_2026-08-01.json",
+    "AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json",
+    "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1 (reviewer draft, 2026-08-01)",
+    "AMZ_FBM_PIPELINE_STATUS_REV3_SCRIPT_REVIEW_AND_WINDOWS_GATE_2026-08-01.json",
+    "AMZ_FBM_PIPELINE_STATUS_REV4_PREWINDOWS_REVIEW_2026-08-01.json",
+    "AMZ_FBM_PIPELINE_STATUS_REV5_READY_FOR_WINDOWS_RUN_REVIEW_2026-08-01.json"
+  ],
+  "generated_at": "2026-08-01",
+  "note": "Serves two purposes: the repo's REPORT.md + PROOF.json acceptance-evidence convention, and the owner's standing instruction to export every feedback/review response as JSON (see response_export).",
+  "branch": "hotfix-pipeline-status-multi-output-staleness",
+  "base_commit": "211f2f8",
+  "baseline_commit": "518b516",
+  "baseline_is_cherry_pick_of": "d163ff0",
+  "commits": {
+    "518b516": "d163ff0 replayed verbatim on accepted main (audited baseline)",
+    "95f9b67": "DEFECT A fix - blocking",
+    "fcd6d31": "DEFECT B fix - low, non-blocking, revertable alone",
+    "631a491": "revision 1 report + proof - the reviewed candidate",
+    "2894269": "review corrections C1-C5, C7",
+    "018af92": "Windows PowerShell execution test + corrected capture script",
+    "c3c4af2": "bug hunt -- eight defects, one blocking the Windows gate",
+    "855f4f4": "pre-Windows review: refuse unrenderable values, prove the call operator",
+    "ea2190b": "audit against rev-5 required_checks: six gaps closed"
+  },
+  "merged": false,
+  "acceptance_tag": null,
+  "independent_reaudit_required": true,
+  "main_unchanged_at": "211f2f8",
+  "prior_feedback_state_reconciliation": {
+    "feedback_claimed_origin_main": "0a84fd3",
+    "actual_origin_main": "211f2f8",
+    "feedback_claimed_acceptance_tag_local_only": true,
+    "actual_acceptance_tag_local_only": false,
+    "feedback_claimed_handoff_branch_local_only": true,
+    "actual_handoff_branch_local_only": false,
+    "conclusion": "PUSH_ALREADY_COMPLETE_BEFORE_THIS_SESSION",
+    "explanation": "The feedback's current_state block was accurate at 2026-08-01T16:46+07:00 and superseded by a push from the Windows machine. Every value in the feedback's post_push_verification.expected block now matches. The operational warning about local-only acceptance history is resolved; no action was required.",
+    "verified_by": [
+      "git rev-parse main origin/main -> both 211f2f8edca3adafc3e54c64d3f7e64fb5c87796",
+      "git ls-remote origin 'refs/tags/phase7-14-composite-launcher-safety-hotfix-accepted-211f2f8^{}' -> 211f2f8",
+      "git rev-parse origin/docs-handoff-post-acceptance-2026-08-01 -> e99de0303aade71f1dc46389173a54c3d6bda912",
+      "git merge-base --is-ancestor d163ff0 main -> non-zero (correctly out of main)",
+      "git status --porcelain -> empty"
+    ]
+  },
+  "defect_a": {
+    "name": "MULTI_OUTPUT_STALENESS_MASKED",
+    "severity": "medium",
+    "blocking": true,
+    "status": "CLOSED",
+    "root_cause": "evaluate() took _newest() over every file produced by a stage and compared that maximum against the newest input. On a stage declaring more than one output, a fresher sibling won the max and hid an artifact genuinely older than its own input.",
+    "affected_shipped_stages": [
+      {
+        "n": 5,
+        "title": "Master keyword list",
+        "produces": [
+          "MASTER-KEYWORDS-LEAN.json",
+          "CEREBRO-EVIDENCE-MATRIX.json"
+        ]
+      },
+      {
+        "n": 11,
+        "title": "Product detail page",
+        "produces": [
+          "PRODUCT-PAGE.json",
+          "BACKEND-SEARCH-TERMS.json"
+        ]
+      }
+    ],
+    "baseline_harm_measured": {
+      "method": "identical synthetic workspace driven through the real CLI on both trees",
+      "workspace": {
+        "US_AMAZON_cerebro_B0X.xlsx": "t+1000 (input)",
+        "MASTER-KEYWORDS-LEAN.json": "t+500 (stale in fact)",
+        "CEREBRO-EVIDENCE-MATRIX.json": "t+2000 (fresher sibling)"
+      },
+      "baseline_stage_5_state": "READY (printed 'ok', showing CEREBRO-EVIDENCE-MATRIX.json)",
+      "baseline_next_action": "step 6, Keyword intelligence",
+      "fixed_stage_5_state": "STALE (naming MASTER-KEYWORDS-LEAN.json)",
+      "fixed_next_action": "step 5, Master keyword list",
+      "consequence": "The baseline walked the owner past a Master Keyword List that never saw its Cerebro data and told them to build keyword intelligence on it. Stages 6, 8, 9 and 10 all consume that list."
+    },
+    "fix": {
+      "location": "core/pipeline_status.py:149 _oldest_current_output(), used at :180",
+      "rule": "each declared output PATTERN contributes its newest match; the MINIMUM is taken ACROSS patterns",
+      "code": "def _oldest_current_output(workspace, patterns):\n    worst = (None, None)\n    for pat in patterns:\n        m, p = _newest(_resolve(workspace, pat))\n        if m is None:\n            continue\n        if worst[0] is None or m < worst[0]:\n            worst = (m, p)\n    return worst",
+      "deliberately_preserved": [
+        "One pattern contributes one artifact; the minimum is never taken across every file on disk, so a superseded Cerebro export the owner never deleted does not mark stage 4 stale for ever.",
+        "artifact now names the OLDEST output - the file the owner must look at. Naming the fresh sibling sent them to a file that was fine.",
+        "Equal mtimes are READY, not STALE. Strict '<'. An engine writing inside one clock tick of its input is the normal fast case; a permanent false STALE is worse. Pinned in revision 2."
+      ],
+      "docstring_updated": "The module's staleness rule read 'output mtime < input mtime', the exact ambiguity that permitted the defect. It now reads 'OLDEST output mtime < newest input mtime' and says why.",
+      "renamed_in_revision_2": "Was _oldest_output. Review C2: the name described something the function never did - it does not return the oldest matching file, it returns the oldest of the per-pattern NEWEST matches."
+    }
+  },
+  "defect_b": {
+    "name": "OWNER_COMMAND_RENDERING_NOT_PASTE_SAFE",
+    "severity": "low",
+    "blocking": false,
+    "status": "CLOSED",
+    "separable": "git revert fcd6d31 removes it without touching DEFECT A",
+    "audit_finding": "A seed of 'nurse\"; calc; #' printed as --seed \"nurse\"; calc; #\", which a shell splits at the second quote.",
+    "additional_instance_found_during_fix": {
+      "name": "PLACEHOLDER_PRINTED_WITH_BARE_CMD_REDIRECTION_OPERATORS",
+      "detail": "<seed-keyword>, printed whenever no --seed is supplied, went out with < and > bare. Those are cmd.exe redirection operators: pasted as printed, the line does not run the command, it truncates a file named seed-keyword and reads from it. It is also the one line guaranteed to be pasted by a first-time owner.",
+      "not_named_by_the_audit": true
+    },
+    "fix": {
+      "target_shell": "Windows PowerShell",
+      "target_shell_constant": "core/pipeline_status.py:231 TARGET_SHELL",
+      "location": "core/pipeline_status.py:239 _ps_quote(), :265 _fmt_command()",
+      "rule": "single-quoted PowerShell literal; '' is the only escape; a leading - also forces quoting; bare only for [A-Za-z0-9._+=/:\\-\\\\]",
+      "code": "def _ps_quote(value):\n    text = str(value)\n    if text and not text.startswith(\"-\") and all(c in _BARE_SAFE for c in text):\n        return text\n    return \"'\" + text.replace(\"'\", \"''\") + \"'\"",
+      "every_printed_command_labelled": "[Windows PowerShell]",
+      "adversarial_characters_tested": 18,
+      "not_proven": "The printed commands have NOT been executed in the shell they name. pwsh is not available on this clone. Windows-side evidence, blocking."
+    },
+    "defect_found_in_revision_1_own_fix": {
+      "name": "POWERSHELL_DOUBLE_QUOTE_EXPANDS_DOLLAR",
+      "severity": "medium",
+      "detail": "Revision 1 quoted with DOUBLE quotes and doubled embedded quotes - correct for the Microsoft C runtime argv parser, wrong for PowerShell, where a double-quoted string still expands $. A seed of 'nurse $5 gift' would have reached the engine as 'nurse  gift': silent value corruption, the exact failure class the function exists to prevent.",
+      "why_revision_1_tests_missed_it": "Not one of them contained a $.",
+      "found_by": "Complying with review C4 - committing to ONE named shell. The review did not name this defect; insisting on a single target surfaced it.",
+      "pinned_by": "test_a_dollar_seed_is_not_expanded_away"
+    }
+  },
+  "tests": {
+    "command": "python -m unittest tests.test_pipeline_status",
+    "baseline_518b516_count": 22,
+    "revision_1_count": 33,
+    "revision_2_count": 49,
+    "failing_test_first": true,
+    "before_defect_a_fix": "Ran 28 tests - FAILED (failures=4)",
+    "after_revision_1": "Ran 33 tests - OK",
+    "after_revision_2": "Ran 49 tests - OK",
+    "failed_on_baseline_passed_after": [
+      {
+        "test": "test_a_stale_output_is_not_masked_by_a_fresher_sibling",
+        "baseline_error": "'READY' != 'STALE'"
+      },
+      {
+        "test": "test_real_stage_5_master_keyword_list_is_not_masked",
+        "baseline_error": "'READY' != 'STALE'"
+      },
+      {
+        "test": "test_real_stage_11_product_page_is_not_masked",
+        "baseline_error": "'READY' != 'STALE'"
+      },
+      {
+        "test": "test_the_stale_output_is_the_one_named_to_the_owner",
+        "baseline_error": "'OTHER.json' != 'OUT.json'"
+      }
+    ],
+    "scope_guards_passing_on_both_trees_by_design": [
+      "test_ready_still_requires_every_output_to_beat_the_input",
+      "test_a_wildcard_pattern_is_satisfied_by_its_newest_match"
+    ],
+    "baseline_assertions_changed": 3,
+    "baseline_assertions_changed_detail": "All in TestRendering, all direct consequences of the double-to-single quote change. d163ff0 is NOT accepted, so no ACCEPTED assertion was touched - but revision 1 reported 'NONE' without this nuance, so it is stated here.",
+    "verify": "git diff 518b516 HEAD -- tests/test_pipeline_status.py | grep '^-' | grep self.assert",
+    "accepted_assertions_changed": "NONE",
+    "accepted_assertions_weakened_or_skipped": "NONE",
+    "target_only_passing_tests": "NONE",
+    "revision_3_count": 52,
+    "after_revision_3": "Ran 52 tests - OK (skipped=2)",
+    "skips": "The 3 skips are the Windows-only proofs: the call-operator hazard, the argv round-trip, and the _fmt_command path. Correct on macOS, an ACCEPTANCE BLOCKER on Windows.",
+    "revision_4_count": 58,
+    "after_revision_4": "Ran 58 tests - OK (skipped=2)",
+    "revision_5_count": 64,
+    "after_revision_5": "Ran 64 tests - OK (skipped=3)",
+    "revision_6_count": 64,
+    "after_revision_6": "Ran 64 tests - OK (skipped=3)",
+    "revision_7_count": 66,
+    "after_revision_7": "Ran 66 tests - OK (skipped=0)",
+    "revision_7_environment": "Windows 11, python=.venv\\Scripts\\python.exe 3.12.10, repo root, PYTHONDONTWRITEBYTECODE=1. Every count above was measured where the Windows-only tests CANNOT run, so none of them is comparable with this one and none of them becomes wrong: they describe a different set of executed tests. skipped=0 is the point of this revision.",
+    "revision_7_first_windows_result": "Ran 64 tests - FAILED (failures=2). Both Windows-only execution proofs failed on their first execution anywhere."
+  },
+  "audit_soundness_findings_reverified": {
+    "correction": "C7",
+    "revision_1_weakness": "A bare-call-name AST scan produces false positives such as str.replace and can miss a dynamically resolved write. Revision 1 disclosed its false positive but still presented the scan as if it settled the question. It did not.",
+    "runtime_filesystem_diff": "test_the_cli_touches_no_file_in_the_workspace - recursive (size, mtime_ns) snapshot either side of a real subprocess run of the CLI over a populated workspace. Load-bearing: an AST scan can be fooled, a diff around the actual process cannot.",
+    "receiver_qualified_ast_scan": "test_no_qualified_write_or_exec_call_exists - classifies os.replace and str.replace differently, so the false positive can no longer wave a real one through.",
+    "os_surface_check": "test_only_read_only_os_functions_are_used - usage must stay within {listdir, path}",
+    "imports": [
+      "__future__",
+      "argparse",
+      "json",
+      "os",
+      "sys",
+      "time"
+    ],
+    "ascii_only_source": true,
+    "printed_m_modules_referenced": 12,
+    "printed_m_modules_missing_on_disk": 0,
+    "files_added": 2,
+    "existing_files_modified": 0,
+    "reverified_after_bug_hunt": {
+      "imports": [
+        "__future__",
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "time"
+      ],
+      "os_attributes_used": [
+        "listdir",
+        "path"
+      ],
+      "ascii_only_source": true
+    }
+  },
+  "known_limitations": [
+    "BLOCKING - NO REAL-ARTIFACT RUN. runs/T2 does not exist on this macOS clone. The before/after is a synthetic workspace driven through the real CLI: it proves the logic and the owner-facing output, not behaviour against the owner's actual files.",
+    "BLOCKING - PRINTED COMMANDS NOT YET EXECUTED IN THE SHELL THEY NAME. Three Windows-only tests now exist and all SKIP on macOS. Until they pass on Windows, exact-value round-trip is an argument from PowerShell's documented rules, not evidence.",
+    "The pre-existing ResourceWarning in test_module_makes_no_network_or_amazon_call was fixed in 2894269 while that test was already being edited for C7. Revision 1 said it was left alone.",
+    "The audit's separate stage-3 observation (ASIN-CANDIDATES newer than ASIN-BATCHES) concerns a single-output stage and is untouched.",
+    "Windows mtime granularity not measured on NTFS. The equal-mtime boundary is pinned as READY.",
+    "Nothing here is accepted. Not merged, no tag, main unchanged at 211f2f8. Branch pushed for review only.",
+    "Capture-PipelineStatusEvidence.ps1 has never been executed. No pwsh on this clone."
+  ],
+  "does_not_unlock": [
+    "This is NOT the Pipeline Observer V1 from the 2026-07-31 review. That is a 10-state model with block reasons, prerequisites, freshness and source dates - a derivation layer that does not exist yet and must be scoped and tested as new logic or it will invent status. This module has four states and says so.",
+    "Read-only-first still requires CLI execution, so this does not yet deliver the no-PowerShell owner experience."
+  ],
+  "response_export": {
+    "analysis": [
+      "The feedback's push decision was already executed; all five expected post-push values verified as matching, so no push action was taken or needed.",
+      "DEFECT A was not a labelling bug. The module's only derived signal is STALE; masking it defeats the module's entire reason to exist and actively routes the owner into building downstream artifacts on stale inputs.",
+      "DEFECT B contained a second, unnamed instance - the <seed-keyword> placeholder emitting bare cmd.exe redirection operators - which is more likely to be hit than the audit's own example, because it appears on a first run with no arguments.",
+      "The audit's 'zero write/exec calls' AST result is now one apparent hit via str.replace; disclosed rather than left for the re-auditor to trip over."
+    ],
+    "decisions": [
+      {
+        "decision": "Branch off accepted main and cherry-pick d163ff0 rather than branch off feature-pipeline-status",
+        "why": "d163ff0's parent 56f4339 is already an ancestor of main, so the cherry-pick is conflict-free and the branch is exactly accepted-main + audited-baseline + fix. It excludes 2f4c929, a now-superseded pre-acceptance handoff doc."
+      },
+      {
+        "decision": "DEFECT A and DEFECT B in separate commits",
+        "why": "A is blocking, B is not. Separate commits let the re-auditor accept or revert either alone."
+      },
+      {
+        "decision": "Test committed together with its fix, not as a red commit",
+        "why": "Matches repo convention (5a9b495). The failing-test-first evidence is recorded here instead of leaving a broken commit on the branch."
+      },
+      {
+        "decision": "Per-pattern newest, then minimum across patterns - not a naive min over all produced files",
+        "why": "A wildcard names a set the owner keeps adding to. A naive min would mark stage 4 stale for ever over a superseded export they never deleted. Pinned by test_a_wildcard_pattern_is_satisfied_by_its_newest_match."
+      },
+      {
+        "decision": "Did not fix the pre-existing ResourceWarning",
+        "why": "Out of the audited scope; every extra diff line is something the re-auditor must check."
+      }
+    ],
+    "suggestions": [
+      "Run the real-workspace smoke check on Windows against runs/T2 before accepting - it is the one limitation this Mac clone cannot close.",
+      "Clean up the ResourceWarning in a separate commit; noise in test output erodes trust in the suite.",
+      "Consider whether stage 3's single-output ASIN-CANDIDATES/ASIN-BATCHES observation deserves its own follow-up.",
+      "Retire the permanently-stale test_199e_no_acceptance_tag_yet - two prior audits recommended it and a third acceptance tag now exists."
+    ],
+    "commands": [
+      "git log --oneline 211f2f8..HEAD",
+      "git diff 518b516 HEAD -- core/pipeline_status.py",
+      "python -m unittest tests.test_pipeline_status",
+      "git merge-base --is-ancestor d163ff0 main || echo 'baseline still out of main: correct'",
+      "git rev-parse main origin/main",
+      "python -m core.pipeline_status --seed \"<seed keyword>\"    # on Windows, against the real runs/T2"
+    ],
+    "next_steps": [
+      {
+        "order": 1,
+        "action": ".\\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan  on Windows, from the remediation branch. Nothing further should be changed here: no known blocker remains, and the review's policy is to stop speculative work at that point.",
+        "blocking": true
+      },
+      {
+        "order": 2,
+        "action": "Expect a first-run fix; the script has still never executed. Commit any fix to the branch, do not weaken a gate to get past it.",
+        "blocking": false
+      },
+      {
+        "order": 3,
+        "action": "Follow-up docs/proof commit with the real Windows evidence; no history rewrite",
+        "blocking": true
+      },
+      {
+        "order": 4,
+        "action": "Fresh independent re-audit from a new session and fresh worktrees",
+        "blocking": true
+      },
+      {
+        "order": 5,
+        "action": "Only after acceptance: merge and tag, owner-approved separate step",
+        "blocking": false
+      }
+    ],
+    "not_authorized_here": [
+      "merge to main",
+      "acceptance tag",
+      "push of this branch without the owner asking"
+    ],
+    "review_disposition": {
+      "C1": "ACCEPTED - stated on Stage, proved behaviourally against the shipped table",
+      "C2": "ACCEPTED - renamed _oldest_current_output",
+      "C3": "ACCEPTED - missing-output and equal-mtime boundary pinned",
+      "C4": "ACCEPTED - one named shell; surfaced a real defect in revision 1's own fix; execution proof deferred to Windows and recorded as blocking",
+      "C5": "ACCEPTED - no command printed without a real seed, in text and in JSON",
+      "C6": "ACCEPTED - provenance proved by patch-id and blob hashes",
+      "C7": "ACCEPTED - runtime filesystem diff plus receiver-qualified AST scan",
+      "C8": "ACCEPTED as process - follow-up commit, revision 1 preserved at 631a491"
+    }
+  },
+  "windows_gate_execution": {
+    "responds_to": "AMZ_FBM_PIPELINE_STATUS_WINDOWS_GATE_RUN3_REVIEW_2026-08-01.json",
+    "command": ".\\Capture-PipelineStatusEvidence.ps1 -FullSuite -ConnectivityScan",
+    "environment": "Windows 11; bare python = .venv\\Scripts\\python.exe 3.12.10; seed 'personalized nurse sweatshirt', recorded identically in 7 runs/T2 artifacts and read from the workspace rather than chosen.",
+    "runs": [
+      {"run": 1, "reached": "refusal step", "threw_on": "ConvertFrom-Json over a merged stdout+stderr capture", "defect": "D12"},
+      {"run": 2, "reached": "past the backslash refusal with the correct reason", "threw_on": "the new double-quote step", "defect": "D14"},
+      {"run": 3, "reached": "end of the full suite", "threw_on": "'the pipeline-status run CHANGED real runs/T2'", "defect": "D16"},
+      {"run": 4, "reached": "the final required-test check", "threw_on": "'did not run to a passing result' about a test that had passed", "defect": "D18"},
+      {"run": 5, "reached": "complete, without -FullSuite", "result": "exit 0"},
+      {"run": 6, "reached": "complete", "result": "exit 0", "verdict": "WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT"}
+    ],
+    "no_assertion_was_weakened": "Every throw was the gate being right about something. D16 replaced one span with a narrower one that still throws, and added a second span reported separately -- the original claim is tested more precisely, not less.",
+    "D16_false_attribution": {
+      "severity": "the same class this branch exists to remove -- a true assertion with a false stated cause",
+      "thrown": "The pipeline-status run CHANGED real runs/T2.",
+      "measured": "220 files before and after, 0 added, 0 removed, 0 content differences, 0 size differences. Ten files under phase6/6E rewritten byte-identically with new mtimes.",
+      "actual_cause": "the 4781-test suite, which ran BETWEEN the two snapshots",
+      "fix": "A third snapshot brackets the pipeline-status commands alone; that pair still throws and is now stricter. The remaining span is reported as runs_T2_changed_by_test_suite and never attributed to this module.",
+      "why_it_still_matters": "pipeline_status derives STALE purely from mtimes, so a suite that advances them on real artifacts can change what the owner is told to run next. Run 6: changed_by_pipeline_status=false, changed_by_test_suite=true -- both true, and now separable."
+    },
+    "D15_declared_side_effect": "scripts/connectivity_scan.py rewrites the TRACKED CONNECTED-RESEARCH-NETWORK-SCAN.json, so -ConnectivityScan guaranteed the clean-tree assertion would fail for doing what the flag asks. The side effect is declared by name; anything undeclared still fails.",
+    "D18_split_verdict_line": "The required-test check matched the test name and '... ok' on ONE line. A ResourceWarning from a handle leaked inside the test landed between them and made a PASSING test unreadable as passed. The handle is closed, and the gate now runs that node alone and reads unittest's own verdict. It also runs before the full suite, so the central proof fails in seconds rather than nineteen minutes.",
+    "shell_marshalling_measured": [
+      {"powershell_value": "personalized nurse sweatshirt", "child_received": "personalized nurse sweatshirt", "classification": "PRESERVED"},
+      {"powershell_value": "nurse gift\\", "child_received": "nurse gift\"", "classification": "TRANSFORMED", "note": "the trap"},
+      {"powershell_value": "nurse gift\\\\", "child_received": "nurse gift\\", "classification": "TRANSFORMED", "note": "delivers the intended value"},
+      {"powershell_value": "nurse\"quote\"", "child_received": "nursequote", "classification": "TRANSFORMED", "note": "the trap"},
+      {"powershell_value": "nurse\\\"quote\\\"", "child_received": "nurse\"quote\"", "classification": "TRANSFORMED", "note": "delivers the intended value"}
+    ],
+    "layer_separation": "Layer 1 (shell marshalling) is shell-marshalling.json and carries no application policy. Layer 2 (validation against an exact argv, no shell involved) is NOT duplicated in PowerShell -- tests/test_pipeline_status.py already does it via subprocess.run([sys.executable, ...]), and repeating it here would re-introduce the marshalling layer 1 exists to isolate.",
+    "run6_summary": {
+      "verdict": "WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT",
+      "main_unchanged": true,
+      "runs_T2_changed_by_pipeline_status": false,
+      "runs_T2_changed_by_test_suite": true,
+      "repository_changed_undeclared": false,
+      "powershell_execution_test_ran_and_passed": true,
+      "stages_5_and_11_exercised": true,
+      "stage_5_state": "READY",
+      "stage_11_state": "STALE",
+      "focused_boundary_connectivity_exit_codes": [0, 0, 0],
+      "connectivity_scan": "0 active Amazon-account paths",
+      "full_suite": "Ran 4783 tests - FAILED (failures=5, errors=1, skipped=4)"
+    },
+    "full_suite_differential": {
+      "verdict": "BASELINE_EQUIVALENT_EXCEPT_ONE",
+      "target_only_failures": 1,
+      "supersedes": "Revision 8 reported BASELINE_EQUIVALENT with zero target-only failures. That was WRONG. See correction_to_revision_8 below.",
+      "correction_to_revision_8": {
+        "what_was_claimed": "zero target-only failures",
+        "what_is_true": "exactly one: test_136b_accepted_authorities_unmodified",
+        "how_the_error_was_made": "Two different measurements folded into one headline. The worktree differential covered the three launcher nodes only. test_136b was classified separately by running git diff at three commits ON THE BRANCH, never against a tree lacking the branch's file. The weaker method's result was reported under the stronger claim.",
+        "who_caught_it": "An external reviewer, from the internal inconsistency alone: a test that fails because this branch ADDED a file cannot also fail on a baseline that does not have that file.",
+        "defect_class": "The same one this document keeps finding -- a claim broader than the measurement supporting it. D16 attributed a real change to the wrong actor; this attributed a separately-derived classification to a differential that never covered it."
+      },
+      "method": "Every node run in BOTH worktrees (211f2f8 and candidate c0aaf03), same interpreter, both outside any claude-named directory, sequential. Compared by node ID and outcome, not by counts.",
+      "nodes": [
+        {"node": "test_52_request_size_bounded", "baseline": "PASS", "candidate": "PASS", "classification": "PRE_EXISTING_ACCEPTED_WINDOWS_LOOPBACK_FLAKE", "evidence": "passes in isolation on both trees; only fails under full-suite load; prior accepted reports record the same signature"},
+        {"node": "test_15_to_20_startup_launcher_is_safe", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT_FALSE_POSITIVE", "cause": "forbids the substring 'claude' in the generated autostart .bat to catch an external AI-tool invocation; the .bat embeds the quoted interpreter path and this repository lives under D:\\Claude\\. The test cannot pass for any checkout under a directory named 'Claude'."},
+        {"node": "test_16_17_23_32_33_34_full_lifecycle", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT", "cause": "live dashboard did not become healthy within 30s"},
+        {"node": "test_35_live_restart", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT", "cause": "live dashboard did not become healthy within 30s"},
+        {"node": "test_199e_no_acceptance_tag_yet", "baseline": "FAIL", "candidate": "FAIL", "classification": "BASELINE_EQUIVALENT_PERMANENTLY_STALE"},
+        {"node": "test_136b_accepted_authorities_unmodified", "baseline": "PASS", "candidate": "FAIL", "classification": "TARGET_ONLY", "cause": "git diff --name-only over core/ reports ADDITIONS as well as modifications. git diff --name-status 3f758de c0aaf03 -- core/ returns exactly 'A core/pipeline_status.py'.", "intent_vs_implementation": "The stated intent -- accepted 7.3-7.12 authorities unmodified -- is NOT violated; nothing was modified. The implementation is broader than the name.", "consequence": "Merging this branch turns a passing test on main into a failing one. That is real and it is the owner's decision, not this branch's.", "options": ["accept a known documented target-only failure", "correct test_136b to compare modifications rather than any diff -- a change to accepted-phase test code needing its own review", "relocate core/pipeline_status.py outside what test_136b guards"], "recommendation": "Option 2 is the honest one, and it is out of scope here.", "done_in_this_branch": "nothing"}
+      ],
+      "not_fixed_here": "test_136b and test_15_to_20 are accepted-phase test code, outside this branch's scope. Both are recorded so the next reader does not re-derive them."
+    },
+    "run_count": {
+      "total_runs": 6,
+      "threw": [1, 2, 3, 4],
+      "completed_exit_0": [5, 6],
+      "run_5": "abbreviated validation, no -FullSuite",
+      "run_6": "the complete gate, -FullSuite -ConnectivityScan",
+      "correction": "Revision 8 also contained the phrase 'passing on the seventh', contradicting its own run table. There was no seventh run."
+    },
+    "evidence_ordering": {
+      "question": "Was stage evidence captured before the suite mutated runs/T2?",
+      "answer": "YES, by roughly seventeen minutes, from the evidence directory's own timestamps.",
+      "timeline": [
+        "00:17:57 pipeline-status.json -- stage 5 and stage 11 evidence",
+        "00:17:58 runs-T2-after-pipeline-status.json -- the read-only proof closes here",
+        "00:18:16 pipeline-status-tests.txt",
+        "00:18:31 boundary-tests.txt and connectivity-scan.txt",
+        "00:35:14 full-suite.txt -- the only step that touched runs/T2"
+      ],
+      "correction_to_the_review": "The suite did not touch 220 files. 220 is the TOTAL file count in runs/T2, before and after. The number touched is TEN, all under phase6/6E, all mtime-only."
+    },
+    "backlog_test_isolation": {
+      "item": "The full test suite writes into the real runs/T2 workspace.",
+      "observed": "Ten files under phase6/6E rewritten byte-identically with new mtimes.",
+      "why_it_matters": "pipeline_status derives STALE purely from mtimes, so running the suite can change the owner's next-action advice without changing a single byte of content.",
+      "scope": "NOT a pipeline_status defect and NOT fixed here. Logged as a separate backlog item, as the 2026-08-02 review recommends.",
+      "suggested_fix": "Point those tests at isolated temporary workspaces rather than runs/T2."
+    }
+  },
+  "revision": 9,
+  "revision_9_note": "Corrects revision 8, which claimed the full-suite differential was BASELINE_EQUIVALENT with zero target-only failures. It is BASELINE_EQUIVALENT_EXCEPT_ONE: test_136b_accepted_authorities_unmodified passes on 211f2f8 and fails on the candidate. Also corrects the run count ('passing on the seventh' -- there was no seventh run) and answers the 2026-08-02 review's evidence-ordering question from timestamps. Responds to AMZ_FBM_PIPELINE_STATUS_WINDOWS_EVIDENCE_COMPLETE_REAUDIT_REVIEW_2026-08-02.json.",
+  "revision_note": "Revision 1 is preserved in git at 631a491; no history was rewritten. Revision 6 responded to AMZ_FBM_PIPELINE_STATUS_REMEDIATION_REVIEW_AND_FIXED_FEEDBACK_2026-08-01.json (verdict STRONG_REMEDIATION_CANDIDATE_NOT_READY_FOR_ACCEPTANCE, corrections C1-C8). Claims revision 1 made that are no longer true are listed under revision_1_superseded_claims. Revision 7 is the FIRST revision containing anything measured on Windows: see first_windows_execution.",
+  "first_windows_execution": {
+    "date": "2026-08-01",
+    "what_ran": "python -m unittest discover -s tests -p 'test*pipeline*status*.py' on Windows 11, where the three skipUnless(win32) tests execute for the first time since the file was written.",
+    "first_result": "Ran 64 tests - FAILED (failures=2)",
+    "final_result": "Ran 66 tests - OK (skipped=0)",
+    "defects_found": 2,
+    "prediction_check": "Section 9 predicted the capture script would need a first-run fix. It needed two, and the second was masked by the first -- the same shape as DEFECT A, where a fresher sibling masked a stale artifact.",
+    "defect_1": {
+      "id": "UNSATISFIABLE_EXECUTION_PROOF",
+      "severity": "test-only, but it disabled the gate's central proof",
+      "sites": ["test_windows_powershell_renderer_preserves_exact_seed", "test_windows_powershell_runs_the_real_next_command_shape"],
+      "defect": "Each asserted argv == ['--seed', seed] AND assertNotIn('PWNED', run.stdout) in the same body. Four corpus seeds contain PWNED literally, so a CORRECT renderer is exactly what makes the marker appear in the probe's argv echo. The two assertions could never both hold on any machine.",
+      "why_invisible": "It only ran under skipUnless(win32), and it had never run on Windows. A test that only runs on a machine you do not have is a test you have not run.",
+      "fix": "Assert the property actually meant: the probe prints exactly ONE line, so a second line is output PowerShell produced on its own. Strictly stronger than the marker check -- it catches an injected command that prints anything, and assertion 1 reads only the LAST line, so extra output above it previously hid.",
+      "regression_guard": "test_the_execution_proof_cannot_assert_the_marker_is_absent_from_stdout",
+      "guard_runs_on": "every platform, deliberately -- a guard that only ran on Windows would share the blind spot it guards against",
+      "guard_has_teeth": "Applied by AST to the pre-fix file it fires at lines 524 and 545; on the fixed file it returns []."
+    },
+    "defect_2": {
+      "id": "DOUBLE_QUOTE_SILENTLY_DROPPED",
+      "severity": "real product defect, same class as DEFECT A -- a wrong value presented as a right one",
+      "masked_by": "defect_1, which aborted the seed loop at index 2 before it reached this seed at index 3",
+      "defect": "_ps_quote renders nurse\"quote\" as 'nurse\"quote\"'; PowerShell 5.1 rebuilds the native command line without escaping the embedded quote and the C runtime reads it as a delimiter. The child receives nursequote. The owner would have searched a keyword they never typed, with nothing on screen to show it.",
+      "measured_renderings": [
+        {"rendered": "'nurse\"quote\"'", "child_receives": "nursequote", "note": "what _ps_quote emits today"},
+        {"rendered": "\"nurse`\\\"quote`\\\"\"", "child_receives": "three separate arguments", "note": "double-quoted rendering is worse"},
+        {"rendered": "'nurse\\\"quote\\\"'", "child_receives": "nurse\"quote\"", "note": "byte-exact -- so this value IS renderable"}
+      ],
+      "resolution": "REFUSED at the CLI boundary, as a third entry in unsupported_value(). Exit 2, structured UNSUPPORTED_VALUE, next_command null, no engine command in text mode -- verified end-to-end through the real shell.",
+      "refusal_is_a_choice_not_an_impossibility": "Unlike the trailing backslash, this value can be rendered exactly. Emitting it means carrying the C runtime's backslash-doubling rules inside a renderer whose job is a two-word keyword, each rule needing its own Windows proof. A double quote is not part of any real Amazon search term. The docstrings state this explicitly: a refusal claiming an impossibility it has not got would be the same overstatement this document has corrected twice.",
+      "owner_decision": "Taken explicitly by the owner on 2026-08-01, presented against the alternative of escaping. Recorded so it can be reversed the same way.",
+      "corpus_change": "DOUBLE_QUOTE_SEED moved out of ADVERSARIAL_SEEDS and pinned out of it by name beside TRAILING_BACKSLASH_SEED. A refused value inside the gate corpus fails the gate for a limitation the renderer is not allowed to fix.",
+      "single_quote_unaffected": "nurse's gift still renders 'nurse''s gift' and is still supported. The refusal is exactly as wide as the character."
+    },
+    "blast_radius": "core/pipeline_status.py and tests/test_pipeline_status.py. No other file in the repository references pipeline_status or unsupported_value.",
+    "boundary_tests": "Ran 47 tests - OK (test_amazon_boundary, test_network_policy, test_connectivity_policy)",
+    "not_evidence": "None of this is the Windows capture. The gate script itself has still never completed a run."
+  },
+  "pushed_for_review": {
+    "branch_only": true,
+    "head": "631a491 at push time",
+    "authorized_by": "remediation review branch_push_authorized: true",
+    "merge": false,
+    "tag": false,
+    "main_after_push": "211f2f8"
+  },
+  "cherry_pick_provenance_proved": {
+    "correction": "C6",
+    "revision_1_error": "Inferred byte-identity from a conflict-free cherry-pick. The claim was true; the inference was not valid. The review was right to reject it.",
+    "patch_id_d163ff0": "7c7594d2a81a339848fd122a80f4b1449442f2a9",
+    "patch_id_518b516": "7c7594d2a81a339848fd122a80f4b1449442f2a9",
+    "patch_ids_match": true,
+    "changed_path_sets_match": true,
+    "blob_core_pipeline_status_py": "e2e139acb44351acfb629bba59eddc9007773786",
+    "blob_tests_test_pipeline_status_py": "71091d792ca2f6eb8a77685d20d9d553176fd8a2",
+    "blobs_match": true,
+    "git_diff_check": "clean over 518b516^..631a491",
+    "unrelated_feature_branch_files_entered": 0,
+    "excluded_commit": "2f4c929"
+  },
+  "defect_c5_placeholder": {
+    "correction": "C5",
+    "problem": "Quoting <seed-keyword> made it syntactically safe and left it semantically misleading: it still looks pasteable and would run the engine with the literal placeholder as the seed.",
+    "fix": "_fmt_command returns None rather than a placeholder; render prints an instruction naming what is missing plus the command that produces the real line; --json emits next_command: null and next_command_needs_seed: true.",
+    "machine_consumer_protected": true
+  },
+  "output_pattern_semantics": {
+    "corrections": [
+      "C1",
+      "C3"
+    ],
+    "semantics": "required-all",
+    "required_any_supported": false,
+    "optional_outputs_supported": false,
+    "why_it_matters": "The staleness minimum is only correct if every declared output is a required current artifact. An optional pattern in the same flat list would produce a false STALE.",
+    "was_true_before": true,
+    "was_documented_or_tested_before": false,
+    "stated_at": "core/pipeline_status.py:44 Stage docstring",
+    "proved_by": "test_every_declared_output_is_required - behavioural, against the SHIPPED table: each output of each multi-output stage is removed in turn and must stop the stage being READY.",
+    "missing_required_output": "reports MISSING or BLOCKED and never reaches a staleness verdict; evaluate() resolves missing_outputs BEFORE any timestamp compare",
+    "equal_mtime_boundary": "READY, deliberately. An engine writing inside one clock tick of its input is the normal fast case; a permanent false STALE is worse. Strict '<'. Pinned by test_equal_mtimes_are_ready_not_stale."
+  },
+  "revision_1_superseded_claims": [
+    {
+      "claim": "'anything outside [A-Za-z0-9._+=/:\\-\\\\] forces quoting, and an embedded quote is doubled, the form both PowerShell and the Microsoft C runtime argument parser accept'",
+      "status": "WRONG_AND_REPLACED",
+      "why": "Correct for the MSVCRT argv parser, wrong for PowerShell: a double-quoted PowerShell string expands $. See defect_b.defect_found_in_revision_1_own_fix."
+    },
+    {
+      "claim": "'safe to PASTE into the Windows PowerShell and cmd.exe consoles this tool targets'",
+      "status": "WITHDRAWN",
+      "why": "Quoting is not portable between them. The renderer now targets ONE named shell."
+    },
+    {
+      "claim": "'_oldest_output'",
+      "status": "RENAMED",
+      "why": "It never returned the oldest matching file. Now _oldest_current_output."
+    },
+    {
+      "claim": "'518b516 is byte-identical to the audited code' inferred from a conflict-free cherry-pick",
+      "status": "TRUE_BUT_NOW_PROVED_INSTEAD_OF_INFERRED",
+      "why": "See cherry_pick_provenance_proved."
+    },
+    {
+      "claim": "'accepted_assertions_changed: NONE' with no further detail",
+      "status": "STILL_TRUE_BUT_INCOMPLETE",
+      "why": "3 unaccepted baseline assertions were changed in revision 2. d163ff0 is not accepted, so the original statement holds, but the nuance was missing."
+    },
+    {
+      "claim": "The AST scan settles the read-only question",
+      "status": "SUPERSEDED",
+      "why": "Replaced by a runtime filesystem diff plus a receiver-qualified scan."
+    }
+  ],
+  "acceptance_gate": {
+    "status": "HOLD",
+    "merge_authorized": false,
+    "acceptance_tag_authorized": false,
+    "branch_push_authorized": true,
+    "branch_pushed": true,
+    "blockers": [
+      "Fresh independent re-audit of the final Windows-evidenced commit not yet completed."
+    ],
+    "blockers_closed_at_revision_8": [
+      {
+        "was": "Capture-PipelineStatusEvidence.ps1 has never completed a run.",
+        "now": "CLOSED. Run 6 completed with exit 0 and verdict WINDOWS_EVIDENCE_COMPLETE_PENDING_INDEPENDENT_REAUDIT, with -FullSuite and -ConnectivityScan. Runs 1-4 each threw on a real gate defect (D12, D14, D16, D18); none was resolved by weakening an assertion."
+      },
+      {
+        "was": "No real runs/T2 execution evidence.",
+        "now": "CLOSED. Real workspace, real recorded seed, stages_5_and_11_exercised=true (stage 5 READY, stage 11 STALE), and the read-only differential is clean AND correctly scoped: runs_T2_changed_by_pipeline_status=false measured across the tool's own commands alone."
+      }
+    ],
+    "only_remaining_blocker_note": "One, and it is the whole gate: this work has still only ever been judged by its author. Six runs of a script I wrote, passing on the seventh, is evidence and not acceptance.",
+    "blockers_closed_at_revision_7": [
+      {
+        "was": "The three Windows-only tests are skipped here and must PASS on Windows.",
+        "now": "CLOSED. All three ran on Windows and pass: Ran 66 tests - OK (skipped=0). Two failed on first execution; see first_windows_execution."
+      },
+      {
+        "was": "Bare 'python' interpreter resolution not yet evidenced on the owner's Windows environment.",
+        "now": "CLOSED FOR THIS SHELL, and the scope matters. Bare 'python' resolves to D:\\...\\.venv\\Scripts\\python.exe (3.12.10), NOT the Microsoft Store alias under WindowsApps, and it resolves identically under 'powershell.exe -NoProfile' -- which is the closer approximation of a console the owner opens themselves. It is not evidence for a shell whose PATH differs, and the capture script re-checks it at run time rather than trusting this record."
+      }
+    ],
+    "blockers_count_note": "Five became three. The two closed are recorded above rather than deleted, so a re-auditor can see what changed and on what evidence."
+  },
+  "windows_capture": {
+    "script": "Capture-PipelineStatusEvidence.ps1",
+    "derived_from": "WINDOWS_PIPELINE_STATUS_ACCEPTANCE_CAPTURE.ps1",
+    "draft_assumptions_verified": [
+      "tests/test_amazon_boundary.py exists",
+      "tests/test_network_policy.py exists",
+      "tests/test_connectivity_policy.py exists",
+      "discover pattern 'test*pipeline*status*.py' matches test_pipeline_status.py"
+    ],
+    "defects_found_in_draft": [
+      {
+        "id": "D1",
+        "severity": "blocking",
+        "defect": "native 2>&1 | Tee-Object under $ErrorActionPreference='Stop' raises NativeCommandError on the first stderr line in Windows PowerShell 5.1.",
+        "evidence": "python -m unittest writes ALL output to stderr; stdout is empty and even 'OK' is on stderr. Verified on this clone.",
+        "impact": "Both test steps would have thrown before producing any evidence.",
+        "fix": "Invoke-Capture drops to 'Continue' for the native call and checks $LASTEXITCODE."
+      },
+      {
+        "id": "D2",
+        "severity": "blocking_for_correctness",
+        "defect": "The gate matched the test NAME in -v output. A SKIPPED test prints its name.",
+        "evidence": "Reproduced: 'test_windows_powershell_renderer_preserves_exact_seed (...) ... skipped' matches the draft's regex.",
+        "impact": "powershell_execution_test_seen would report true while nothing executed - a false pass on the one gate the script exists to enforce.",
+        "fix": "Requires '... ok' and throws on 'skipped'."
+      },
+      {
+        "id": "D3",
+        "severity": "evidence_gap",
+        "defect": "Only the with-seed rendering was captured.",
+        "impact": "C5 had no Windows evidence.",
+        "fix": "No-seed text and JSON runs added, both asserted."
+      },
+      {
+        "id": "D4",
+        "severity": "evidence_gap",
+        "defect": "No adversarial seed against the real workspace.",
+        "impact": "C4 had no end-to-end Windows evidence outside the unit test.",
+        "fix": "Adversarial-seed run plus sentinel-file check added."
+      },
+      {
+        "id": "D5",
+        "severity": "maintainability",
+        "defect": "-ExpectedHead hardcoded to 5104904, invalidated by the commit adding the script.",
+        "fix": "Default empty; HEAD verified as pushed and descending from the audited baseline. Pass -ExpectedHead <sha> to pin."
+      },
+      {
+        "id": "D6",
+        "severity": "introduced_and_fixed_during_rewrite",
+        "defect": "Tee-Object output would become part of Invoke-Capture's return value, making each exit-code variable an array of output lines.",
+        "fix": "Routed to Out-Host."
+      },
+      {
+        "id": "D7",
+        "severity": "introduced_and_fixed_during_rewrite",
+        "defect": "Compare-Object on an empty workspace under StrictMode.",
+        "fix": "Guarded."
+      }
+    ],
+    "not_run": "pwsh is not available on this clone. The script has been read and reasoned about, not executed. Balanced delimiters and ASCII-only were checked; that is not the same as running it. Expect to fix something on first run."
+  },
+  "powershell_execution_proof": {
+    "test_class": "TestWindowsPowerShellExecution",
+    "required_test": "test_windows_powershell_renderer_preserves_exact_seed",
+    "status": "WRITTEN_SKIPS_ON_MACOS_MUST_PASS_ON_WINDOWS",
+    "method": "Writes the PRODUCTION-rendered line to a .ps1 - what pasting actually does - runs it through real powershell.exe with -NoProfile -NonInteractive, and reads back sys.argv from a harmless probe that prints its own argv as JSON and nothing else.",
+    "proves": [
+      "the seed arrives as ONE argument",
+      "with its exact value",
+      "no extra command executed (no PWNED in stdout or stderr)",
+      "no redirection-created file (sentinel.txt absent)"
+    ],
+    "adversarial_seed_count": 12,
+    "corpus_shared_with": "test_the_seed_corpus_is_covered_by_the_shape_tests_on_every_platform, so the platform-independent and Windows corpora cannot drift apart",
+    "missing_shell_behaviour": "On Windows a missing powershell.exe FAILS rather than skips. A missing shell must not read as proof.",
+    "second_test": "test_windows_powershell_runs_the_real_next_command_shape covers the _fmt_command template-substitution path including the workspace argument"
+  },
+  "bug_hunt_2026_08_01": {
+    "authorization_note": "The gate review set additional_code_change_authorized_before_windows_run: false. Overruled deliberately, on the owner's instruction to bug-hunt and fix, and because B1 would have made the Windows capture throw for the wrong reason. There is no value in running a script with a known defect to obtain evidence.",
+    "defects": [
+      {
+        "id": "B1",
+        "severity": "blocking_would_have_failed_the_gate",
+        "defect": "In PowerShell a line whose FIRST token is a quoted string is a string EXPRESSION, not a command. _ps_quote(sys.executable) quotes any interpreter path containing a space, e.g. C:\\Program Files\\Python311\\python.exe.",
+        "consequence": "The generated .ps1 would have ECHOED the path, exited 0, and json.loads would have raised on the echoed text. The gate test would have failed on the environment rather than on the renderer, presenting as a JSONDecodeError that reads like a broken test.",
+        "why_undetected": "The Windows-only test cannot run on this macOS clone, so nothing here would ever have exercised it. It would have failed on the first Windows machine whose Python lives under C:\\Program Files.",
+        "fix": "Call operator: `& {py} {probe} --seed {seed}`."
+      },
+      {
+        "id": "B2",
+        "severity": "blocking_latent",
+        "defect": "Windows PowerShell 5.1 reads a BOM-less .ps1 as the system ANSI code page.",
+        "consequence": "The Unicode seed added for this review would have been mojibaked before PowerShell parsed it; the test would have measured file encoding.",
+        "fix": ".ps1 written utf-8-sig."
+      },
+      {
+        "id": "B3",
+        "severity": "high",
+        "defect": "Python stdout falls back to the ANSI code page when REDIRECTED rather than attached to a console -- exactly what Tee-Object does.",
+        "consequence": "A non-ASCII seed raises UnicodeEncodeError and aborts the capture.",
+        "fix": "PYTHONIOENCODING=utf-8 in the capture script."
+      },
+      {
+        "id": "B4",
+        "severity": "latent_correctness",
+        "defect": "_resolve matched on overlapping head and tail: startswith(head) and endswith(tail) alone accepts 'abcd' for 'abc*bcd'.",
+        "consequence": "A phantom artifact making a stage look READY. No shipped pattern hits it.",
+        "fix": "Length guard: len(n) >= len(head) + len(tail)."
+      },
+      {
+        "id": "B5",
+        "severity": "medium",
+        "defect": "No reject policy for control characters in --seed.",
+        "consequence": "A seed pasted from a spreadsheet carries a newline; the printed command splits across lines and the second looks like a separate command. Quoting cannot fix it.",
+        "fix": "unsupported_characters() names them; CLI exits 2 with a clear message."
+      },
+      {
+        "id": "B6",
+        "severity": "high",
+        "defect": "Tee-Object output became part of Invoke-Capture's return value.",
+        "consequence": "Every exit-code variable would have been an array of output lines.",
+        "fix": "Routed to Out-Host."
+      },
+      {
+        "id": "B7",
+        "severity": "medium",
+        "defect": "Compare-Object refuses an empty collection.",
+        "consequence": "An empty runs/T2 threw an argument-binding error that reads like a script bug rather than the evidence result.",
+        "fix": "Text comparison first; Compare-Object only for the detail."
+      },
+      {
+        "id": "B8",
+        "severity": "low",
+        "defect": "StrictMode Latest throws on a missing JSON property; origin/<branch> was dereferenced without checking it exists.",
+        "fix": "Get-JsonProperty reports the absent property; show-ref verifies the remote ref."
+      }
+    ],
+    "self_correction": {
+      "claim": "Revision 3 characterised the trailing-backslash hazard as 'nurse\\'.",
+      "status": "WRONG_AND_CORRECTED",
+      "why": "'\\' is bare-safe, so 'nurse\\' renders UNQUOTED and there is no quote for the C runtime to mis-parse. The hazard needs a value that BOTH requires quoting AND ends in a backslash: 'nurse gift\\'.",
+      "both_cases_now_pinned": true,
+      "stays_out_of_execution_corpus": "It is a PowerShell native-marshalling limitation BELOW the renderer. Failing the acceptance gate on something _ps_quote cannot fix would be wrong."
+    },
+    "review_items_implemented": [
+      "exact-value comparison, no normalising or trimming",
+      "stderr asserted empty",
+      "whole-directory snapshot instead of one sentinel name, so a redirect to ANY filename is caught",
+      "exactly one executable line per .ps1",
+      "argv length asserted",
+      "corpus divergence blocked by AST, not by counting source occurrences -- the counting version counted its own assertion and failed",
+      "-FullSuite and -ConnectivityScan switches close gate-review B5 and B6 in one sitting",
+      "stages 5 and 11 recorded by name in summary.json",
+      "probe prints machine-readable JSON only, no logging or banner",
+      "temp files isolated in a mkdtemp workspace removed on failure via addCleanup",
+      "missing powershell.exe FAILS on Windows rather than skipping"
+    ]
+  },
+  "prewindows_review_disposition": {
+    "verdict_received": "STRONG_PREWINDOWS_HARDENING_ACCEPTANCE_STILL_BLOCKED",
+    "overrule_judgment_returned": "CORRECT",
+    "policy_adopted": "Do not knowingly run a deterministic defective gate. A concrete, reproducible defect found before the environment run may be fixed with a focused test and a branch-only commit. Do not continue speculative refactoring once no known blocker remains.",
+    "reversal": {
+      "topic": "quote-required trailing backslash",
+      "my_previous_position": "Document it as a PowerShell native-marshalling limitation below the renderer and exclude it from the execution corpus.",
+      "status": "WRONG_AND_REVERSED",
+      "why": "Calling it a shell limitation does not remove it from the paste-safety contract. A value that looks supported and arrives at the engine changed is exactly the failure class this work exists to close.",
+      "decision": "Option B - reject with a structured error and test the refusal.",
+      "implementation": "unsupported_value() refuses a value that BOTH requires quoting AND ends in a backslash. Exit 2, no command emitted, structured UNSUPPORTED_VALUE in --json with next_command null.",
+      "refusal_is_exactly_as_wide_as_the_defect": "A bare 'nurse\\' needs no quoting, so there is no quote for the C runtime to mis-parse, and it stays SUPPORTED (exit 0). Only the quote-required form is refused.",
+      "workspace_validated_on_the_same_terms": true
+    },
+    "holes_the_contracts_found_in_my_own_fixes": [
+      {
+        "id": "H1",
+        "from": "B1 required_contract",
+        "hole": "The Windows test used sys.executable, which may or may not contain a space on any given machine, so the `&` fix could have passed without ever being exercised.",
+        "class": "Same as the D2 skipped-test gate: a check that can silently not check.",
+        "fix": "test_a_quoted_executable_needs_the_call_operator_to_run_at_all uses a CONTROLLED fixture under 'dir with space' and asserts BOTH directions - without `&` PowerShell echoes the path, with `&` it runs. A test that only checked the fix would never show the hazard is real."
+      },
+      {
+        "id": "H2",
+        "from": "B3 required_contract",
+        "hole": "I fixed the redirected-stdout encoding trap in the capture script and LEFT IT LIVE IN THE TEST. The argv probe used print(), and its stdout there is a pipe, so on Windows the non-ASCII seed would have raised UnicodeEncodeError inside the probe and the failure would have read as a renderer defect.",
+        "fix": "The probe encodes UTF-8 bytes itself, independent of the environment it is measured in."
+      }
+    ],
+    "also_implemented": [
+      "C0 controls AND DEL enumerated and tested individually; NUL caught before any subprocess is built, which is the only place it can be caught",
+      "a refused seed emits no command and reports structured UNSUPPORTED_VALUE in --json with next_command null",
+      ".ps1 asserted to carry a UTF-8 BOM",
+      "rendered line asserted to start with '& '",
+      "filesystem side-effect check made absolute rather than an allow-list",
+      "Invoke-Capture returns exactly one [pscustomobject] with an integer ExitCode rather than relying on position",
+      "an EMPTY runs/T2 is refused instead of satisfying the read-only differential trivially",
+      "the trailing-backslash refusal captured as Windows evidence in its own right"
+    ],
+    "authoritative_encoding_mechanism": {
+      "chosen": "PYTHONIOENCODING=utf-8",
+      "rejected": [
+        "PYTHONUTF8=1",
+        "-X utf8"
+      ],
+      "why": "UTF-8 mode also changes the FILESYSTEM encoding, and this tool's entire job is reading filenames. Changing how they decode would alter the measurement. Narrower is correct: stdio only. Per the review's caution against stacking overrides, this is the only encoding override set."
+    },
+    "table_invariants_added": [
+      "test_no_two_declared_outputs_of_a_stage_can_match_the_same_file - required-all is defeated if one artifact fills two slots, which the _resolve overlap guard does not cover",
+      "test_every_command_starts_with_a_bare_literal_token - this is WHY no printed command needs '&'. The production contract is satisfied structurally rather than by adding noise to every printed line, and the test is the tripwire if a template ever leads with a substituted value."
+    ]
+  },
+  "required_checks_audit": {
+    "premise": "The rev-5 review returned stop_coding_now: true and remaining_known_static_defects: NONE_IDENTIFIED_FROM_THE_SUMMARY. That last phrase is load-bearing -- it was identified FROM THE SUMMARY. Auditing the SOURCE against each required_checks list found six that were not met. Every one maps to an explicit check; none is speculative refactoring.",
+    "gaps": [
+      {
+        "id": "A1",
+        "required_by": "reversal_review: 'the predicate is derived from the actual renderer behavior rather than from a separate approximation'",
+        "gap": "needs_quoting() re-wrote _ps_quote's bare-safe condition instead of being the one the renderer calls.",
+        "risk": "Change what renders bare and the refusal silently stops describing the behaviour it exists to describe.",
+        "fix": "_ps_quote now calls needs_quoting. One predicate."
+      },
+      {
+        "id": "A2",
+        "required_by": "reversal_review: 'the accepted bare-safe trailing-backslash value round-trips exactly on Windows'",
+        "gap": "'nurse\\\\' -- the value the tool explicitly CLAIMS to support -- was absent from the Windows corpus.",
+        "risk": "A claim of support that is never executed is the same untested assertion this work keeps finding.",
+        "fix": "Added to ADVERSARIAL_SEEDS. If PowerShell mangles it after all, the claim is wrong and the refusal must widen; the corpus is how that gets found."
+      },
+      {
+        "id": "A3",
+        "required_by": "control_character_policy: 'before command rendering, workspace lookup, and subprocess creation'",
+        "gap": "Validation ran AFTER os.path.isdir.",
+        "risk": "A path with a control character was reported 'workspace not found' -- true but useless, sending the owner to look for a missing directory instead of at the character they pasted.",
+        "fix": "Validation moved first; it touches no filesystem so nothing is lost. Verified."
+      },
+      {
+        "id": "A4",
+        "required_by": "absolute_side_effect_snapshot: 'canonical paths and hashes, not names alone'",
+        "gap": "The snapshot compared basenames.",
+        "risk": "Misses a file MODIFIED rather than created, and collapses same-named files in different directories -- a redirect that OVERWROTE the probe read as no side effect at all.",
+        "fix": "Relative path -> content hash, snapshotted per iteration after the .ps1 is written, so the deliberately-changing script file need not be excluded."
+      },
+      {
+        "id": "A5",
+        "required_by": "required_output_uniqueness: 'Windows case-insensitive path equivalence is accounted for'",
+        "gap": "Output-slot uniqueness compared case-sensitively.",
+        "risk": "PRODUCT-PAGE.json and product-page.json are one file on Windows.",
+        "fix": "Comparison lowercased."
+      },
+      {
+        "id": "A6",
+        "required_by": "final_decision.important_unverified_contract: BARE_PYTHON_INTERPRETER_IDENTITY",
+        "gap": "Every printed command begins with bare `python` -- which is WHY none needs a call operator -- but bare `python` is a PATH lookup and was never verified.",
+        "risk": "On Windows it can resolve to the Microsoft Store alias stub under WindowsApps, which OPENS THE STORE rather than running Python, or to an interpreter without this repository's dependencies. The printed command is only as good as what that name resolves to.",
+        "fix": "The capture resolves it, refuses the Store alias by path, proves it can import core.pipeline_status from the repo, and records path and version."
+      }
+    ],
+    "also_closed": [
+      "The H1 fixture asserts its path actually contains a space, not only that it needs quoting",
+      "Invoke-Capture exposes Output and LineCount; stdout and stderr are merged ON PURPOSE because their interleaving is what makes a failure readable",
+      "A non-empty but IRRELEVANT runs/T2 is recorded as not exercising stages 5 and 11 rather than passing as evidence for them",
+      "PYTHONIOENCODING process scope documented: it dies with the script and cannot leak into a later shell"
+    ],
+    "my_own_guards_that_failed_and_were_right_to": [
+      {
+        "guard": "corpus-divergence AST check",
+        "why_it_failed": "It collected EVERY `for x in name` loop, so the new tree snapshot's `for f in files` counted as a rival corpus.",
+        "fix": "ALL_CAPS module constants only."
+      },
+      {
+        "guard": "corpus shape test",
+        "why_it_failed": "It asserted every corpus seed comes back single-quoted, which the deliberately BARE 'nurse\\\\' breaks.",
+        "fix": "Asserts ROUND-TRIP through the renderer's own inverse -- the property that actually matters, and one that does not block adding a legitimately bare case.",
+        "lesson": "A test that has to be relaxed to admit a true case was asserting the wrong thing."
+      }
+    ]
+  },
+  "ambiguity_resolved": {
+    "topic": "call operator versus bare python",
+    "raised_by": "rev-5 review apparent_contract_ambiguity",
+    "resolution": "The reviewer's reading is correct. NO production next-command starts with '&', because none starts with a quoted value. The '& ' assertion applies only to the controlled Windows fixture, which deliberately invokes a quoted path under 'dir with space' to prove the hazard is real. The report previously listed both facts without distinguishing them and now carries an explicit scope note.",
+    "tripwire": "test_every_command_starts_with_a_bare_literal_token fails if a template ever leads with a substituted value, at which point the renderer must emit '&'."
+  }
+}

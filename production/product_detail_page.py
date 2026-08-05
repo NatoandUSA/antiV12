@@ -216,15 +216,82 @@ def _norm_text(text):
     return re.sub(r"\s+", " ", n).strip()
 
 
-def _is_safe_copy(text):
-    """Phase 6C visible-copy evidence gate: reuse the 6B physical-claim classifier. A field's copy is
-    Phase-6C-safe ONLY if it classifies SAFE (pure market identity) — any GATED/EXCLUDED verdict means
-    it leans on an unverified physical / personalization / gift-occasion concept and must be deferred."""
+# ---------------------------------------------------------------- copy surfaces
+# Which concepts a surface may carry is a POLICY decision, separate from whether the evidence
+# exists. Keeping them separate is what lets bullets become evidence-aware without silently
+# overturning the owner's pure-identity title strategy.
+COPY_SURFACE_TITLE = "TITLE"      # market identity only, regardless of what is verified
+COPY_SURFACE_BODY = "BODY"        # bullets / highlights: verified concepts may be stated
+
+
+def gated_concepts(text):
+    """EVERY gated concept in `text`, in lexicon order — not just the highest-ranked one.
+
+    `KAP._classify_keyword` returns a single (verdict, concept, reason_code): the most
+    policy-relevant hit. A gate built on it verifies that one concept and stops, publishing copy
+    whose second, unverified concept was never examined. That is the cross-authorisation failure,
+    and it is why this enumerates instead of classifying.
+
+    The vocabulary and the tokeniser are the 6B classifier's own — reused, never copied, so a
+    lexicon change cannot leave this gate reading a stale word list.
+
+    FAILS CLOSED. Copy with unrecognised content tokens yields a (None, PRODUCT_FACT_UNKNOWN)
+    entry rather than an empty list, because "no concept matched" and "nothing to check" must not
+    be the same answer.
+    """
     norm = _norm_text(text)
     if not norm:
+        return []
+    extra = {t for t in KAP._content_tokens(norm) if t not in KAP.SAFE_TOKENS}
+    if not extra:
+        return []
+    hits = [(concept, code) for code, concept, vocab in KAP._GATE_LEXICON if extra & vocab]
+    for vocab, concept in ((KAP._GARMENT_OTHER, "garment_type"),
+                           (KAP._OCCASION, "occasion"),
+                           (KAP._DIFFERENTIATOR, "differentiator")):
+        if extra & vocab:
+            hits.append((concept, KAP.EXC_OWNER_FACT_REQUIRED))
+    return hits or [(None, KAP.EXC_PRODUCT_FACT_UNKNOWN)]
+
+
+def _copy_gate(text, claims, surface=COPY_SURFACE_BODY):
+    """(ok, blocking) for one copy fragment on one surface.
+
+    A fragment is publishable when EVERY gated concept it relies on is backed by a VERIFIED claim
+    for that same concept. Verification is asked of `product_workspace._concept_verified`, the
+    existing authority — this module never decides what "verified" means.
+
+    Each concept is checked against its OWN claim. A verified recipient claim cannot authorise
+    decoration wording; a verified decoration claim cannot authorise material wording.
+
+    `blocking` is a deterministic list of dicts naming the concept, the reason code and what the
+    owner can do about it, because "CLAIM_EVIDENCE_MISSING" is not something anyone can act on.
+    """
+    blocking = []
+    for concept, code in gated_concepts(text):
+        if concept is None:
+            blocking.append({"concept": None, "reason_code": code,
+                             "evidence_state": "UNKNOWN_CONCEPT",
+                             "next_action": "copy uses wording the classifier cannot map to a "
+                                            "product concept; rewrite it or extend the lexicon"})
+        elif surface == COPY_SURFACE_TITLE:
+            blocking.append({"concept": concept, "reason_code": code,
+                             "evidence_state": "NOT_PERMITTED_ON_SURFACE",
+                             "next_action": "title policy is market identity only; this concept "
+                                            "belongs in bullets, A+ or backend terms"})
+        elif not PW._concept_verified(claims, concept):
+            blocking.append({"concept": concept, "reason_code": code,
+                             "evidence_state": "UNVERIFIED",
+                             "next_action": "supply and verify %s" % concept})
+    return (not blocking), blocking
+
+
+def _is_safe_copy(text, claims=None, surface=COPY_SURFACE_TITLE):
+    """Back-compatible wrapper. Defaults to the TITLE surface, which is the strict, pre-existing
+    behaviour: any gated concept blocks, whatever the evidence says."""
+    if not _norm_text(text):
         return False
-    verdict = KAP._classify_keyword({"keyword_normalized": norm})
-    return verdict[0] == "SAFE"
+    return _copy_gate(text, claims, surface)[0]
 
 
 def _classify_reason(text):
@@ -602,22 +669,29 @@ def assemble_bullets(deps, br):
         text = b["text"] or ""
         engine_pub = b["publishability"]
         missing = list(b.get("missing_requirements") or [])
-        safe = bool(text.strip()) and engine_pub == BE.PUBLISHABLE and not missing and _is_safe_copy(text)
+        # Bullets are a BODY surface: a concept the owner has verified may be stated here. The
+        # gate reports WHICH concepts blocked it, so an empty bullet names something actionable
+        # instead of only "CLAIM_EVIDENCE_MISSING".
+        copy_ok, blocking = _copy_gate(text, deps.claims, COPY_SURFACE_BODY)
+        safe = bool(text.strip()) and engine_pub == BE.PUBLISHABLE and not missing and copy_ok
         if safe:
             state = "SAFE_DRAFT"
             final_text = text
             reason_codes = []
+            blocking = []
             published_texts.append(final_text)
         else:
             final_text = ""
             if not text.strip():
                 reason = alloc_status.get("empty_reason_code") or "CLAIM_EVIDENCE_MISSING"
+                blocking = []
             elif missing:
                 reason = "OWNER_FACT_REQUIRED"
-            elif not _is_safe_copy(text):
-                reason = "CLAIM_EVIDENCE_MISSING"      # copy leans on an unverified concept
+            elif not copy_ok:
+                reason = "CLAIM_EVIDENCE_MISSING"      # named concept-by-concept in `blocking`
             else:
                 reason = "FIELD_NOT_PUBLISHABLE"
+                blocking = []
             state = "EMPTY_" + reason
             reason_codes = [reason]
         if final_text:
@@ -629,6 +703,7 @@ def assemble_bullets(deps, br):
         records.append({
             "bullet_number": b["bullet_number"],
             "bullet_job": b["job"],
+            "blocking_concepts": blocking,
             "purpose": alloc_status.get("note") or b["job"],
             "allocated_concepts": [a["phrase"] for a in alloc],
             "allocation_outcomes": ([USED] if safe else [DEFERRED_OWNER_FACT_REQUIRED

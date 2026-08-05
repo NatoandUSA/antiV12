@@ -87,6 +87,14 @@ FULL_FACTS = {
 }
 
 
+# Everything verified EXCEPT the decoration method. The verified differentiator still reads
+# "embroidered, not printed", so copy carries a DECORATION concept backed only by a
+# DIFFERENTIATOR claim -- the cross-authorisation case, and the only fixture that produces a
+# bullet whose requirements are satisfied while its copy is still blocked.
+FACTS_NO_DECORATION = json.loads(json.dumps(FULL_FACTS))
+FACTS_NO_DECORATION["product"].pop("decoration_method")
+
+
 def build_chain(facts=None, project_id="TESTWS"):
     """A hermetic workspace with completed 6A + 6B, optionally carrying verified product facts."""
     d = tempfile.mkdtemp(prefix="6c-gate-")
@@ -126,13 +134,27 @@ class EvidenceAwareCopyGate(unittest.TestCase):
             "every bullet was blanked even though the owner verified every product fact; "
             "blanked jobs: %s" % [b.get("bullet_job") for b in blanked])
 
-    def test_decoration_bullet_is_published_when_decoration_is_verified(self):
-        """The specific bullet the gate blanks today, named so a regression is unambiguous."""
+    def test_the_copy_gate_no_longer_blocks_the_decoration_bullet(self):
+        """Scope boundary, asserted rather than assumed.
+
+        With decoration_method VERIFIED the copy gate must not be what stops this bullet. It is
+        still empty, because `bullet_engine.JOB_CONCEPTS` draws EMBROIDERY_OR_DECORATION_PROOF
+        from ("real_machine_embroidery", "satin_stitch", "tatami_fill", "decoration_method") and
+        the engine reports decoration_method unsatisfied -- a claim-mapping question inside the
+        bullet engine, not a Phase 6C filtering question.
+
+        This test pins the boundary so a future reader does not mistake the remaining emptiness
+        for the defect this branch fixed, and fails loudly if the copy gate starts blocking it
+        again.
+        """
         bl, _ = bullets_of(build_chain(FULL_FACTS))
         dec = [b for b in bl if "DECORATION" in str(b.get("bullet_job", ""))]
         self.assertTrue(dec, "no decoration bullet in the taxonomy")
-        self.assertTrue(str(dec[0].get("text", "")).strip(),
-                        "decoration copy was blanked while decoration_method is VERIFIED")
+        self.assertEqual(
+            dec[0].get("blocking_concepts") or [], [],
+            "the copy gate is blocking decoration copy although decoration_method is VERIFIED")
+        self.assertIn("decoration_method", dec[0].get("missing_requirements") or [],
+                      "the engine-side blocker changed shape; re-check the scope boundary")
 
     def test_copy_without_facts_stays_blocked(self):
         """Regression guard: the gate must not become permissive. No facts, no visible copy."""
@@ -141,6 +163,26 @@ class EvidenceAwareCopyGate(unittest.TestCase):
                          "copy was published with no verified product facts at all")
         for b in bl:
             self.assertEqual(str(b.get("text", "")).strip(), "")
+
+    def test_a_verified_differentiator_does_not_authorise_decoration_wording(self):
+        """Cross-authorisation, through the real assembly path.
+
+        The RECIPIENT bullet ends with the verified differentiator, whose text is "embroidered,
+        not printed". That sentence names a DECORATION concept while the claim behind it is a
+        DIFFERENTIATOR claim. With decoration_method unverified the bullet must stay blocked: a
+        verified claim authorises its own concept and nothing else.
+
+        This is also the only fixture in which a bullet is requirement-satisfied and still
+        copy-blocked, which is why the next test shares it.
+        """
+        bl, _ = bullets_of(build_chain(FACTS_NO_DECORATION))
+        rec = [b for b in bl if "RECIPIENT" in str(b.get("bullet_job", ""))][0]
+        self.assertEqual(str(rec.get("text", "")).strip(), "",
+                         "decoration wording was published on the strength of a differentiator "
+                         "claim; one verified concept authorised another")
+        concepts = [c.get("concept") for c in (rec.get("blocking_concepts") or [])]
+        self.assertIn("decoration_method", concepts,
+                      "the block did not name decoration_method as the unverified concept")
 
     def test_a_blocked_bullet_names_the_concept_that_blocked_it(self):
         """An owner cannot act on 'CLAIM_EVIDENCE_MISSING'. The gate knows the concept -- the
@@ -152,7 +194,7 @@ class EvidenceAwareCopyGate(unittest.TestCase):
         requirements are all satisfied and which is blanked anyway by the copy gate -- today it
         names nothing at all.
         """
-        bl, _ = bullets_of(build_chain(FULL_FACTS))
+        bl, _ = bullets_of(build_chain(FACTS_NO_DECORATION))
         silent = [b for b in bl
                   if not str(b.get("text", "")).strip()
                   and not (b.get("missing_requirements") or [])]
@@ -164,25 +206,31 @@ class EvidenceAwareCopyGate(unittest.TestCase):
                 named,
                 "bullet %r was blanked with every requirement satisfied and named no concept "
                 "the owner could act on" % b.get("bullet_job"))
+            for entry in named:
+                self.assertTrue(entry.get("next_action"),
+                                "block reason names a concept but nothing the owner can do")
 
-    def test_one_verified_concept_does_not_authorise_another(self):
-        """Cross-authorisation guard.
+    def test_every_gated_concept_is_examined_not_only_the_first(self):
+        """`_classify_keyword` returns ONE concept -- the most policy-relevant hit. A gate built
+        on it examines that concept and stops, publishing copy whose second, unverified concept
+        was never looked at.
 
-        `_classify_keyword` returns only the most policy-relevant concept. A gate that verifies
-        that one concept and stops would publish copy whose second, unverified concept was never
-        examined. Stated against the gate contract directly because no bullet in the shipped
-        taxonomy happens to name two gated concepts with only one verified -- the mutation teeth
-        prove this assertion bites.
+        Asserted on the enumeration itself because no bullet in the shipped taxonomy happens to
+        carry two gated concepts. The mutation teeth prove this assertion bites.
         """
-        gate = getattr(PDP, "_copy_gate", None)
-        self.assertIsNotNone(
-            gate, "no evidence-aware copy gate exists; _is_safe_copy still discards the concept")
-        ws = build_chain(FULL_FACTS)
-        res = PDP.assemble_product_detail_page(ws)
-        claims = res.claims if hasattr(res, "claims") else None
-        ok, blocking = gate("Cotton nurse sweatshirt with a monogram", claims)
-        self.assertFalse(ok, "copy naming an unverified concept was authorised")
-        self.assertTrue(blocking, "the gate refused without naming what it refused on")
+        hits = PDP.gated_concepts("cotton nurse sweatshirt with an embroidered monogram")
+        concepts = [c for c, _code in hits]
+        self.assertIn("material_composition", concepts)
+        self.assertIn("decoration_method", concepts)
+        self.assertGreater(len(concepts), 1,
+                           "only one concept was enumerated; a second unverified concept in the "
+                           "same copy would never be examined")
+
+    def test_unrecognised_copy_fails_closed(self):
+        """"No concept matched" and "nothing to check" must not be the same answer."""
+        hits = PDP.gated_concepts("zzqx wibbleflange nurse sweatshirt")
+        self.assertTrue(hits, "unrecognised content tokens produced an empty hit list, which "
+                              "would publish the copy unchecked")
 
 
 if __name__ == "__main__":

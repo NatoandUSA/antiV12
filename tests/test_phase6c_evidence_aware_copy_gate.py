@@ -43,6 +43,7 @@ from production import product_workspace as PW              # noqa: E402
 from production import product_detail_page as PDP           # noqa: E402
 import keyword_allocation_planner as KAP                    # noqa: E402
 import title_engine as TE                                   # noqa: E402
+import product_fact_loader as PFL                           # noqa: E402
 
 _UNSET = object()   # "parameter not passed at all", distinct from an explicit None
 
@@ -397,6 +398,42 @@ class SurfacePolicy(unittest.TestCase):
         res = PDP.assemble_product_detail_page(build_chain(FULL_FACTS))
         self.assertEqual(PDP.validate_title_options(res.title_options), [],
                          "production title assembly produced a candidate the backstop rejects")
+
+
+class OwnerFactVocabulary(unittest.TestCase):
+    """Two fields the engines required and the input vocabulary could not express.
+
+    Both were already ClaimSpecs in claim_evidence, already named in bullet_engine.JOB_CONCEPTS
+    and description_engine, and already tracked as owner requirements in product_workspace --
+    but absent from product_fact_loader, so a bullet asked for a fact the product-facts file had
+    no field for. Only these two are added; the vocabulary is not otherwise touched.
+    """
+
+    def test_both_fields_are_expressible(self):
+        for field in ("made_to_order", "exact_personalization_promise"):
+            self.assertIn(field, PFL.KNOWN_FIELDS)
+
+    def test_supplying_them_clears_the_bullets_that_asked_for_them(self):
+        facts = json.loads(json.dumps(FULL_FACTS))
+        facts["product"]["made_to_order"] = {"value": "made to order after purchase",
+                                             "status": "VERIFIED"}
+        facts["product"]["exact_personalization_promise"] = {
+            "value": "your name embroidered exactly as you type it", "status": "VERIFIED"}
+        bl, _ = bullets_of(build_chain(facts))
+        still_asking = sorted({m for b in bl for m in (b.get("missing_requirements") or [])}
+                              & {"made_to_order", "exact_personalization_promise"})
+        self.assertEqual(still_asking, [],
+                         "bullets still report facts the owner has now supplied: %s"
+                         % still_asking)
+
+    def test_artifacts_without_them_still_load(self):
+        """Backward compatibility: absent means UNKNOWN, exactly as for every other field. A
+        workspace written before this change must not fail to load."""
+        facts = json.loads(json.dumps(FULL_FACTS))
+        self.assertNotIn("made_to_order", facts["product"])
+        bl, count = bullets_of(build_chain(facts))
+        self.assertEqual(len(bl), 5)
+        self.assertGreaterEqual(count, 0)
 
 
 class SharedTitleEngineContract(unittest.TestCase):

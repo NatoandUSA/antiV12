@@ -69,6 +69,13 @@ SCALAR_FIELDS = (
     "decoration_method", "care_instructions", "production_location", "production_time_range",
     "handling_time", "shipping_method", "tracking", "packaging", "audience", "occasion",
     "verified_differentiator", "placement",
+    # Both were already claims (claim_evidence.ClaimSpec), already required by bullet_engine
+    # JOB_CONCEPTS and description_engine, already tracked as owner requirements in
+    # product_workspace -- and absent from this vocabulary, so an owner had no way to supply
+    # them. Every bullet that needed them therefore reported OWNER_FACT_REQUIRED for a fact the
+    # product-facts file could not express. aplus_module_registry says so in a comment:
+    # "exact_personalization_promise has no evidence field, so it can never be verified here".
+    "made_to_order", "exact_personalization_promise",
 )
 LIST_FIELDS = (
     "size_range", "measurements", "color_options", "personalization_fields", "character_limits",

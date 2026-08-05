@@ -310,16 +310,26 @@ class TitleResult:
 
 # ---------------------------------------------------------------- entry point
 def build_titles(primary_keyword, claim_evidence, policy, mobile_cutoff=60,
-                 brand_required=False, brand_value=None, audience_hint=None):
+                 brand_required=False, brand_value=None, audience_hint=None,
+                 allowed_component_ids=None):
     """Build CONCISE / EXPANDED / RECOMMENDED titles + a word-boundary MOBILE_PREVIEW.
 
     `claim_evidence` is a claim_evidence.ClaimEvidence (or None); only VERIFIED claims may contribute.
     `policy` is a category_policy_registry.CategoryPolicy (title_hard_limit / title_recommended_target).
+
+    `allowed_component_ids` lets a CALLER restrict which components its own title surface accepts.
+    None (the default) keeps every verified component, which is what Phase 5 has always done and
+    must keep doing. A caller that passes a set is expressing a surface POLICY -- "this field
+    carries market identity only" -- which is a separate question from whether the evidence
+    exists, and one this engine does not get to decide on the caller's behalf. Identity is always
+    `comps[0]` and is never filtered out, so a restricted set still yields a title.
     """
     warnings = []
     limit = policy.title_hard_limit
     comps = _candidate_components(primary_keyword, claim_evidence, brand_required, brand_value,
                                   audience_hint)
+    if allowed_component_ids is not None:
+        comps = [c for c in comps if c["component_id"] in allowed_component_ids]
     primary_norm = _norm(_sanitize_phrase(primary_keyword))
 
     # CONCISE: identity + the single highest-priority extra verified component that fits.

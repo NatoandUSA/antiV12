@@ -223,6 +223,13 @@ def _norm_text(text):
 COPY_SURFACE_TITLE = "TITLE"      # market identity only, regardless of what is verified
 COPY_SURFACE_BODY = "BODY"        # bullets / highlights: verified concepts may be stated
 
+# Which title-engine components the TITLE surface accepts. Deliberately excludes "decoration",
+# "personalization" and "differentiator": those are physical attributes, and the owner's title
+# strategy is market identity only. With this set in force no controlled term can reach a title,
+# which turns validate_title_options' term blacklist into a backstop that must never fire --
+# asserted by test, because a backstop nobody checks is just dead code.
+TITLE_SURFACE_COMPONENTS = frozenset({"identity", "audience", "brand"})
+
 
 def gated_concepts(text):
     """EVERY gated concept in `text`, in lexicon order — not just the highest-ranked one.
@@ -577,7 +584,13 @@ def assemble_title_options(deps):
     """Generate deterministic title candidates with the existing title engine; each is evidence- and
     audit-gated. At most one is RECOMMENDED. 6B title allocations are advisory semantic inputs only."""
     primary = _safe_primary_keyword(deps)
-    tr = TE.build_titles(primary, deps.claims, deps.policy, audience_hint=deps.audience)
+    # The TITLE surface carries market identity only. Decoration, personalization and
+    # differentiator components stay out even when their claims are VERIFIED -- that is a policy
+    # decision about the field, not a judgement about the evidence, and the same attributes are
+    # carried by bullets, A+ and backend terms where the BODY surface admits them once verified.
+    # Enforced here at the 6C boundary so the shared engine keeps its contract for Phase 5.
+    tr = TE.build_titles(primary, deps.claims, deps.policy, audience_hint=deps.audience,
+                         allowed_component_ids=TITLE_SURFACE_COMPONENTS)
     limit = deps.policy.title_hard_limit
 
     alloc = deps.allocation_map["fields"]

@@ -42,6 +42,9 @@ sys.path.insert(0, os.path.join(ROOT, "core"))
 from production import product_workspace as PW              # noqa: E402
 from production import product_detail_page as PDP           # noqa: E402
 import keyword_allocation_planner as KAP                    # noqa: E402
+import title_engine as TE                                   # noqa: E402
+
+_UNSET = object()   # "parameter not passed at all", distinct from an explicit None
 
 NURSE_KEYWORDS = [
     {"keyword": "nurse sweatshirt", "tier": "A_CORE"},
@@ -164,25 +167,39 @@ class EvidenceAwareCopyGate(unittest.TestCase):
         for b in bl:
             self.assertEqual(str(b.get("text", "")).strip(), "")
 
-    def test_a_verified_differentiator_does_not_authorise_decoration_wording(self):
-        """Cross-authorisation, through the real assembly path.
+    def test_a_verified_material_claim_does_not_authorise_decoration_wording(self):
+        """Cross-authorisation: a verified claim authorises its own concept and nothing else.
 
-        The RECIPIENT bullet ends with the verified differentiator, whose text is "embroidered,
-        not printed". That sentence names a DECORATION concept while the claim behind it is a
-        DIFFERENTIATOR claim. With decoration_method unverified the bullet must stay blocked: a
-        verified claim authorises its own concept and nothing else.
+        The copy names TWO gated concepts. Under FACTS_NO_DECORATION material_composition is
+        VERIFIED and decoration_method is not, so a gate that stops at "is anything here
+        verified?" publishes decoration wording on the strength of a material claim.
 
-        This is also the only fixture in which a bullet is requirement-satisfied and still
-        copy-blocked, which is why the next test shares it.
+        The fixture matters and was got wrong once: "embroidered, not printed" enumerates only
+        decoration_method, so it carries no second verified concept and cannot distinguish the
+        mutant at all. The mutation gate is what exposed that -- the assertion passed while the
+        mutant lived. Any replacement copy must keep at least one verified AND one unverified
+        concept, or this test silently stops testing anything.
         """
-        bl, _ = bullets_of(build_chain(FACTS_NO_DECORATION))
+        ws = build_chain(FACTS_NO_DECORATION)
+        claims = PDP.load_phase6c_dependencies(ws).claims
+
+        hits = dict((c, PW._concept_verified(claims, c)) for c, _ in
+                    PDP.gated_concepts("cotton nurse sweatshirt with embroidery") if c)
+        self.assertTrue(any(hits.values()) and not all(hits.values()),
+                        "fixture no longer holds one verified and one unverified concept, so "
+                        "cross-authorisation cannot be observed: %s" % hits)
+
+        ok, blocking = PDP._copy_gate("cotton nurse sweatshirt with embroidery", claims,
+                                      PDP.COPY_SURFACE_BODY)
+        self.assertFalse(ok, "decoration wording was authorised by a material claim; "
+                             "one verified concept authorised another")
+        self.assertIn("decoration_method", [b["concept"] for b in blocking],
+                      "one verified concept authorised another; decoration_method was not named")
+
+        bl, _ = bullets_of(ws)
         rec = [b for b in bl if "RECIPIENT" in str(b.get("bullet_job", ""))][0]
         self.assertEqual(str(rec.get("text", "")).strip(), "",
-                         "decoration wording was published on the strength of a differentiator "
-                         "claim; one verified concept authorised another")
-        concepts = [c.get("concept") for c in (rec.get("blocking_concepts") or [])]
-        self.assertIn("decoration_method", concepts,
-                      "the block did not name decoration_method as the unverified concept")
+                         "decoration wording reached a published bullet")
 
     def test_a_blocked_bullet_names_the_concept_that_blocked_it(self):
         """An owner cannot act on 'CLAIM_EVIDENCE_MISSING'. The gate knows the concept -- the
@@ -220,11 +237,15 @@ class EvidenceAwareCopyGate(unittest.TestCase):
         """
         hits = PDP.gated_concepts("cotton nurse sweatshirt with an embroidered monogram")
         concepts = [c for c, _code in hits]
-        self.assertIn("material_composition", concepts)
-        self.assertIn("decoration_method", concepts)
         self.assertGreater(len(concepts), 1,
                            "only one concept was enumerated; a second unverified concept in the "
-                           "same copy would never be examined")
+                           "same copy would never be examined. got: %s" % concepts)
+        self.assertIn("material_composition", concepts,
+                      "only one concept was enumerated; material was not examined. got: %s"
+                      % concepts)
+        self.assertIn("decoration_method", concepts,
+                      "only one concept was enumerated; decoration was not examined. got: %s"
+                      % concepts)
 
     def test_unrecognised_copy_fails_closed(self):
         """"No concept matched" and "nothing to check" must not be the same answer."""
@@ -259,7 +280,8 @@ class ConceptEnumerationContract(unittest.TestCase):
         """Unrecognised vocabulary blocks, and is distinguishable from a known-but-unverified
         concept: concept is None, reason is PRODUCT_FACT_UNKNOWN."""
         hits = PDP.gated_concepts("nurse sweatshirt with quantumweave nanofibre")
-        self.assertTrue(hits)
+        self.assertTrue(hits, "unrecognised vocabulary did not fail closed; it produced no gate "
+                              "entry at all, which publishes the copy unchecked")
         unknown = [h for h in hits if h[0] is None]
         self.assertTrue(unknown, "unrecognised claim-like vocabulary did not fail closed")
         self.assertEqual(unknown[0][1], KAP.EXC_PRODUCT_FACT_UNKNOWN)
@@ -304,6 +326,116 @@ class ConceptEnumerationContract(unittest.TestCase):
         unknown = PDP.gated_concepts("nurse sweatshirt with quantumweave nanofibre")
         self.assertTrue(all(c is not None for c, _ in known))
         self.assertTrue(any(c is None for c, _ in unknown))
+
+
+class SurfacePolicy(unittest.TestCase):
+    """The TITLE surface carries market identity only, whatever the evidence says."""
+
+    def claims_for(self, facts):
+        return PDP.load_phase6c_dependencies(build_chain(facts)).claims
+
+    def test_a_verified_physical_concept_is_still_blocked_on_the_title_surface(self):
+        """Killer for the `title_evidence_aware` mutant.
+
+        decoration_method is VERIFIED here. On BODY that authorises the wording; on TITLE it
+        must not, because the surface rule is a policy about the field, not a judgement about
+        the evidence. Flipping TITLE to evidence-aware must fail this.
+        """
+        claims = self.claims_for(FULL_FACTS)
+        ok_body, _ = PDP._copy_gate("embroidered nurse sweatshirt", claims, PDP.COPY_SURFACE_BODY)
+        self.assertTrue(ok_body, "verified decoration wording was blocked on the BODY surface")
+
+        ok_title, blocking = PDP._copy_gate("embroidered nurse sweatshirt", claims,
+                                            PDP.COPY_SURFACE_TITLE)
+        self.assertFalse(ok_title,
+                         "a verified physical concept reached the TITLE surface; the "
+                         "pure-identity title policy has been reversed")
+        self.assertEqual([b["evidence_state"] for b in blocking],
+                         ["NOT_PERMITTED_ON_SURFACE"] * len(blocking))
+
+    def test_monogram_needs_both_of_its_concepts_verified(self):
+        """Killer for the `overlap_any_instead_of_all` mutant.
+
+        'monogram' is decoration vocabulary AND personalization vocabulary. Enumerating both is
+        not enough -- publication must require BOTH claims. With only one verified the copy
+        stays blocked, and the block names the one that is missing.
+        """
+        no_pers = json.loads(json.dumps(FULL_FACTS))
+        no_pers["product"].pop("personalization_fields")
+        claims = self.claims_for(no_pers)
+
+        ok, blocking = PDP._copy_gate("monogrammed nurse sweatshirt", claims,
+                                      PDP.COPY_SURFACE_BODY)
+        self.assertFalse(ok, "monogram copy published with only one of its two concepts verified")
+        self.assertIn("personalization_fields", [b["concept"] for b in blocking])
+
+    def test_the_term_blacklist_backstop_still_fires_when_reached(self):
+        """Killer for the `restore_traceback` / blacklist-disabling mutants.
+
+        Under the pure-identity filter, production title assembly can never put a controlled
+        term into a candidate -- which means the blacklist is unreachable in normal operation
+        and a mutant that disables it would survive every other test in this file. A backstop
+        nobody exercises is indistinguishable from dead code, which is the defect this project
+        already found in Phase 6D.
+
+        So the forbidden candidate is constructed HERE, in the test, without weakening
+        production filtering. The validator must still catch it, and must report it as a
+        structured error list rather than raising at the caller.
+        """
+        doc = {"schema_version": PDP.TITLE_OPTIONS_SCHEMA_VERSION,
+               "candidates": [{"candidate_id": "T-TEST", "title": "Embroidered Nurse Sweatshirt",
+                               "character_count": 29, "utf8_byte_count": 29,
+                               "state": PDP.T_RECOMMENDED_SAFE_DRAFT, "recommended": True}]}
+        errors = PDP.validate_title_options(doc)
+        self.assertIsInstance(errors, list, "the backstop raised instead of reporting")
+        self.assertTrue([e for e in errors if "embroider" in str(e)],
+                        "the controlled-term backstop did not fire on a forbidden candidate")
+
+    def test_production_titles_never_reach_the_backstop(self):
+        """The other half: the backstop must stay unreachable in normal assembly, or the
+        pure-identity filter is not doing its job."""
+        res = PDP.assemble_product_detail_page(build_chain(FULL_FACTS))
+        self.assertEqual(PDP.validate_title_options(res.title_options), [],
+                         "production title assembly produced a candidate the backstop rejects")
+
+
+class SharedTitleEngineContract(unittest.TestCase):
+    """`allowed_component_ids` is an additive parameter on an engine Phase 5 also uses."""
+
+    def build(self, allowed=_UNSET):
+        d = build_chain(FULL_FACTS)
+        deps = PDP.load_phase6c_dependencies(d)
+        kw = {} if allowed is _UNSET else {"allowed_component_ids": allowed}
+        return TE.build_titles("nurse sweatshirt", deps.claims, deps.policy,
+                               audience_hint=deps.audience, **kw)
+
+    def test_default_is_byte_identical_to_not_passing_the_parameter(self):
+        """Phase 5 must not move. None means exactly what omitting it meant."""
+        self.assertEqual(self.build().title_expanded, self.build(allowed=None).title_expanded)
+        self.assertEqual(self.build().title_concise, self.build(allowed=None).title_concise)
+
+    def test_an_empty_set_means_identity_only_not_no_title(self):
+        """Identity is structural. An empty set restricts attributes to none; it cannot leave
+        the product unnamed, and it must not silently fall back to legacy behaviour."""
+        tr = self.build(allowed=frozenset())
+        self.assertTrue(tr.title_concise.strip())
+        self.assertNotEqual(tr.title_expanded, self.build().title_expanded,
+                            "an empty set fell back to legacy component selection")
+
+    def test_the_phase6c_set_excludes_the_physical_components(self):
+        tr = self.build(allowed=PDP.TITLE_SURFACE_COMPONENTS)
+        low = tr.title_expanded.lower()
+        for banned in ("embroider", "personalized", "not printed"):
+            self.assertNotIn(banned, low)
+
+    def test_unknown_component_ids_match_nothing_and_do_not_raise(self):
+        tr = self.build(allowed=frozenset({"identity", "no_such_component"}))
+        self.assertTrue(tr.title_concise.strip())
+
+    def test_filtering_is_deterministic(self):
+        a = self.build(allowed=PDP.TITLE_SURFACE_COMPONENTS).title_expanded
+        b = self.build(allowed=PDP.TITLE_SURFACE_COMPONENTS).title_expanded
+        self.assertEqual(a, b)
 
 
 if __name__ == "__main__":

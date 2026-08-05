@@ -321,15 +321,21 @@ def build_titles(primary_keyword, claim_evidence, policy, mobile_cutoff=60,
     None (the default) keeps every verified component, which is what Phase 5 has always done and
     must keep doing. A caller that passes a set is expressing a surface POLICY -- "this field
     carries market identity only" -- which is a separate question from whether the evidence
-    exists, and one this engine does not get to decide on the caller's behalf. Identity is always
-    `comps[0]` and is never filtered out, so a restricted set still yields a title.
+    exists, and one this engine does not get to decide on the caller's behalf.
+
+    IDENTITY IS STRUCTURAL, NOT OPTIONAL. It is the product itself, `comps[0]`, and the rest of
+    this function indexes it unconditionally. A caller restricting the surface is choosing which
+    ATTRIBUTES may appear, never whether the product may be named. So identity survives any
+    filter, an empty set means "identity only" rather than "no title", and a set that happens to
+    omit "identity" cannot produce an IndexError. Unknown component ids simply match nothing.
     """
     warnings = []
     limit = policy.title_hard_limit
     comps = _candidate_components(primary_keyword, claim_evidence, brand_required, brand_value,
                                   audience_hint)
     if allowed_component_ids is not None:
-        comps = [c for c in comps if c["component_id"] in allowed_component_ids]
+        comps = comps[:1] + [c for c in comps[1:]
+                             if c["component_id"] in allowed_component_ids]
     primary_norm = _norm(_sanitize_phrase(primary_keyword))
 
     # CONCISE: identity + the single highest-priority extra verified component that fits.

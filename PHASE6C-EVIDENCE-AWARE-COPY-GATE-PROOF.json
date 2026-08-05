@@ -22,9 +22,12 @@
  },
 
  "measured_outcome": {
+  "measured_on": "A SYNTHETIC HERMETIC FIXTURE, not a real product. The workspace is built by the test's build_chain() with placeholder facts, and every fact is marked VERIFIED by the fixture rather than by an owner attesting to a real garment. The numbers below therefore prove the GATE behaves correctly given verified evidence; they do NOT prove a real listing.",
+  "not_yet_measured": "The same run against a real non-T2 workspace with fresh Helium 10 exports and the owner's own verified facts. That is the pilot, and it has not run. Until it does, '4 of 5 bullets' is a statement about the code path, not about any product.",
   "before": {"title": "assembly OK, write ABORTED (Phase6CAssemblyError)", "publishable_bullets": 0},
   "after": {"title": "Nurse Sweatshirt", "publishable_bullets": "4 of 5", "write": "OK"},
-  "remaining_empty_bullet": "EMBROIDERY_OR_DECORATION_PROOF - blocked inside bullet_engine.JOB_CONCEPTS, not by this gate; see boundaries"
+  "remaining_empty_bullet": "EMBROIDERY_OR_DECORATION_PROOF - blocked inside bullet_engine.JOB_CONCEPTS, not by this gate; see boundaries",
+  "corroborating_non_fixture_observation": "The same 0-bullet starting condition was independently observed on a throwaway CLONE of the real runs/T2 workspace during recon, using the owner's actual keyword source. That established the defect on real data. The post-fix 4-of-5 figure was not re-measured there, because runs/T2 is quarantined and must not be used for live guidance."
  },
 
  "commits": {

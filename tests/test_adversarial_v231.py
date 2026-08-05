@@ -119,7 +119,7 @@ class Adversarial(unittest.TestCase):
     def test_mixed_economics_not_project_go(self):
         d = tempfile.mkdtemp(); c = os.path.join(d,"economics-input.csv")
         open(c,"w").write("product,price,blank_cost,embroidery_cost,packaging,ship_out,amazon_fee_pct,refund_reserve_pct,ppc_per_order\n"
-                          "good,44.99,8,3,1.5,6,17,4,6\n"
+                          "good,39.00,7,2,1,5,15,4,5\n"
                           "bad,19.99,5,3,1.5,,17,4,\n")   # bad = missing ship+ppc
         rc, out = sh([sys.executable, tool("economics_gate.py","economics"), c, "--out", d])
         self.assertEqual(rc, 2); self.assertIn("PROJECT: INCOMPLETE", out)

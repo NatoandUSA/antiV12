@@ -23,7 +23,7 @@ def yt(folder):
 def xray(folder):
     pd.DataFrame([
         {"ASIN": "B01", "Title": "Nurse Sweatshirt Printed", "Price": 29.99, "Review Count": 40, "Images": 3},
-        {"ASIN": "B02", "Title": "Personalized Nurse Crewneck Custom Name", "Price": 44.99, "Review Count": 80, "Images": 7},
+        {"ASIN": "B02", "Title": "Personalized Nurse Crewneck Custom Name", "Price": 39.99, "Review Count": 80, "Images": 7},
         {"ASIN": "B03", "Title": "Cute Nurse Shirt Print", "Price": 24.99, "Review Count": 15, "Images": 4},
         {"ASIN": "B04", "Title": "RN Gift Sweatshirt", "Price": 34.99, "Review Count": 300, "Images": 5},
     ]).to_excel(os.path.join(folder, "xray_nurse.xlsx"), index=False)

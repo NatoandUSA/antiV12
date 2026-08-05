@@ -203,10 +203,10 @@ class EndToEndShadow(unittest.TestCase):
                    "personalization": "name to embroider"}, open(os.path.join(d, "listing.json"), "w"))
         open(os.path.join(d, "demand-input.csv"), "w").write(
             "keyword,amazon_sv,amazon_td,etsy,ebay_sold,trend,pinterest,reddit\n"
-            "personalized nurse sweatshirt,600,3,bestseller,60,up,rising,gift\n")
+            "personalized nurse sweatshirt,450,4,bestseller,35,up,rising,gift\n")
         open(os.path.join(d, "economics-input.csv"), "w").write(
             "product,price,blank_cost,embroidery_cost,packaging,ship_out,amazon_fee_pct,refund_reserve_pct,ppc_per_order\n"
-            "nurse sweatshirt,44.99,8,3,1.5,6,17,4,6\n")
+            "nurse sweatshirt,39.00,7,2,1,5,15,4,5\n")
         # real creative assets + reviews
         main = img(os.path.join(d, "main.png")); macro = img(os.path.join(d, "macro.png"), color=(30, 80, 110))
         s1 = img(os.path.join(d, "s1.png"), (1500, 1500), (21, 61, 91)); s2 = img(os.path.join(d, "s2.png"), (1500, 1500), (22, 62, 92))

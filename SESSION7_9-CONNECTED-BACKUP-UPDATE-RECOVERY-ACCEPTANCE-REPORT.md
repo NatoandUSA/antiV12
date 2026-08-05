@@ -3,7 +3,7 @@
 **Decision: `PHASE7_9_CONNECTED_BACKUP_UPDATE_RECOVERY_ACCEPTED`**
 
 - **Auditor role:** independent Phase 7.9 acceptance auditor (evidence reproduced from repository bytes; the implementation report, proof gate, and all claimed hashes/counts were treated as untrusted and re-derived).
-- **Repository:** `D:\Claude\Amazon\AMZ-FBM-Toolkit-v2_4_0-RC2\AMZ-FBM-Toolkit-v2_3_4-RC1`
+- **Repository:** `<REPO>`
 - **Branch:** `phase7-9-connected-backup-update-recovery`
 - **Baseline:** `0ef64106c2012b95de4bf2b6fb55dd5685dcee6b`
 - **Implementation commit:** `8cf1449ae322c09b1f604d161f5ebde869c2d296`

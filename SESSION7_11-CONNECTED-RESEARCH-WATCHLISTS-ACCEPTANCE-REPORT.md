@@ -1,7 +1,7 @@
 # SESSION 7.11 — Connected Research Watchlists, Change Detection & Owner Alerts — Independent Acceptance Audit
 
 **Auditor:** independent acceptance audit (adversarial; reproduced from repository bytes and independent fixtures).
-**Repository:** `D:\Claude\Amazon\AMZ-FBM-Toolkit-v2_4_0-RC2\AMZ-FBM-Toolkit-v2_3_4-RC1`
+**Repository:** `<REPO>`
 **Date:** 2026-07-23
 **Subject commits:** implementation `fa6da8b`, proof `1dec96b` (feature HEAD).
 **Baseline:** `9d9a4528f04af90640019eb872d2561879bfa253`.

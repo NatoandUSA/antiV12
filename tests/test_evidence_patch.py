@@ -79,7 +79,7 @@ class EvidencePatch(unittest.TestCase):
         d = tempfile.mkdtemp(); c = os.path.join(d,"economics-input.csv")
         # ship_out and ppc_per_order MISSING (blank)
         open(c,"w").write("product,price,blank_cost,embroidery_cost,packaging,ship_out,amazon_fee_pct,refund_reserve_pct,ppc_per_order\n"
-                          "nurse,44.99,8,3,1.5,,17,4,\n")
+                          "nurse,39.00,7,2,1,,15,4,\n")
         rc, out = sh([sys.executable, tool("economics_gate.py","economics"), c, "--out", d])
         self.assertIn("INCOMPLETE", out); self.assertEqual(rc, 2)
 

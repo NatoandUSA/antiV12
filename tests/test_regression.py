@@ -91,7 +91,7 @@ class Regression(unittest.TestCase):
         c = os.path.join(d,"economics-input.csv")
         # a healthy product with shipping SHOULD go; the point: shipping is a real cost line, never omitted silently
         write_csv(c, "product,price,blank_cost,embroidery_cost,packaging,ship_out,amazon_fee_pct,refund_reserve_pct,ppc_per_order",
-                  ["nurse sweatshirt,44.99,8,3,1.5,6,17,4,6"])
+                  ["nurse sweatshirt,39.00,7,2,1,5,15,4,5"])
         rc, out = sh([sys.executable, tool("economics_gate.py","economics"), c])
         self.assertIn("GO", out); self.assertEqual(rc, 0)
 

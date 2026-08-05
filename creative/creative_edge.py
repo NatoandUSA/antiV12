@@ -603,7 +603,7 @@ def example_brief(folder):
         "pockets":False,"fabric":"cotton-blend fleece","colors":["black","navy","teal","maroon","heather grey","blush"],
         "thread_colors":["cream","white","gold"],"design":"embroidered name + credentials (e.g. 'Sarah, RN')",
         "design_placement":"left chest","decoration_method":"machine embroidery","gift_packaging_verified":False,
-        "personalization_fields":["name (<=15 chars)","credentials","specialty (optional)"],"price":"44.99",
+        "personalization_fields":["name (<=15 chars)","credentials","specialty (optional)"],"price":"39.00",
         "delivery":"10-14 business days","has_real_sample_photo":False,"supplier_confirmed_photo":False,"main_image_is_ai":True},
       "listing_statements":{"title":"Custom Nurse Sweatshirt - Personalized Embroidered Crewneck with Name for Women"},
       "our_images":{"main":None,"macro_real":False},"image_specs":[],

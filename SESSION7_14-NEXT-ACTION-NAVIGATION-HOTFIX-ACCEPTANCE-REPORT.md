@@ -483,7 +483,7 @@ construct is added; the changed static files contain none of these terms (the on
 
 ## I. Test reproduction
 
-All commands run with `C:\Users\Admin\AppData\Local\Programs\Python\Python312\python.exe`
+All commands run with `<HOME>\AppData\Local\Programs\Python\Python312\python.exe`
 (CPython **3.12.10**) and Node **v24.18.0**.
 
 **95. New navigation/hidden hotfix tests.**

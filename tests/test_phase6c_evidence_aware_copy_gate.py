@@ -233,5 +233,78 @@ class EvidenceAwareCopyGate(unittest.TestCase):
                               "would publish the copy unchecked")
 
 
+class ConceptEnumerationContract(unittest.TestCase):
+    """What `gated_concepts` must mean, pinned before anything relies on it.
+
+    The fallthrough is deliberately IDENTICAL to `_classify_keyword`'s own: any content token
+    that is neither SAFE_TOKENS nor in a gate lexicon yields (None, PRODUCT_FACT_UNKNOWN).
+    Narrowing it here would make Phase 6C strictly more permissive than the Phase 6B authority
+    it borrows the vocabulary from, which is a divergence, not a fix. These tests exist to show
+    what that rule actually does to real copy rather than to argue about it.
+    """
+
+    def concepts(self, text):
+        return [c for c, _code in PDP.gated_concepts(text)]
+
+    def test_pure_market_identity_produces_no_gated_concepts(self):
+        """The control. If this ever blocks, the gate is unusable regardless of evidence."""
+        self.assertEqual(PDP.gated_concepts("nurse sweatshirt"), [])
+        self.assertEqual(PDP.gated_concepts("sweatshirt for nurses"), [])
+
+    def test_connectors_alone_do_not_create_a_block(self):
+        """Ordinary grammar must not manufacture a concept."""
+        self.assertEqual(PDP.gated_concepts("sweatshirt for the nurse"), [])
+
+    def test_an_unknown_claim_like_term_fails_closed(self):
+        """Unrecognised vocabulary blocks, and is distinguishable from a known-but-unverified
+        concept: concept is None, reason is PRODUCT_FACT_UNKNOWN."""
+        hits = PDP.gated_concepts("nurse sweatshirt with quantumweave nanofibre")
+        self.assertTrue(hits)
+        unknown = [h for h in hits if h[0] is None]
+        self.assertTrue(unknown, "unrecognised claim-like vocabulary did not fail closed")
+        self.assertEqual(unknown[0][1], KAP.EXC_PRODUCT_FACT_UNKNOWN)
+
+    def test_a_token_in_two_lexicons_yields_both_concepts(self):
+        """'monogram' is decoration vocabulary AND personalization vocabulary. Both claims must
+        be verified before such copy publishes -- one of them is not enough."""
+        got = self.concepts("monogrammed nurse sweatshirt")
+        self.assertIn("decoration_method", got)
+        self.assertIn("personalization_fields", got)
+
+    def test_concepts_are_deduplicated_and_deterministically_ordered(self):
+        """Repeated hits for one concept must not multiply block entries, and the order must be
+        stable so block reasons are reproducible."""
+        got = self.concepts("embroidered embroidery stitched nurse sweatshirt")
+        self.assertEqual(len(got), len(set(got)), "the same concept was reported more than once")
+        self.assertEqual(got, self.concepts("embroidered embroidery stitched nurse sweatshirt"))
+
+    def test_quality_adjectives_resolve_to_differentiator_not_to_unknown(self):
+        """The load-bearing question about the unknown fallthrough, answered by measurement.
+
+        The concern was that ordinary adjectives would collapse into PRODUCT_FACT_UNKNOWN and
+        block with a reason nobody can act on. They do not: the differentiator vocabulary claims
+        them first, so "comfortable" yields ('differentiator', OWNER_FACT_REQUIRED) -- named and
+        actionable. Blocking it is correct; "comfortable" is an unsubstantiated product claim,
+        which is the entire premise of the evidence model.
+
+        Only genuinely unrecognised vocabulary reaches the unknown fallthrough.
+        """
+        for phrase in ("comfortable nurse sweatshirt", "soft cozy nurse sweatshirt",
+                       "best nurse sweatshirt ever", "premium quality nurse sweatshirt"):
+            hits = PDP.gated_concepts(phrase)
+            self.assertTrue(hits, phrase)
+            self.assertNotIn(None, [c for c, _ in hits],
+                             "%r collapsed into the unknown fallthrough instead of naming a "
+                             "concept the owner can act on" % phrase)
+
+    def test_unknown_and_unverified_remain_distinguishable(self):
+        """An owner can act on 'verify decoration_method'. Nobody can act on 'something in this
+        sentence is unrecognised'. The two must never collapse into one reason."""
+        known = PDP.gated_concepts("embroidered nurse sweatshirt")
+        unknown = PDP.gated_concepts("nurse sweatshirt with quantumweave nanofibre")
+        self.assertTrue(all(c is not None for c, _ in known))
+        self.assertTrue(any(c is None for c, _ in unknown))
+
+
 if __name__ == "__main__":
     unittest.main()

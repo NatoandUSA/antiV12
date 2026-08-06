@@ -43,6 +43,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import unsafe_claim_policy as UCP
 import product_fact_loader as PFL
 
 # 1.1.0 (Session 6C.1): every claim now carries ATOMIC semantic components + an effective evidence
@@ -445,6 +446,23 @@ def build_claim_record(spec, facts, keyword_context, prohibited):
         spec.components, state, proposed, free_text=spec.free_text,
         value_tokens=_evidence_value_tokens(source_evidence))
     publishable = effective in PUBLISHABLE_STATES
+
+    # INGESTION GUARD. Claim text is spec.text_for(value) -- the owner's RAW FACT VALUE inside a
+    # template. Without this, an owner authorises any prohibited phrase simply by typing it into a
+    # free-text fact and marking it VERIFIED, because the claim then carries that text as "evidence".
+    # Owner-entered text is NOT evidence. The raw value is preserved untouched for audit; only its
+    # publishability is refused, and a structured blocker records why.
+    unsafe_block = None
+    if publishable:
+        for candidate in (proposed, value if isinstance(value, str) else None):
+            unsafe_block = UCP.screen_owner_value(
+                ", ".join(sorted(set(source_fields))) or spec.concept, candidate)
+            if unsafe_block:
+                break
+        if unsafe_block:
+            publishable = False
+            reasons = list(reasons) + [f"unsafe_owner_fact_value:{unsafe_block['phrase']}"]
+
     record = {
         "claim_id": _claim_id(spec.concept),
         "claim_type": spec.claim_type,
@@ -458,6 +476,7 @@ def build_claim_record(spec, facts, keyword_context, prohibited):
         "effective_evidence_state": effective,
         "owner_status": owner_status,
         "publishable": publishable,
+        "unsafe_claim_block": unsafe_block,
         "reasons": sorted(set(reasons)),
         "atomicity_reason_codes": atom_reasons,
         "warnings": sorted(set(warnings)),

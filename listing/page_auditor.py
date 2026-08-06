@@ -51,6 +51,7 @@ import category_policy_registry as CPR
 import aplus_module_registry as AREG
 import backend_optimizer as BO
 import item_highlights_builder as IHB
+import unsafe_claim_policy as UCP
 
 # statuses (low-level audit verdict — kept stable for existing callers)
 PASS = "PASS"
@@ -138,68 +139,12 @@ except Exception:
 # Every phrase remains publishable when a VERIFIED claim backs it -- that is the existing
 # mechanism and it is unchanged. What this fixes is acrylic language passing UNCHECKED because
 # nobody had written it down.
-UNSAFE_CLAIM_PHRASES_BY_CATEGORY = {
-    "acrylic": (
-        # impact / breakage -- the safety claim class
-        "shatterproof", "shatter proof", "shatter resistant", "unbreakable", "break proof",
-        "break resistant", "impact resistant", "virtually indestructible", "indestructible",
-        "will not crack", "wont crack", "never cracks", "crack proof",
-        # optical lifetime
-        "will not yellow", "wont yellow", "never yellows", "yellow resistant", "non yellowing",
-        "uv proof", "uv resistant", "fade proof", "will not warp", "wont warp",
-        # surface
-        "scratch proof", "scratch resistant", "scratch free",
-        # heat / cleaning -- injury and ruin paths
-        "dishwasher safe", "microwave safe", "oven safe", "heat resistant", "heat proof",
-        "top rack safe",
-        # regulatory / contact
-        "food safe", "food grade", "bpa free", "non toxic", "child safe", "baby safe",
-        "toy safe", "medical grade",
-        # optical quality asserted as fact
-        "crystal clear", "optically clear", "glass like clarity", "clearer than glass",
-        # material substitution
-        "real glass", "genuine glass", "tempered",
-    ),
-}
-
-
-def unsafe_claim_phrases_for(category):
-    """Shared unsafe phrases plus anything specific to this product category.
-
-    Additive on purpose. An acrylic listing must still not claim "made to last"; it must ALSO not
-    claim "shatterproof". A category that swapped the vocabulary instead of extending it would
-    quietly drop the shared protections.
-    """
-    extra = UNSAFE_CLAIM_PHRASES_BY_CATEGORY.get((category or "").strip().lower(), ())
-    return UNSAFE_CLAIM_PHRASES + tuple(extra)
-
-
-UNSAFE_CLAIM_PHRASES = (
-    # comfort / softness (never inferred from material or measurements)
-    "soft and comfortable", "comfortable fit", "soft against the skin", "buttery soft",
-    "cozy and comfortable", "all day comfort", "perfect for long shifts", "for long shifts",
-    "12 hour shifts", "12-hour shifts",
-    # durability (never inferred from embroidery)
-    "made to last", "built to last", "will not fade", "wont fade", "never fades", "lasts forever",
-    # exact personalization (never inferred from a name field)
-    "exactly as you enter", "exactly as entered", "exactly what you enter", "embroidered exactly",
-    # shipping / production origin (never inferred from a local supplier)
-    "shipped from the us", "ships from the us", "made in the usa", "made in the us",
-    "printed in the usa",
-    # tracking (never inferred from the existence of shipping)
-    "tracking included", "with tracking", "includes tracking",
-    # material
-    "premium material", "premium fabric", "cotton blend",
-    # measurements
-    "measured from the real garment", "measurements are taken from the real garment",
-    "measured from real garments",
-    # production time / made to order (never inferred from personalization)
-    "made to order", "10 14 business days",
-    # decoration
-    "real machine embroidery", "machine embroidery", "satin stitch", "raised satin", "raised stitching",
-    # invented defaults the generator used to inject
-    "any name and credentials", "any occasion", "embroidered name", "mock neck option",
-)
+# The vocabulary AND every phrase's policy now live in listing.unsafe_claim_policy, the ONE
+# authority. These names are re-exported so existing callers and tests keep working, and so the
+# tree never carries a second copy of the list that can drift out of sync with the policy.
+UNSAFE_CLAIM_PHRASES = UCP.UNSAFE_CLAIM_PHRASES
+UNSAFE_CLAIM_PHRASES_BY_CATEGORY = UCP.UNSAFE_CLAIM_PHRASES_BY_CATEGORY
+unsafe_claim_phrases_for = UCP.phrases_for
 
 LEAKAGE_RISKS = ("WRONG_AUDIENCE", "WRONG_PRODUCT", "WRONG_OCCASION", "TRADEMARK", "BRAND_TERM",
                  "IP_RISK")
@@ -252,21 +197,17 @@ class _Audit:
 
 
 # ---------------------------------------------------------------- claim backing
-def _verified_texts(listing, claim_evidence):
-    """Concatenated normalized text of every VERIFIED claim (explicit evidence wins, else the listing's
-    own embedded block). Used to decide whether an unsafe phrase is actually backed by a verified fact."""
-    texts = []
+def _claim_evidence_for_policy(listing, claim_evidence):
+    """The evidence the unsafe-claim policy should consult.
+
+    Callers that re-audit a persisted listing (promote_if_safe / safe_write_listing) pass no
+    ClaimEvidence object; the listing carries an embedded claim_evidence block instead. That block is
+    read by its declared concepts, never by its text.
+    """
     if claim_evidence is not None:
-        for c in getattr(claim_evidence, "publishable", []):
-            if c.get("proposed_text"):
-                texts.append(c["proposed_text"])
-    else:
-        block = listing.get("claim_evidence") if isinstance(listing, dict) else None
-        if isinstance(block, dict):
-            for c in block.get("verified") or []:
-                if isinstance(c, dict) and c.get("text"):
-                    texts.append(c["text"])
-    return _norm(" ".join(texts))
+        return claim_evidence
+    block = listing.get("claim_evidence") if isinstance(listing, dict) else None
+    return block if isinstance(block, dict) else None
 
 
 def _owner_review_texts(listing, claim_evidence):
@@ -347,19 +288,17 @@ def _audit_keywords(a, listing, copy_tokens, backend, keyword_source, results):
 
 def _audit_claims(a, listing, copy_text, copy_tokens, claim_evidence, results, category=None):
     cr = {"unsupported": [], "owner_review_in_copy": [], "prohibited": [], "unresolved_placeholders": [],
-          "missing_lineage": []}
-    verified_norm = _verified_texts(listing, claim_evidence)
-    verified_tokens = verified_norm.split()
-
-    # unsupported factual claims: an unsafe phrase present in copy but not in any verified claim text.
-    # The vocabulary is category-aware: acrylic fails as a brittle plastic, not as a garment, and
-    # none of its durability or safety language was listed before 2026-08-02.
-    for phrase in unsafe_claim_phrases_for(category):
-        pt = _norm(phrase).split()
-        if _contains_phrase(copy_tokens, pt) and not _contains_phrase(verified_tokens, pt):
-            cr["unsupported"].append(phrase)
-            a.fail("unsupported_claim", f"unsupported claim '{phrase}' in publishable copy "
-                                        f"(no VERIFIED claim backs it)")
+          "missing_lineage": [], "policy_blocks": []}
+    # Unsupported factual claims. Authorisation is decided PER PHRASE by the unsafe-claim policy
+    # authority against STRUCTURED claim evidence -- never against concatenated claim text, which let
+    # an owner authorise any phrase by typing it into a free-text fact and verifying it.
+    evidence = _claim_evidence_for_policy(listing, claim_evidence)
+    for blk in UCP.findings_for_text(copy_text, evidence, UCP.SURFACE_CLAIMS, category=category):
+        cr["unsupported"].append(blk["phrase"])
+        cr["policy_blocks"].append(blk)
+        a.fail("unsupported_claim",
+               f"unsupported claim '{blk['phrase']}' in publishable copy "
+               f"[{blk['policy_class']} / {blk['reason_code']}] {blk['next_action']}")
 
     # owner-review claim text must not appear in publishable copy.
     for t in _owner_review_texts(listing, claim_evidence):
@@ -396,7 +335,8 @@ def _audit_claims(a, listing, copy_text, copy_tokens, claim_evidence, results, c
                    f"description section '{s.get('section_id')}' is verified but carries no claim ids")
 
     for k in cr:
-        cr[k] = sorted(set(cr[k]))
+        if k != "policy_blocks":            # structured blocks are dicts; keep them as emitted
+            cr[k] = sorted(set(cr[k]))
     results["claim_results"] = cr
 
 
@@ -742,13 +682,13 @@ def _audit_backend_provenance(a, listing, backend, policy, audit, br):
         br["source_hash"] = "OK"
 
 
-def _audit_item_highlights(a, listing, policy, results):
+def _audit_item_highlights(a, listing, policy, claim_evidence, results):
     """Validate the ACT-010 item highlights: category-field support, VERIFIED facts + claim lineage, no
     unsupported claims / placeholders, unique concepts, and the policy count/character limits. An empty
     (optional) publishable set is fine and never demotes an otherwise-safe draft; an UNSAFE publishable
     highlight is a hard failure and prevents PUBLISHABLE."""
     ih = {"supported": None, "capability_state": None, "publishable_count": 0, "blocked_count": None,
-          "unique_concepts": True, "within_limits": True}
+          "unique_concepts": True, "within_limits": True, "policy_blocks": []}
     content = listing.get("item_highlights_content")
     pub = listing.get("item_highlights_publishable")
     if pub is None and not isinstance(content, dict):
@@ -773,7 +713,6 @@ def _audit_item_highlights(a, listing, policy, results):
         a.fail("item_highlights_capability",
                f"item_highlights capability {content.get('category_support_state')} != policy {exp_state}")
 
-    verified_norm = _verified_texts(listing, None).split()
     concepts = []
     for h in pub:
         text = (h.get("text") or "") if isinstance(h, dict) else str(h)
@@ -793,12 +732,13 @@ def _audit_item_highlights(a, listing, policy, results):
         if _PLACEHOLDER_RE_PA.findall(text):
             a.fail("item_highlights_placeholder",
                    f"publishable item highlight contains an unresolved placeholder: {text}")
-        htoks = _tokens(text)
-        for phrase in UNSAFE_CLAIM_PHRASES:
-            pt = _norm(phrase).split()
-            if _contains_phrase(htoks, pt) and not _contains_phrase(verified_norm, pt):
-                a.fail("item_highlights_unsupported_claim",
-                       f"publishable item highlight states unsupported claim '{phrase}' (no VERIFIED backing)")
+        for blk in UCP.findings_for_text(text, _claim_evidence_for_policy(listing, claim_evidence),
+                                         UCP.SURFACE_ITEM_HIGHLIGHTS,
+                                         category=policy.product_category):
+            ih["policy_blocks"].append(blk)
+            a.fail("item_highlights_unsupported_claim",
+                   f"publishable item highlight states unsupported claim '{blk['phrase']}' "
+                   f"[{blk['policy_class']} / {blk['reason_code']}] {blk['next_action']}")
         if len(text) > char_limit:
             ih["within_limits"] = False
             a.fail("item_highlights_limit",
@@ -849,7 +789,7 @@ def _audit_aplus(a, listing, results):
     results["aplus_results"] = ar
 
 
-def _audit_aplus_evidence(a, listing, results):
+def _audit_aplus_evidence(a, listing, claim_evidence, results, category=None):
     """Validate the Session 4 evidence-aware A+ structure (listing['aplus_content']).
 
     Reports capability, module counts, per-module states and the Basic-fallback/Premium invariants. It
@@ -870,7 +810,7 @@ def _audit_aplus_evidence(a, listing, results):
           "basic_ready": ac.get("basic_ready"),
           "publishable_module_count": len(ac.get("publishable_modules") or []),
           "module_states": {}, "premium_eligible": None, "selected_dynamic": [],
-          "fallback_positions": []}
+          "fallback_positions": [], "policy_blocks": []}
 
     # 1) capability must be one of the four modes (never silently defaulted).
     if capability not in AREG.CAPABILITY_MODES:
@@ -894,7 +834,6 @@ def _audit_aplus_evidence(a, listing, results):
 
     # 3) per-module evidence gates for READY modules (module-specific evidence, lineage, placeholders,
     #    unsupported claims, copy limits).
-    verified_norm = _verified_texts(listing, None).split()
     for m in basic:
         status = m.get("status")
         if status not in AREG.MODULE_STATES:
@@ -908,12 +847,13 @@ def _audit_aplus_evidence(a, listing, results):
         if body and not m.get("claim_ids"):
             a.fail("aplus_missing_lineage",
                    f"READY A+ module {mk} carries factual copy but no claim lineage")
-        btoks = _tokens(body)
-        for phrase in UNSAFE_CLAIM_PHRASES:
-            pt = _norm(phrase).split()
-            if _contains_phrase(btoks, pt) and not _contains_phrase(verified_norm, pt):
-                a.fail("aplus_unsupported_claim",
-                       f"READY A+ module {mk} states unsupported claim '{phrase}' (no VERIFIED backing)")
+        for blk in UCP.findings_for_text(body, _claim_evidence_for_policy(listing, claim_evidence),
+                                         UCP.SURFACE_APLUS,
+                                         category=category):
+            er["policy_blocks"].append(dict(blk, module_key=mk))
+            a.fail("aplus_unsupported_claim",
+                   f"READY A+ module {mk} states unsupported claim '{blk['phrase']}' "
+                   f"[{blk['policy_class']} / {blk['reason_code']}] {blk['next_action']}")
         if len(body) > AREG.BODY_MAX:
             a.fail("aplus_copy_limit", f"READY A+ module {mk} body {len(body)} > {AREG.BODY_MAX} chars")
         if len(m.get("headline") or "") > AREG.HEADLINE_MAX:
@@ -1074,9 +1014,10 @@ def audit_listing(listing, keyword_source=None, claim_evidence=None, product_fac
     _audit_bullets(a, listing, claim_evidence, results)
     _audit_description(a, listing, results)
     _audit_backend(a, listing, policy, results)
-    _audit_item_highlights(a, listing, policy, results)
+    _audit_item_highlights(a, listing, policy, claim_evidence, results)
     _audit_aplus(a, listing, results)
-    _audit_aplus_evidence(a, listing, results)
+    _audit_aplus_evidence(a, listing, claim_evidence, results,
+                          category=policy.product_category)
     _audit_text_field_coverage(a, listing, results)
     _brand_screen(a, listing, [("title", title), ("description", description)]
                   + [(f"bullet {i}", b) for i, b in enumerate(bullets, 1)])

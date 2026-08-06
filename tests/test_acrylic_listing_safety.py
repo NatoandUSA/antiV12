@@ -14,8 +14,11 @@ temperatures. "Food safe" and "BPA free" are regulatory claims requiring documen
 supplier does not provide. These are the claims that get a listing pulled, and the ones with a
 plausible injury path.
 
-Nothing here forbids the language outright: a VERIFIED claim still publishes it. What is fixed is
-acrylic wording passing UNCHECKED because nobody had written it down.
+What was fixed first was acrylic wording passing UNCHECKED because nobody had written it down.
+
+Since listing.unsafe_claim_policy, "a VERIFIED claim still publishes it" is true only for the
+FACTUAL class, and only when the phrase's own mapped concept is verified. Acrylic's vocabulary is
+almost entirely safety, regulatory and permanence language, which no ordinary product fact clears.
 
 Offline. No network, no Amazon call, no Seller Central path.
 """
@@ -28,7 +31,8 @@ for _p in (ROOT, os.path.join(ROOT, "listing")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import page_auditor as PA                                              # noqa: E402
+import page_auditor as PA
+import unsafe_claim_policy as UCP                                              # noqa: E402
 import a_plus_templates as APT                                         # noqa: E402
 from listing import category_policy_registry as CPR                    # noqa: E402
 
@@ -121,23 +125,29 @@ class AcrylicClaimVocabulary(unittest.TestCase):
             listing["claim_evidence"] = evidence_block
         return [m for m in _unsupported(PA.audit_listing(listing)) if "dishwasher" in m]
 
-    def test_a_verified_claim_publishes_the_phrase_and_an_unrelated_one_does_not(self):
-        """This is a check on EVIDENCE, not a banned-words list. If the owner can verify it, it
-        publishes -- otherwise the gate would only teach people to route around it.
+    def test_a_safety_guarantee_phrase_is_not_unlocked_by_naming_it_in_evidence(self):
+        """SUPERSEDED PREMISE -- this test used to assert the opposite of its middle case.
 
-        The important half is the third assertion. A reviewer asked whether VERIFIED is a
-        category-wide bypass: does holding *any* verified claim unlock *every* guarded phrase?
-        Measured, it does not -- the match is against the verified claim TEXT, so evidence for
-        "made in vietnam" leaves "dishwasher safe" blocked.
+        It previously asserted that a VERIFIED claim whose TEXT names the phrase publishes it, on the
+        principle that a gate people can route around only teaches them to route around it. That
+        principle still holds for FACTUAL phrases, and listing.unsafe_claim_policy keeps it: a factual
+        phrase clears when its exact mapped concept is verified.
 
-        An earlier version of this test set `verified_claim_texts`, which the auditor does not
-        read, and asserted only that the result was a list. It passed while proving nothing.
+        It does NOT hold here. Text-based matching meant the owner authorised a phrase by typing it
+        into a free-text fact and marking it VERIFIED -- measured across the whole vocabulary, every
+        phrase was self-authorising that way. "dishwasher safe" is a heat/suitability guarantee about
+        a brittle plastic with a plausible injury path; this module's own header calls that out. The
+        owner's policy classes it GUARANTEE_OR_PROMISE, which no current claim-evidence state clears.
+
+        The other two assertions are unchanged and are now stronger, because authorisation is decided
+        per phrase against structured concepts rather than against concatenated claim text.
         """
         self.assertIn("dishwasher safe", PA.unsafe_claim_phrases_for("acrylic"))
+        self.assertEqual(UCP.policy_for("dishwasher safe")["policy_class"], UCP.GUARANTEE_OR_PROMISE)
         self.assertTrue(self._dishwasher_failures(),
                         "with no evidence the phrase must be blocked")
-        self.assertEqual(self._dishwasher_failures({"verified": [{"text": "dishwasher safe"}]}), [],
-                         "a VERIFIED claim naming the phrase must publish it")
+        self.assertTrue(self._dishwasher_failures({"verified": [{"text": "dishwasher safe"}]}),
+                        "naming a guarantee phrase in evidence text must NOT publish it")
         self.assertTrue(self._dishwasher_failures({"verified": [{"text": "made in vietnam"}]}),
                         "an UNRELATED verified claim must not unlock a guarded acrylic phrase")
 

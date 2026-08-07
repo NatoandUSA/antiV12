@@ -1,7 +1,7 @@
 {
   "proof": {
     "schema": "phase6d-unsafe-claim-sanitized-proof-v1",
-    "implementation_head": "8207cec",
+    "implementation_head": "23e0cf4",
     "base": "ae8d60b",
     "branch": "hotfix-phase6d-unsafe-claim-policy",
     "review_status": "SELF_REVIEW_ONLY_INDEPENDENT_REVIEW_REQUIRED",
@@ -48,14 +48,16 @@
       ]
     },
     "mutation": {
-      "mutants": 8,
+      "mutants": 12,
       "survivors": [],
+      "note": "M11 (a screening list inside a function) SURVIVED the first module-attribute guard; the guard was replaced with a source-level collection-literal scan rather than the mutant being weakened",
       "restored_byte_identical": true,
       "eol_handling": {
         "files_are_crlf_on_this_checkout": {
-          "page_auditor.py": true,
           "unsafe_claim_policy.py": false,
-          "claim_evidence.py": true
+          "claim_evidence.py": true,
+          "page_auditor.py": true,
+          "aplus_builder.py": true
         },
         "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
         "anchors_loosened": false
@@ -65,10 +67,10 @@
       "verdict": "BASELINE_EQUIVALENT",
       "collection": {
         "base": 4724,
-        "target": 4757,
-        "target_only": 34,
+        "target": 4770,
+        "target_only": 47,
         "target_only_breakdown": {
-          "tests/test_unsafe_claim_policy.py": 33,
+          "tests/test_unsafe_claim_policy.py": 46,
           "tests/test_acrylic_listing_safety.py": 1
         },
         "baseline_only": 1,
@@ -85,11 +87,11 @@
           "non_passing": 20
         },
         "target_sample_1": {
-          "ran": 4755,
+          "ran": 4768,
           "non_passing": 20
         },
         "target_sample_2": {
-          "ran": 4755,
+          "ran": 4768,
           "non_passing": 20
         },
         "target_only_non_passing": 0,
@@ -464,7 +466,7 @@
         "phrase": "shipped from the us",
         "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
         "required_concept_ids": [
-          "shipping_method"
+          "ship_from_country"
         ],
         "allowed_surfaces": [
           "claims",
@@ -478,7 +480,7 @@
         "phrase": "ships from the us",
         "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
         "required_concept_ids": [
-          "shipping_method"
+          "ship_from_country"
         ],
         "allowed_surfaces": [
           "claims",
@@ -646,7 +648,6 @@
         ],
         "allowed_surfaces": [
           "claims",
-          "item_highlights",
           "aplus"
         ],
         "clearance_rule": "REQUIRE_ALL_CONCEPTS"
@@ -1088,16 +1089,23 @@
         "direction": "LESS restrictive; owner should confirm"
       },
       "also": {
-        "change": "'ships from the us' / 'shipped from the us' AMBIGUOUS -> FACTUAL",
-        "reason": "claim_evidence._has_us_shipping already gates the generated claim text on the owner's actual shipping value, so the shipping_method concept only carries a US-shipping claim when the owner's own fact asserts one. Country of ORIGIN is NOT the same and stays blocked: 'Made in USA' is FTC-regulated.",
-        "direction": "LESS restrictive; owner should confirm"
+        "change": "'ships from the us' / 'shipped from the us': AMBIGUOUS -> FACTUAL, bound to a NEW ship_from_country concept with a required US VALUE",
+        "superseded_reasoning": "An interim revision bound these to the generic shipping_method concept and justified it with claim_evidence._has_us_shipping. That was wrong: _has_us_shipping substring-scans the owner's free prose, so any VERIFIED shipping method cleared the phrase. Disclosed before review and now remediated.",
+        "final_model": {
+          "concept_id": "ship_from_country",
+          "required_value": "US (accepted spellings)",
+          "evidence_state": "VERIFIED",
+          "never_authorises": "manufacturing origin ('made in the usa'), which stays blocked"
+        },
+        "owner_decision": "APPROVED_AS_FACTUAL_FULFILLMENT_ORIGIN_CLAIMS_WITH_STRICT_BINDING; per-SKU fulfillment confirmed, which is why a per-product fact is the right shape",
+        "direction": "restrictive where it matters (value-bound), permissive only on a verified US value"
       }
     }
   },
   "tests": {
     "schema": "phase6d-unsafe-claim-tests-v1",
     "new_test_file": "tests/test_unsafe_claim_policy.py",
-    "nodes": 33,
+    "nodes": 46,
     "all_passing_at_implementation_head": true,
     "coverage": {
       "hard_block_matrix": "all 25 never-clearable shared phrases, each with the owner typing the phrase into a free-text fact and verifying it",
@@ -1143,8 +1151,20 @@
   "failing_tests": {
     "schema": "phase6d-unsafe-claim-failing-tests-v1",
     "state_measured_at": "the tests-first commit, authority present and consumers unwired",
-    "total_nodes": 33,
-    "failing": 8,
+    "total_nodes": 46,
+    "failing_at_first_tests_commit": 8,
+    "failing_at_remediation_tests_commit": 9,
+    "remediation_failing_nodes": [
+      "test_32",
+      "test_33",
+      "test_34",
+      "test_35",
+      "test_37",
+      "test_40",
+      "test_40b",
+      "test_41",
+      "test_43"
+    ],
     "nodes": [
       "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
       "test_02_never_fades_in_care_instructions_cannot_authorise_permanence",
@@ -1160,7 +1180,7 @@
   },
   "implementation": {
     "schema": "phase6d-unsafe-claim-implementation-v1",
-    "implementation_head": "8207cec",
+    "implementation_head": "23e0cf4",
     "base": "ae8d60b",
     "commits": [
       {
@@ -1174,8 +1194,41 @@
       {
         "sha": "8207cec",
         "what": "owner-fact ingestion guard in claim_evidence"
+      },
+      {
+        "sha": "3af3d82",
+        "what": "first proof packet (self-review); superseded by this one"
+      },
+      {
+        "sha": "582d4b4",
+        "what": "remediation tests for the three disclosed gaps (9 failing at that commit)"
+      },
+      {
+        "sha": "23e0cf4",
+        "what": "value binding + ship_from_country concept + one A+ authority + real surface allowlists"
       }
     ],
+    "remediation_of_disclosed_gaps": {
+      "GAP_1_US_SHIPPING_VALUE_BINDING": {
+        "status": "CLOSED",
+        "how": "new ship_from_country product fact + claim concept; policy records may now require specific concept VALUES, read from the claim's structured source_evidence and never parsed from prose. 'ships from the us' requires ship_from_country VERIFIED in the accepted US set.",
+        "manufacturing_origin_isolated": "'made in the usa' is not reachable from ship_from_country and remains AMBIGUOUS/blocked (mutant M10 proves it)"
+      },
+      "GAP_2_SECOND_LIVE_A_PLUS_AUTHORITY": {
+        "status": "CLOSED",
+        "how": "aplus_builder._UNSAFE_PHRASES deleted; its self-check calls the canonical authority with the same structured evidence and the same A+ surface. build_aplus/_eval_module take an additive category argument; listing_generator and aplus_assembly pass theirs.",
+        "guard": "two tests -- a runtime module-attribute scan AND a source-level collection-literal scan. The first alone was fail-open: mutant M11 declared its list inside a function and survived."
+      },
+      "GAP_3_SURFACE_ALLOWLISTS": {
+        "status": "CLOSED",
+        "how": "'measured from the real garment' is restricted to claims + A+ (a methodology statement needs room to be qualified; an item highlight has none), so the allowlist constrains a real record rather than every record listing all three surfaces."
+      },
+      "TRACKING_STRUCTURED_VALUE_BINDING": {
+        "status": "SATISFIED_WITHOUT_A_NEW_FIELD",
+        "how": "binds to the dedicated `tracking` concept, not to generic shipping. Pinned by test_38/test_39.",
+        "deviation_from_the_contribution": "no parallel tracking_included boolean was added. The dedicated concept already is the structured binding; a second field for the same fact is a duplicate to keep in sync. Owner may overrule."
+      }
+    },
     "files_changed": {
       "added": [
         "listing/unsafe_claim_policy.py",
@@ -1237,13 +1290,13 @@
     "schema": "phase6d-unsafe-claim-differential-v1",
     "protocol": "n=2 per head, strictly sequential, fresh worktrees, never concurrent with mutation",
     "base": "ae8d60b",
-    "target": "8207cec",
+    "target": "23e0cf4",
     "collection": {
       "base": 4724,
-      "target": 4757,
-      "target_only": 34,
+      "target": 4770,
+      "target_only": 47,
       "target_only_breakdown": {
-        "tests/test_unsafe_claim_policy.py": 33,
+        "tests/test_unsafe_claim_policy.py": 46,
         "tests/test_acrylic_listing_safety.py": 1
       },
       "baseline_only": 1,
@@ -1260,11 +1313,11 @@
         "non_passing": 20
       },
       "target_sample_1": {
-        "ran": 4755,
+        "ran": 4768,
         "non_passing": 20
       },
       "target_sample_2": {
-        "ran": 4755,
+        "ran": 4768,
         "non_passing": 20
       },
       "target_only_non_passing": 0,
@@ -1296,7 +1349,8 @@
         "all_failed_tests": [
           "test_05_factual_phrase_clears_only_through_its_exact_mapped_concept",
           "test_09_raw_fact_text_alone_cannot_self_authorise_a_factual_phrase",
-          "test_13_unknown_surface_fails_closed_for_a_factual_phrase"
+          "test_13_unknown_surface_fails_closed_for_a_factual_phrase",
+          "test_35_shipping_prose_alone_cannot_authorise_fulfillment_origin"
         ]
       },
       {
@@ -1388,7 +1442,8 @@
         "declared_text_present": true,
         "all_failed_tests": [
           "test_09_raw_fact_text_alone_cannot_self_authorise_a_factual_phrase",
-          "test_10_words_scattered_across_claims_cannot_assemble_an_authorisation"
+          "test_10_words_scattered_across_claims_cannot_assemble_an_authorisation",
+          "test_35_shipping_prose_alone_cannot_authorise_fulfillment_origin"
         ]
       },
       {
@@ -1406,6 +1461,77 @@
         "declared_text_present": true,
         "all_failed_tests": [
           "test_11_unknown_phrase_fails_closed"
+        ]
+      },
+      {
+        "id": "M9",
+        "name": "drop_ship_from_country_value_binding",
+        "why": "authorise US fulfillment-origin wording on concept verification alone, any value",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_33_non_us_ship_from_country_blocks_the_phrase"
+        ],
+        "killers_that_failed": [
+          "test_33_non_us_ship_from_country_blocks_the_phrase"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_33_non_us_ship_from_country_blocks_the_phrase"
+        ]
+      },
+      {
+        "id": "M10",
+        "name": "let_fulfillment_origin_authorise_manufacturing_origin",
+        "why": "reclassify 'made in the usa' as clearable from the ship-from country",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_36_us_fulfillment_origin_never_authorises_manufacturing_origin"
+        ],
+        "killers_that_failed": [
+          "test_36_us_fulfillment_origin_never_authorises_manufacturing_origin"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_24_ambiguous_owner_value_returns_policy_decision_required",
+          "test_36_us_fulfillment_origin_never_authorises_manufacturing_origin"
+        ]
+      },
+      {
+        "id": "M11",
+        "name": "restore_second_live_aplus_authority",
+        "why": "give the A+ builder back its own phrase list, able to diverge from the authority",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_40b_no_phrase_collection_literal_anywhere_including_function_locals"
+        ],
+        "killers_that_failed": [
+          "test_40b_no_phrase_collection_literal_anywhere_including_function_locals"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_40b_no_phrase_collection_literal_anywhere_including_function_locals"
+        ]
+      },
+      {
+        "id": "M12",
+        "name": "ignore_surface_allowlist",
+        "why": "let a clearable phrase publish on a surface its record does not list",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
+        ],
+        "killers_that_failed": [
+          "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_13_unknown_surface_fails_closed_for_a_factual_phrase",
+          "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
         ]
       },
       {
@@ -1431,9 +1557,10 @@
     "restored_byte_identical": true,
     "eol_handling": {
       "files_are_crlf_on_this_checkout": {
-        "page_auditor.py": true,
         "unsafe_claim_policy.py": false,
-        "claim_evidence.py": true
+        "claim_evidence.py": true,
+        "page_auditor.py": true,
+        "aplus_builder.py": true
       },
       "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
       "anchors_loosened": false

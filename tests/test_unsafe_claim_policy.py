@@ -210,19 +210,19 @@ class HardBlockMatrix(unittest.TestCase):
         import collections
         shared = collections.Counter(r["policy_class"] for r in SHARED)
         self.assertEqual(dict(shared), {
-            UCP.ABSOLUTE_OR_PERMANENCE: 6,
-            UCP.GUARANTEE_OR_PROMISE: 6,
-            UCP.UNVERIFIABLE_SUPERLATIVE: 13,
-            UCP.AMBIGUOUS: 5,
+            UCP.ABSOLUTE_OR_PERMANENCE: 17,
+            UCP.GUARANTEE_OR_PROMISE: 22,
+            UCP.UNVERIFIABLE_SUPERLATIVE: 16,
+            UCP.AMBIGUOUS: 6,
             UCP.FACTUAL_AND_EVIDENCE_VERIFIABLE: 15,
         }, "shared phrase classification changed")
         every = collections.Counter(r["policy_class"] for r in UCP.manifest()["rows"])
-        self.assertEqual(sum(every.values()), 92)
+        self.assertEqual(sum(every.values()), 123)
         self.assertEqual(every[UCP.FACTUAL_AND_EVIDENCE_VERIFIABLE], 15,
                          "only the shared vocabulary has clearable phrases; acrylic has none")
 
     def test_01_every_hard_block_phrase_survives_owner_self_authorisation(self):
-        self.assertEqual(len(HARD_BLOCK), 25, "hard-block set size changed")
+        self.assertEqual(len(HARD_BLOCK), 55, "hard-block set size changed")
         leaked = []
         for r in HARD_BLOCK:
             phrase = r["phrase"]
@@ -779,6 +779,85 @@ class SurfaceAllowlists(unittest.TestCase):
         self.assertTrue(allowed["authorized"], "permitted surface must still clear")
         self.assertFalse(refused["authorized"], "a surface outside the allowlist must be refused")
         self.assertEqual(refused["block"]["evidence_state"], "SURFACE_NOT_PERMITTED")
+
+
+class ContractionsMustNotBypassThePolicy(unittest.TestCase):
+    """"won't fade" is the way a human actually writes it, and it slipped through completely.
+
+    normalize_text replaced the apostrophe with a SPACE, so "won't fade" became "won t fade" while
+    the canonical entry is "wont fade". The informal spelling was blocked and the correct English
+    one published. Found by auditing compliance/category_config.json, which carries both spellings.
+    """
+
+    BYPASS = ["This design won't fade.", "It won’t fade.", "The acrylic won't crack.",
+              "The print won't peel.", "It won't shrink."]
+
+    def test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms(self):
+        leaked = []
+        for copy in self.BYPASS:
+            if not UCP.findings_for_text(copy, None, UCP.SURFACE_CLAIMS, category="acrylic"):
+                leaked.append(copy)
+        self.assertEqual(leaked, [],
+                         "contraction spellings bypassed the policy entirely: " + "; ".join(leaked))
+
+    def test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word(self):
+        self.assertEqual(UCP.normalize_text("won't fade"), UCP.normalize_text("wont fade"))
+        self.assertEqual(UCP.normalize_text("won’t crack"), UCP.normalize_text("wont crack"))
+
+
+class CanonicalAuthorityMustCoverEveryLiveBlocklist(unittest.TestCase):
+    """A second live blocklist exists in DATA, not source: compliance/category_config.json.
+
+    compliance/listing_validate.py loads it and hard-fails on claim_rules.hard_fail and
+    claim_rules.durability_absolute. pipeline.py runs that validator as a stage, so it is live.
+
+    It is NOT a safety hole -- it is a pure blocklist with no permit path, so it can only ever block
+    MORE than the canonical authority, and it hard-blocks zero canonical FACTUAL phrases. The real
+    problem runs the other way: it knows about medical, regulatory and guarantee claims the canonical
+    authority had never heard of, and the Phase 6 chain does not run it, so on bullets, item
+    highlights and A+ copy those phrases were screened by nothing at all.
+
+    superlative_warn is deliberately NOT required here: those are warnings in that validator, not
+    hard failures, and importing them as blocking phrases would change severity without a decision.
+    """
+
+    @staticmethod
+    def _compliance_hard_blocklist():
+        with open(os.path.join(ROOT, "compliance", "category_config.json"), encoding="utf-8") as f:
+            rules = json.load(f)["claim_rules"]
+        out = set()
+        for key in ("hard_fail", "durability_absolute"):
+            out |= {UCP.normalize_text(p) for p in rules.get(key, [])}
+        # Exclude only DEGENERATE normalisations: a single token under four characters. "#1"
+        # normalises to the bare token "1", and this authority matches whole normalised tokens, so
+        # importing it would block every listing containing a size, quantity or measurement. The
+        # compliance validator substring-matches the raw "#1" and so does not have that problem.
+        return {p for p in out if p and not (" " not in p and len(p) < 4)}
+
+    def test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record(self):
+        canonical = {UCP.normalize_text(r["phrase"]) for r in UCP.manifest()["rows"]}
+        missing = sorted(self._compliance_hard_blocklist() - canonical)
+        self.assertEqual(missing, [],
+                         "compliance/listing_validate.py hard-fails phrases the canonical authority "
+                         "has no record for, so the Phase 6 surfaces do not screen them at all: "
+                         + ", ".join(missing))
+
+    def test_55_the_imported_medical_and_guarantee_claims_are_never_clearable(self):
+        for phrase in ("clinically proven", "fda approved", "cures", "antibacterial",
+                       "money back guarantee", "lifetime warranty"):
+            rec = UCP.policy_for(phrase)
+            self.assertIsNotNone(rec, f"{phrase!r} has no canonical record")
+            self.assertNotEqual(rec["clearance_rule"], UCP.REQUIRE_ALL_CONCEPTS,
+                                f"{phrase!r} must never be clearable by ordinary product evidence")
+
+    def test_56_a_medical_claim_is_blocked_on_every_phase6_surface(self):
+        _f, claims = facts_and_claims()
+        for surface, listing in (("bullets", listing_bullet("Clinically proven to help.")),
+                                 ("highlights", listing_highlight("Clinically proven to help.")),
+                                 ("aplus", listing_aplus("Clinically proven to help."))):
+            au = audit(listing, claims)
+            self.assertTrue(blocked(au, "clinically proven"),
+                            f"{surface}: a medical claim was not blocked")
 
 
 class SourceLineEndingCharacterization(unittest.TestCase):

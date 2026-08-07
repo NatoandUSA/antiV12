@@ -1,7 +1,7 @@
 {
   "proof": {
     "schema": "phase6d-unsafe-claim-sanitized-proof-v1",
-    "implementation_head": "23e0cf4",
+    "implementation_head": "c0db2d6",
     "base": "ae8d60b",
     "branch": "hotfix-phase6d-unsafe-claim-policy",
     "review_status": "SELF_REVIEW_ONLY_INDEPENDENT_REVIEW_REQUIRED",
@@ -48,16 +48,17 @@
       ]
     },
     "mutation": {
-      "mutants": 12,
+      "mutants": 16,
       "survivors": [],
       "note": "M11 (a screening list inside a function) SURVIVED the first module-attribute guard; the guard was replaced with a source-level collection-literal scan rather than the mutant being weakened",
       "restored_byte_identical": true,
       "eol_handling": {
         "files_are_crlf_on_this_checkout": {
-          "unsafe_claim_policy.py": false,
-          "claim_evidence.py": true,
+          "unsafe_claim_policy.py": true,
+          "aplus_builder.py": true,
           "page_auditor.py": true,
-          "aplus_builder.py": true
+          "test_unsafe_claim_policy.py": false,
+          "claim_evidence.py": true
         },
         "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
         "anchors_loosened": false
@@ -87,11 +88,11 @@
           "non_passing": 20
         },
         "target_sample_1": {
-          "ran": 4768,
+          "ran": 4773,
           "non_passing": 20
         },
         "target_sample_2": {
-          "ran": 4768,
+          "ran": 4773,
           "non_passing": 20
         },
         "target_only_non_passing": 0,
@@ -1105,7 +1106,7 @@
   "tests": {
     "schema": "phase6d-unsafe-claim-tests-v1",
     "new_test_file": "tests/test_unsafe_claim_policy.py",
-    "nodes": 46,
+    "nodes": 51,
     "all_passing_at_implementation_head": true,
     "coverage": {
       "hard_block_matrix": "all 25 never-clearable shared phrases, each with the owner typing the phrase into a free-text fact and verifying it",
@@ -1151,7 +1152,7 @@
   "failing_tests": {
     "schema": "phase6d-unsafe-claim-failing-tests-v1",
     "state_measured_at": "the tests-first commit, authority present and consumers unwired",
-    "total_nodes": 46,
+    "total_nodes": 51,
     "failing_at_first_tests_commit": 8,
     "failing_at_remediation_tests_commit": 9,
     "remediation_failing_nodes": [
@@ -1180,7 +1181,7 @@
   },
   "implementation": {
     "schema": "phase6d-unsafe-claim-implementation-v1",
-    "implementation_head": "23e0cf4",
+    "implementation_head": "c0db2d6",
     "base": "ae8d60b",
     "commits": [
       {
@@ -1206,8 +1207,37 @@
       {
         "sha": "23e0cf4",
         "what": "value binding + ship_from_country concept + one A+ authority + real surface allowlists"
+      },
+      {
+        "sha": "a414dc2",
+        "what": "proof packet at the remediated head"
+      },
+      {
+        "sha": "9145b1f",
+        "what": "failing tests for the tracking root cause (3 failing at that commit)"
+      },
+      {
+        "sha": "c0db2d6",
+        "what": "tracking guard at the CLAIM, plus the second-authority guard made exercisable"
       }
     ],
+    "root_cause_fix_T1": {
+      "where_the_defect_actually_lived": "listing/claim_evidence.py, NOT the unsafe-claim policy",
+      "predates_this_branch": "yes -- live on ae8d60b today",
+      "mechanism": "Three claim specs assert a FIXED sentence that ignores the fact value: real_machine_embroidery, satin_stitch and tracking. The first two carry a guard qualifying the value; tracking was the only one without. So tracking='we do not offer tracking' VERIFIED published 'Order tracking included.' as a VERIFIED claim.",
+      "customer_impact": "a false fulfillment promise in bullets, description and A+ copy",
+      "fix": "guard=_tracking_included on the tracking spec, negation-aware, failing closed. No new fact field and no parallel boolean -- the fix belongs at the claim, or every other consumer keeps publishing the false sentence.",
+      "invariant_pinned": "test_47 asserts that EVERY fixed-assertion spec carries a guard, so the next one cannot skip it",
+      "author_error_recorded": "I argued a tracking_included boolean was unnecessary because the dedicated concept was already structured. It is structured but not EXACT: a free-text field has no false state. I had built value binding for ship_from_country in the same commit and then defended the identical defect class for tracking.",
+      "disclosed_limitation": "the guard reads prose, so an unusual affirmative phrasing fails closed and costs a legitimate claim. A controlled-vocabulary tracking field would remove the ambiguity and is the right follow-up."
+    },
+    "subsumption_of_24edbae": {
+      "method": "behavioural, not textual: 24edbae's OWN test file was run against this head",
+      "result": "8 of 9 pass",
+      "the_one_failure": "test_04_verified_text_is_non_empty_when_claims_are_supplied, which calls PA._verified_texts -- the private bag-of-words helper this branch DELETED because its existence was the defect. It asserts the internals of a mechanism that no longer exists; concept binding supersedes it.",
+      "verdict": "RETIRE_24EDBAE -- functionally subsumed. No replay of its patch is needed, which also removes the textual conflict on the two shared function signatures.",
+      "caveat": "determined by the author of both branches; an independent reviewer should confirm."
+    },
     "remediation_of_disclosed_gaps": {
       "GAP_1_US_SHIPPING_VALUE_BINDING": {
         "status": "CLOSED",
@@ -1290,7 +1320,7 @@
     "schema": "phase6d-unsafe-claim-differential-v1",
     "protocol": "n=2 per head, strictly sequential, fresh worktrees, never concurrent with mutation",
     "base": "ae8d60b",
-    "target": "23e0cf4",
+    "target": "c0db2d6",
     "collection": {
       "base": 4724,
       "target": 4770,
@@ -1313,11 +1343,11 @@
         "non_passing": 20
       },
       "target_sample_1": {
-        "ran": 4768,
+        "ran": 4773,
         "non_passing": 20
       },
       "target_sample_2": {
-        "ran": 4768,
+        "ran": 4773,
         "non_passing": 20
       },
       "target_only_non_passing": 0,
@@ -1506,14 +1536,14 @@
         "verdict": "KILLED",
         "source_changed": true,
         "declared_killers": [
-          "test_40b_no_phrase_collection_literal_anywhere_including_function_locals"
+          "test_40b_no_phrase_collection_anywhere_including_function_locals_and_split_literals"
         ],
         "killers_that_failed": [
-          "test_40b_no_phrase_collection_literal_anywhere_including_function_locals"
+          "test_40b_no_phrase_collection_anywhere_including_function_locals_and_split_literals"
         ],
         "declared_text_present": true,
         "all_failed_tests": [
-          "test_40b_no_phrase_collection_literal_anywhere_including_function_locals"
+          "test_40b_no_phrase_collection_anywhere_including_function_locals_and_split_literals"
         ]
       },
       {
@@ -1532,6 +1562,79 @@
         "all_failed_tests": [
           "test_13_unknown_surface_fails_closed_for_a_factual_phrase",
           "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
+        ]
+      },
+      {
+        "id": "M13",
+        "name": "drop_tracking_guard",
+        "why": "let a fact that DENIES tracking publish the fixed claim 'Order tracking included.'",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_47_every_fixed_assertion_spec_carries_a_guard"
+        ],
+        "killers_that_failed": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_47_every_fixed_assertion_spec_carries_a_guard"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_46_a_negative_tracking_fact_cannot_authorise_tracking_wording",
+          "test_47_every_fixed_assertion_spec_carries_a_guard"
+        ]
+      },
+      {
+        "id": "M14",
+        "name": "tracking_guard_ignores_negation",
+        "why": "naive affirmative match, so 'no tracking' still qualifies",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_45_a_negative_tracking_fact_must_not_verify"
+        ],
+        "killers_that_failed": [
+          "test_45_a_negative_tracking_fact_must_not_verify"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_46_a_negative_tracking_fact_cannot_authorise_tracking_wording"
+        ]
+      },
+      {
+        "id": "M15",
+        "name": "guard_rule_a_single_literal_removed",
+        "why": "delete the one-literal rule from the second-authority scanner",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "killers_that_failed": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ]
+      },
+      {
+        "id": "M16",
+        "name": "guard_rule_b_scope_aggregate_removed",
+        "why": "delete the per-scope aggregate rule, reopening the split/concatenated evasion",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "killers_that_failed": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
         ]
       },
       {
@@ -1557,10 +1660,11 @@
     "restored_byte_identical": true,
     "eol_handling": {
       "files_are_crlf_on_this_checkout": {
-        "unsafe_claim_policy.py": false,
-        "claim_evidence.py": true,
+        "unsafe_claim_policy.py": true,
+        "aplus_builder.py": true,
         "page_auditor.py": true,
-        "aplus_builder.py": true
+        "test_unsafe_claim_policy.py": false,
+        "claim_evidence.py": true
       },
       "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
       "anchors_loosened": false

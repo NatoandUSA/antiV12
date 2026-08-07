@@ -1,7 +1,7 @@
 {
   "proof": {
     "schema": "phase6d-unsafe-claim-sanitized-proof-v1",
-    "implementation_head": "cfbb30e",
+    "implementation_head": "995aa2f",
     "base": "ae8d60b",
     "branch": "hotfix-phase6d-unsafe-claim-policy",
     "review_status": "SELF_REVIEW_ONLY_INDEPENDENT_REVIEW_REQUIRED",
@@ -48,15 +48,15 @@
       ]
     },
     "mutation": {
-      "mutants": 19,
+      "mutants": 21,
       "survivors": [],
       "note": "M11 (a screening list inside a function) SURVIVED the first module-attribute guard; the guard was replaced with a source-level collection-literal scan rather than the mutant being weakened",
       "restored_byte_identical": true,
       "eol_handling": {
         "files_are_crlf_on_this_checkout": {
+          "aplus_builder.py": true,
           "page_auditor.py": true,
           "claim_evidence.py": true,
-          "aplus_builder.py": true,
           "unsafe_claim_policy.py": true,
           "test_unsafe_claim_policy.py": false
         },
@@ -88,11 +88,11 @@
           "non_passing": 20
         },
         "target_sample_1": {
-          "ran": 4778,
+          "ran": 4783,
           "non_passing": 20
         },
         "target_sample_2": {
-          "ran": 4778,
+          "ran": 4783,
           "non_passing": 20
         },
         "target_only_non_passing": 0,
@@ -177,7 +177,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -188,7 +190,9 @@
           "fit"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -198,7 +202,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -208,7 +214,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -218,7 +226,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -228,7 +238,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -238,7 +250,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -248,7 +262,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -258,7 +274,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -268,7 +286,9 @@
           "softness_comfort"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -278,7 +298,9 @@
           "occasion"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -288,7 +310,9 @@
           "material_composition"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -298,7 +322,9 @@
           "material_composition"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -308,7 +334,9 @@
           "durability"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -318,7 +346,9 @@
           "durability"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -328,7 +358,9 @@
           "durability"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -338,7 +370,9 @@
           "durability"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -348,7 +382,9 @@
           "durability"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -358,7 +394,9 @@
           "durability"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -368,7 +406,9 @@
           "exact_personalization_promise"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -378,7 +418,9 @@
           "exact_personalization_promise"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -388,7 +430,9 @@
           "exact_personalization_promise"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -398,7 +442,9 @@
           "exact_personalization_promise"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -408,7 +454,9 @@
           "personalization_fields"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -418,7 +466,9 @@
           "made_to_order"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -432,7 +482,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -446,7 +498,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -460,7 +514,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -474,7 +530,17 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {
+          "ship_from_country": [
+            "us",
+            "usa",
+            "u s a",
+            "united states",
+            "united states of america"
+          ]
+        },
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -488,7 +554,17 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {
+          "ship_from_country": [
+            "us",
+            "usa",
+            "u s a",
+            "united states",
+            "united states of america"
+          ]
+        },
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -498,7 +574,9 @@
           "production_location"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -508,7 +586,9 @@
           "production_location"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -519,7 +599,9 @@
           "decoration_method"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -529,7 +611,9 @@
           "production_time"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -539,7 +623,9 @@
           "fit"
         ],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -547,7 +633,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -555,7 +643,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -563,7 +653,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -571,7 +663,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -579,7 +673,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -587,7 +683,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -595,7 +693,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -603,7 +703,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -611,7 +713,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -619,7 +723,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -627,7 +733,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -635,7 +743,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -643,7 +753,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -651,7 +763,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -659,7 +773,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -667,7 +783,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -675,7 +793,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -683,7 +803,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -691,7 +813,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -699,7 +823,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -707,7 +833,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -715,7 +843,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -723,7 +853,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -731,7 +863,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -739,7 +873,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -747,7 +883,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -755,7 +893,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -763,7 +903,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -771,7 +913,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -779,7 +923,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -787,7 +933,9 @@
         "policy_class": "AMBIGUOUS",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
       },
       {
         "scope": "shared",
@@ -801,7 +949,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -815,7 +965,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -829,7 +981,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -843,7 +997,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -857,7 +1013,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -872,7 +1030,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -886,7 +1046,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -899,7 +1061,9 @@
           "claims",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -913,7 +1077,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "shared",
@@ -927,7 +1093,9 @@
           "item_highlights",
           "aplus"
         ],
-        "clearance_rule": "REQUIRE_ALL_CONCEPTS"
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -935,7 +1103,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -943,7 +1113,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -951,7 +1123,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -959,7 +1133,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -967,7 +1143,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -975,7 +1153,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -983,7 +1163,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -991,7 +1173,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -999,7 +1183,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1007,7 +1193,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1015,7 +1203,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1023,7 +1213,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1031,7 +1223,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1039,7 +1233,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1047,7 +1243,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1055,7 +1253,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1063,7 +1263,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1071,7 +1273,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1079,7 +1283,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1087,7 +1293,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1095,7 +1303,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1103,7 +1313,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1111,7 +1323,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1119,7 +1333,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1127,7 +1343,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1135,7 +1353,9 @@
         "policy_class": "ABSOLUTE_OR_PERMANENCE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1143,7 +1363,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1151,7 +1373,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1159,7 +1383,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1167,7 +1393,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1175,7 +1403,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1183,7 +1413,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1191,7 +1423,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1199,7 +1433,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1207,7 +1443,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1215,7 +1453,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1223,7 +1463,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1231,7 +1473,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1239,7 +1483,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1247,7 +1493,9 @@
         "policy_class": "GUARANTEE_OR_PROMISE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1255,7 +1503,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1263,7 +1513,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1271,7 +1523,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1279,7 +1533,9 @@
         "policy_class": "UNVERIFIABLE_SUPERLATIVE",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "ALWAYS_BLOCK"
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1287,7 +1543,9 @@
         "policy_class": "AMBIGUOUS",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1295,7 +1553,9 @@
         "policy_class": "AMBIGUOUS",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       },
       {
         "scope": "acrylic",
@@ -1303,7 +1563,9 @@
         "policy_class": "AMBIGUOUS",
         "required_concept_ids": [],
         "allowed_surfaces": [],
-        "clearance_rule": "BLOCK_PENDING_POLICY"
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
       }
     ],
     "classification_delta_vs_commissioning_document": {
@@ -1354,7 +1616,7 @@
   "tests": {
     "schema": "phase6d-unsafe-claim-tests-v1",
     "new_test_file": "tests/test_unsafe_claim_policy.py",
-    "nodes": 56,
+    "nodes": 61,
     "all_passing_at_implementation_head": true,
     "coverage": {
       "hard_block_matrix": "all 25 never-clearable shared phrases, each with the owner typing the phrase into a free-text fact and verifying it",
@@ -1400,7 +1662,7 @@
   "failing_tests": {
     "schema": "phase6d-unsafe-claim-failing-tests-v1",
     "state_measured_at": "the tests-first commit, authority present and consumers unwired",
-    "total_nodes": 56,
+    "total_nodes": 61,
     "failing_at_first_tests_commit": 8,
     "failing_at_remediation_tests_commit": 9,
     "remediation_failing_nodes": [
@@ -1429,7 +1691,7 @@
   },
   "implementation": {
     "schema": "phase6d-unsafe-claim-implementation-v1",
-    "implementation_head": "cfbb30e",
+    "implementation_head": "995aa2f",
     "base": "ae8d60b",
     "commits": [
       {
@@ -1479,8 +1741,42 @@
       {
         "sha": "cfbb30e",
         "what": "apostrophe normalisation fix + 31 phrases absorbed from compliance"
+      },
+      {
+        "sha": "05619a8",
+        "what": "proof packet for the contraction bypass and the data-file blocklist"
+      },
+      {
+        "sha": "9758f45",
+        "what": "failing tests: data-file authority registry + provenance (3 failing)"
+      },
+      {
+        "sha": "995aa2f",
+        "what": "provenance on every record; manifest exports it and the value bindings"
       }
     ],
+    "data_file_authority_registry": {
+      "why": "source scanning cannot see phrases that live in JSON. The previous round absorbed one data-file blocklist; this closes the CLASS by requiring any phrase-bearing data file to be registered and classified.",
+      "measured": "of 61 tracked JSON files, exactly TWO carry arrays of phrase-like strings",
+      "registered": {
+        "compliance/category_config.json": "unsafe CLAIM blocking -> must stay covered by the canonical authority (test_54)",
+        "compliance/ip_library.json": "trademark/IP blocking -- brands, characters, celebrities, universities. A DIFFERENT question; deliberately NOT absorbed, and test_58 pins that it never leaks into the claim vocabulary."
+      },
+      "effect": "a new phrase-bearing data file fails the test, forcing classification instead of letting it become a silent third authority"
+    },
+    "provenance": {
+      "why": "31 records mirror a second compliance source that still exists and still runs; a reader must be able to tell from the RECORD which entries this module owns outright and which have to stay in step with a file elsewhere",
+      "counts": {
+        "listing/unsafe_claim_policy.py": 92,
+        "compliance/category_config.json:claim_rules": 31
+      },
+      "also_exported": "required_concept_values now appears in the manifest -- a value binding nobody can see in the record is one nobody will maintain"
+    },
+    "false_positive_probes_r1_r4": {
+      "apostrophe_deletion": "probed possessives, surnames (O'Brien, Lands' End), contractions (don't, can't, it's), and none produce a false positive",
+      "intended_forms_still_caught": "won't / won’t / WON'T / mixed case all normalise to the canonical form",
+      "degenerate_tokens": "no record normalises to a bare token under 4 characters; sizes, quantities and years (1 pack, size 1, 2026 edition, pack of 12) publish"
+    },
     "contraction_bypass": {
       "severity": "LIVE_BYPASS_OF_THE_AUTHORITY",
       "symptom": "\"This design wont fade.\" was blocked; \"This design won't fade.\" published",
@@ -1603,7 +1899,7 @@
     "schema": "phase6d-unsafe-claim-differential-v1",
     "protocol": "n=2 per head, strictly sequential, fresh worktrees, never concurrent with mutation",
     "base": "ae8d60b",
-    "target": "cfbb30e",
+    "target": "995aa2f",
     "collection": {
       "base": 4724,
       "target": 4770,
@@ -1626,11 +1922,11 @@
         "non_passing": 20
       },
       "target_sample_1": {
-        "ran": 4778,
+        "ran": 4783,
         "non_passing": 20
       },
       "target_sample_2": {
-        "ran": 4778,
+        "ran": 4783,
         "non_passing": 20
       },
       "target_only_non_passing": 0,
@@ -1981,7 +2277,42 @@
           "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
           "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
           "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable",
-          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface",
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ]
+      },
+      {
+        "id": "M20",
+        "name": "strip_provenance_from_records",
+        "why": "drop the source field, so an imported phrase is indistinguishable from a native one",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ],
+        "killers_that_failed": [
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ]
+      },
+      {
+        "id": "M21",
+        "name": "unregister_a_data_phrase_authority",
+        "why": "let a phrase-bearing data file go unregistered, reopening the silent-third-authority path",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_57_every_data_file_carrying_a_phrase_list_is_registered"
+        ],
+        "killers_that_failed": [
+          "test_57_every_data_file_carrying_a_phrase_list_is_registered"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_57_every_data_file_carrying_a_phrase_list_is_registered"
         ]
       },
       {
@@ -2008,9 +2339,9 @@
     "restored_byte_identical": true,
     "eol_handling": {
       "files_are_crlf_on_this_checkout": {
+        "aplus_builder.py": true,
         "page_auditor.py": true,
         "claim_evidence.py": true,
-        "aplus_builder.py": true,
         "unsafe_claim_policy.py": true,
         "test_unsafe_claim_policy.py": false
       },

@@ -4,8 +4,8 @@
     "branch": "replay-phase6b-explicit-workspace-on-sanitized-main",
     "base": "ae8d60b",
     "historical_source_head": "2f7f2ca",
-    "historical_source_status": "SOURCE PATCH ONLY -- 2f7f2ca is where the fix came from. It is NOT the accepted head and is not proposed for merge. This replayed head is.",
-    "review_status": "SELF_AUTHORED_REPLAY_INDEPENDENT_REVIEW_REQUIRED",
+    "historical_source_status": "SOURCE PATCH ONLY -- 2f7f2ca is where the fix came from. It is NOT the accepted head and is not proposed for merge. What is proposed is the candidate branch above, certified at subject commit 76d7496; the exact head is recorded by the external review artifact.",
+    "review_status": "PENDING_INDEPENDENT_REVIEW",
     "generated_from": "this replay's own evidence. The historical proof packet was NOT copied.",
     "defect": {
       "summary": "The Phase 6B CLI wrote one workspace and verified another.",
@@ -122,7 +122,15 @@
       ],
       "verified_by_reading_the_replayed_test": true,
       "changes_required": "none -- the invariant already holds"
-    }
+    },
+    "subject_implementation_commit": "76d7496",
+    "subject_production_blob": "41610c1a405e069e754227bb732ab9dcd8144124",
+    "subject_test_blob": "f12be109a86ba4c2e7766c33d7e06e1cd193478a",
+    "candidate_branch": "replay-phase6b-explicit-workspace-on-sanitized-main",
+    "base_commit": "ae8d60b",
+    "exact_review_head_source": "EXTERNAL_REVIEW_ARTIFACT",
+    "proof_binding_semantics": "This packet certifies the SUBJECT implementation/test commit named above, not a branch head. It is tracked inside the candidate branch, so it cannot stably contain the SHA of the commit that contains it: writing that SHA changes the file, which changes the commit, which changes the SHA. Earlier revisions of this packet tried to gesture at the head in prose ('this replayed head') and named no SHA at all, and a separate readiness file went stale pointing at a superseded head. Both are fixed by binding to a subject that cannot move. EXACT-HEAD ACCEPTANCE IS SUPPLIED BY THE EXTERNAL INDEPENDENT REVIEW ARTIFACT, not by this file.",
+    "why_certifying_the_subject_is_sufficient": "76d7496 contains BOTH changed files -- listing/keyword_allocation_planner.py (6 lines) and the whole regression test -- and every commit after it is documentation only. Verified: `git diff --stat 76d7496..HEAD` touches PHASE6B-REPLAY-PROOF.json and nothing else, and both subject blobs are byte-identical at HEAD. So certifying the subject certifies the behaviour of any later head on this branch, and a reviewer can confirm that claim in one command."
   },
   "patch_equivalence": {
     "schema": "phase6b-replay-patch-equivalence-v1",

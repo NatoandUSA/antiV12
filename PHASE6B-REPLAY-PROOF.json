@@ -27,8 +27,26 @@
       "reproduction_proven_on_this_base": true
     },
     "mutation": {
-      "mutants": 5,
-      "survivors": [],
+      "accounting": {
+        "required_kill_mutants": [
+          "MB1",
+          "MB2",
+          "MB3",
+          "MB4"
+        ],
+        "required_kill_denominator": 4,
+        "required_kills_achieved": 4,
+        "expected_survivors": [
+          {
+            "id": "MB2b",
+            "reason": "unreachable with workspace_dir supplied by the CLI"
+          }
+        ],
+        "expected_survivors_excluded_from_denominator": true,
+        "note": "the standalone fallback mutant is NOT counted as a kill and NOT counted as a failure. It is unreachable because the fix supplies workspace_dir, which is the disclosed residual, and it is listed so nobody mistakes its survival for either a defect or a success."
+      },
+      "required_kills": "4/4",
+      "real_survivors": [],
       "restored_byte_identical": true,
       "the_important_one": "MB2, the historical inline-__file__ fallback, must be COMPOUND: revert the CLI fix AND re-root the fallback. With the fix in place the fallback is unreachable from the CLI, so mutating it alone changes nothing observable -- recorded separately as MB2b, an EXPECTED survivor, rather than omitted.",
       "observed_escape": "the compound mutant wrote FIVE artifacts into runs/T2 inside the replay worktree -- the same count as the original incident. Contained (its __file__ roots to the worktree, not the real repository, proven by path comparison) and removed. Note that runs/ is gitignored, so that escape was INVISIBLE to git status: which is exactly why the test needs a positive, destination-independent assertion instead of a clean-status check."
@@ -91,7 +109,20 @@
       "runs/T2 never opened, read, written or hashed.",
       "Phase 6C, Phase 6D, Branch A, Dashboard and asset ingestion untouched.",
       "No push, no merge, no tag."
-    ]
+    ],
+    "destination_invariant_verified": {
+      "requirement": "every artifact path positively observed and proven to remain under the selected workspace; writes outside must be detected even under ignored paths",
+      "how_the_test_meets_it": [
+        "_tree_manifest takes a whole-tree before/after snapshot of the temp base, comparing content AND mtime_ns, so an atomic rewrite with identical bytes is still caught",
+        "anything changed outside the selected-workspace prefix lands in `stray`, which must be empty",
+        "it walks the filesystem with os.walk, so .gitignore is irrelevant -- git status is never used as the oracle",
+        "_written_6b_dir observes where artifacts ACTUALLY landed rather than recomputing the path",
+        "a write outside the observable tree (the real repository, say) is caught by a POSITIVE assertion: setUp seeds started_at='prior' and that key must be gone, proving THIS run wrote HERE",
+        "non-vacuity: writer_calls == 1, so a run that did nothing cannot satisfy the checks"
+      ],
+      "verified_by_reading_the_replayed_test": true,
+      "changes_required": "none -- the invariant already holds"
+    }
   },
   "patch_equivalence": {
     "schema": "phase6b-replay-patch-equivalence-v1",
@@ -168,6 +199,24 @@
     "raw_sha256_after": "7486ef8f7da4cb3296298afbe6988f1058b7f1f6ce62920a90bc172972343653",
     "restored_byte_identical": true,
     "eol_handling": "anchors matched on newline-normalised logical text; exact original raw bytes restored and verified by sha256; anchors not loosened",
+    "accounting": {
+      "required_kill_mutants": [
+        "MB1",
+        "MB2",
+        "MB3",
+        "MB4"
+      ],
+      "required_kill_denominator": 4,
+      "required_kills_achieved": 4,
+      "expected_survivors": [
+        {
+          "id": "MB2b",
+          "reason": "unreachable with workspace_dir supplied by the CLI"
+        }
+      ],
+      "expected_survivors_excluded_from_denominator": true,
+      "note": "the standalone fallback mutant is NOT counted as a kill and NOT counted as a failure. It is unreachable because the fix supplies workspace_dir, which is the disclosed residual, and it is listed so nobody mistakes its survival for either a defect or a success."
+    },
     "mutants": [
       {
         "id": "MB1",
@@ -197,7 +246,7 @@
         "id": "MB2b",
         "name": "inline___file___fallback_ALONE_is_unreachable",
         "why": "DOCUMENTS THE DISCLOSED RESIDUAL rather than hiding it. With the fix in place the CLI always passes workspace_dir, so the writer's fallback is dead code from that path and mutating it alone is expected to SURVIVE. Recording it as an expected survivor is honest; silently omitting the mutant would not be.",
-        "verdict": "EXPECTED_SURVIVOR_UNREACHABLE_CODE",
+        "verdict": "EXPECTED_SURVIVOR_BY_UNREACHABILITY",
         "source_changed": true,
         "failing_tests": [],
         "reason_text_present": true

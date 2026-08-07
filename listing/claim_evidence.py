@@ -219,6 +219,10 @@ CLAIM_SPECS = [
     ClaimSpec("shipping_method", "fulfillment", ("shipping_method",),
               lambda v: _shipping_text(v) if _has_us_shipping(v) else f"Shipping: {v}.",
               components=(COMP_SHIPPING_TIME,)),
+    # Fulfillment origin gets its own concept and is NEVER inferred from shipping prose. The
+    # unsafe-claim policy binds US fulfillment-origin wording to this concept AND to its VALUE.
+    ClaimSpec("ship_from_country", "fulfillment", ("ship_from_country",),
+              lambda v: f"Ships from {v}.", components=(COMP_SHIPPING_TIME,)),
     # tracking is not implied by "there is shipping" -> a dedicated tracking fact.
     ClaimSpec("tracking", "fulfillment", ("tracking",), lambda v: "Order tracking included.",
               components=(COMP_SHIPPING_TIME,)),

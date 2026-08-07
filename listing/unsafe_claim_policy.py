@@ -89,6 +89,10 @@ SURFACE_ITEM_HIGHLIGHTS = "item_highlights"
 SURFACE_APLUS = "aplus"
 ALL_SURFACES = (SURFACE_CLAIMS, SURFACE_ITEM_HIGHLIGHTS, SURFACE_APLUS)
 
+# Accepted spellings for a US fulfillment origin. Compared against the NORMALISED structured
+# fact value, so "U.S.A." and "united states" land here too.
+_US = ("us", "usa", "u s a", "united states", "united states of america")
+
 _F, _A, _G, _U, _M = (FACTUAL_AND_EVIDENCE_VERIFIABLE, ABSOLUTE_OR_PERMANENCE, GUARANTEE_OR_PROMISE,
                       UNVERIFIABLE_SUPERLATIVE, AMBIGUOUS)
 
@@ -137,12 +141,14 @@ _SHARED_RECORDS = (
     ("with tracking", _F, ("tracking",), ALL_SURFACES),
     ("includes tracking", _F, ("tracking",), ALL_SURFACES),
     # -- value-encoding: verifying the concept cannot establish the specific value ------------------
-    # Shipping origin is the exception, and deliberately so. claim_evidence._has_us_shipping gates the
-    # generated claim text on the owner's actual shipping value, so the shipping_method concept only
-    # carries a US-shipping claim when the owner's own fact asserts one. Country of ORIGIN is not the
-    # same: "Made in USA" is an FTC-regulated claim, so it stays blocked pending an owner decision.
-    ("shipped from the us", _F, ("shipping_method",), ALL_SURFACES),
-    ("ships from the us", _F, ("shipping_method",), ALL_SURFACES),
+    # FULFILLMENT ORIGIN clears only on a dedicated ship_from_country concept whose VALUE is the US.
+    # An earlier revision bound these to the generic shipping_method concept and authorised on
+    # verified-ness alone, so any VERIFIED shipping method cleared them; claim_evidence._has_us_shipping
+    # only substring-scans the owner's free prose, which is not evidence. MANUFACTURING origin is a
+    # different claim with different legal weight -- "Made in USA" is FTC-regulated -- so it is not
+    # reachable from this concept and stays blocked pending its own compliance model.
+    ("shipped from the us", _F, ("ship_from_country",), ALL_SURFACES, {"ship_from_country": _US}),
+    ("ships from the us", _F, ("ship_from_country",), ALL_SURFACES, {"ship_from_country": _US}),
     ("made in the usa", _M, ("production_location",), ()),
     ("made in the us", _M, ("production_location",), ()),
     ("printed in the usa", _M, ("production_location", "decoration_method"), ()),
@@ -156,7 +162,12 @@ _SHARED_RECORDS = (
     ("raised stitching", _F, ("satin_stitch",), ALL_SURFACES),
     ("embroidered name", _F, ("decoration_method", "personalization_fields"), ALL_SURFACES),
     ("cotton blend", _F, ("material_composition",), ALL_SURFACES),
-    ("measured from the real garment", _F, ("measurements",), ALL_SURFACES),
+    # A measurement METHODOLOGY statement belongs in long-form copy where it can be qualified.
+    # An item highlight is a stripped one-line assertion with no room for that context, so this
+    # phrase is deliberately not allowed there. This is the surface allowlist doing real work
+    # rather than every record trivially listing all three.
+    ("measured from the real garment", _F, ("measurements",),
+     (SURFACE_CLAIMS, SURFACE_APLUS)),
     ("measurements are taken from the real garment", _F, ("measurements",), ALL_SURFACES),
     ("measured from real garments", _F, ("measurements",), ALL_SURFACES),
 )
@@ -188,9 +199,11 @@ _CATEGORY_RECORDS = {"acrylic": _ACRYLIC_RECORDS}
 
 
 def _record(row):
-    phrase, cls, concepts, surfaces = row
+    phrase, cls, concepts, surfaces = row[:4]
+    values = row[4] if len(row) > 4 else {}
     return {"phrase": phrase, "policy_class": cls, "required_concept_ids": tuple(concepts),
-            "allowed_surfaces": tuple(surfaces), "clearance_rule": CLEARANCE_BY_CLASS[cls]}
+            "allowed_surfaces": tuple(surfaces), "clearance_rule": CLEARANCE_BY_CLASS[cls],
+            "required_concept_values": {k: tuple(v) for k, v in (values or {}).items()}}
 
 
 POLICY = {r["phrase"]: r for r in (_record(x) for x in _SHARED_RECORDS)}
@@ -265,6 +278,28 @@ def verified_concepts(claim_evidence):
     return frozenset()
 
 
+def _concept_values(claims, concept):
+    """The normalised structured VALUES backing a verified concept, read from the claim's own
+    source_evidence. Never parsed out of the claim's prose."""
+    if claims is None:
+        return frozenset()
+    try:
+        rec = claims.claim(concept)
+    except Exception:
+        return frozenset()
+    if not rec:
+        return frozenset()
+    out = set()
+    for entry in (rec.get("source_evidence") or {}).values():
+        if isinstance(entry, dict) and entry.get("state") == "VERIFIED":
+            val = entry.get("value")
+            for item in (val if isinstance(val, list) else [val]):
+                norm = normalize_text(item)
+                if norm:
+                    out.add(norm)
+    return frozenset(out)
+
+
 def _concept_verified(claims, concept):
     """VERIFIED through STRUCTURED evidence. Never raw text, never substring presence."""
     if claims is None:
@@ -305,6 +340,21 @@ def evaluate(phrase, claims, surface, *, category=None, owner_fact_field=None):
     if unverified or not concepts:
         return _blocked(phrase, cls, concepts, surface, MATCHING_CONCEPT_UNVERIFIED, owner_fact_field,
                         evidence_state="UNVERIFIED_CONCEPTS:" + ",".join(unverified or ("<none mapped>",)))
+
+    # VALUE binding. Verifying a concept says the owner stated something and stands behind it; it does
+    # NOT say what they stated. A phrase that asserts a specific value of a concept must match that
+    # value, or a VERIFIED ship_from_country of "Vietnam" would clear "ships from the us".
+    for concept, accepted in (rec["required_concept_values"] or {}).items():
+        actual = _concept_values(claims, concept)
+        if not actual:
+            return _blocked(phrase, cls, concepts, surface, MATCHING_CONCEPT_UNVERIFIED,
+                            owner_fact_field,
+                            evidence_state=f"CONCEPT_VALUE_UNREADABLE:{concept}")
+        if not (actual & {normalize_text(a) for a in accepted}):
+            return _blocked(phrase, cls, concepts, surface, MATCHING_CONCEPT_UNVERIFIED,
+                            owner_fact_field,
+                            evidence_state=f"CONCEPT_VALUE_MISMATCH:{concept}="
+                                           + "|".join(sorted(actual)))
 
     return {"authorized": True, "phrase": phrase, "policy_class": cls,
             "required_concept_ids": list(concepts), "surface": surface,

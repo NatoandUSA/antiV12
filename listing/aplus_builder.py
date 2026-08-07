@@ -33,21 +33,17 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import aplus_module_registry as REG
+import unsafe_claim_policy as UCP
 import claim_evidence as CE
 import product_fact_loader as PFL
 
 _PLACEHOLDER_RE = re.compile(r"\{[a-zA-Z0-9_]+\}")
 
-# claim phrases that must never appear in READY A+ copy without a VERIFIED claim backing them. Kept in
-# sync (intentionally a superset-safe subset) with page_auditor.UNSAFE_CLAIM_PHRASES so the builder's
-# self-check and the shared auditor agree; the auditor remains the authority.
-_UNSAFE_PHRASES = (
-    "soft and comfortable", "comfortable fit", "soft against the skin", "all day comfort",
-    "for long shifts", "12 hour shifts", "made to last", "built to last", "will not fade",
-    "exactly as you enter", "exactly as entered", "embroidered exactly",
-    "shipped from the us", "made in the usa", "with tracking", "tracking included",
-    "cotton blend", "premium fabric", "measured from the real garment", "made to order",
-)
+# The unsafe-claim vocabulary and its policy live in listing.unsafe_claim_policy, the ONE
+# authority. This module used to keep its own 20-phrase subset and match it as a substring
+# against the included claim text -- a second live safety input that could disagree with the
+# auditor about whether a module is READY, and the same self-authorising pattern the policy
+# exists to remove. There is now no second list.
 
 
 def canonical_json(obj):
@@ -112,7 +108,7 @@ def _claim_id(claims, concept):
 
 
 # ---------------------------------------------------------------- module evaluation
-def _eval_module(spec, claims, facts, asset_index):
+def _eval_module(spec, claims, facts, asset_index, category=None):
     """Evaluate one Basic module against its evidence contract -> a full module dict."""
     missing_facts, missing_real_assets, claim_blockers, placeholder_blockers = [], [], [], []
     included = []          # (claim_id, text) actually placed in the body
@@ -159,15 +155,12 @@ def _eval_module(spec, claims, facts, asset_index):
     for m in _PLACEHOLDER_RE.findall(body):
         placeholder_blockers.append(m)
 
-    # 6) unsafe-claim self check (defence in depth — body is built from verified claims, so this only
-    #    ever fires if a verified claim text itself contains an unbacked phrase, which the auditor also
-    #    catches). Only fires when the phrase is NOT present in an included verified claim text.
-    unsupported = []
-    nbody = _norm(body)
-    included_norm = _norm(" ".join(t for _, t in included))
-    for phrase in _UNSAFE_PHRASES:
-        if phrase in nbody and phrase not in included_norm:
-            unsupported.append(phrase)
+    # 6) unsafe-claim self check, through the canonical policy authority — the same records, the
+    #    same structured-evidence authorisation and the same surface the page auditor applies to
+    #    A+ copy. Defence in depth: the body is assembled from verified claim texts, so this fires
+    #    only when a verified claim's own text carries a phrase its concept does not authorise.
+    unsupported = [blk["phrase"] for blk in
+                   UCP.findings_for_text(body, claims, UCP.SURFACE_APLUS, category=category)]
 
     # 7) copy / alt-text limits
     limit_issues = []
@@ -500,8 +493,13 @@ class APlusResult:
 
 # ---------------------------------------------------------------- build
 def build_aplus(capability, claims, facts, assets=None, dynamic_data=None, premium_confirmed=False,
-                garment=None):
-    """Build the capability-aware A+ payload. Raises InvalidCapabilityError on a bad capability value."""
+                garment=None, category=None):
+    """Build the capability-aware A+ payload. Raises InvalidCapabilityError on a bad capability value.
+
+    *category* selects the category-specific unsafe-claim vocabulary for the module self-check.
+    It defaults to None, which uses the shared vocabulary only -- safe, because the page auditor
+    is the authority and always resolves the category itself.
+    """
     capability = REG.validate_capability(capability)      # None -> UNKNOWN; bad value -> raise
     if not isinstance(claims, CE.ClaimEvidence):
         raise TypeError("build_aplus expects a claim_evidence.ClaimEvidence")
@@ -528,7 +526,8 @@ def build_aplus(capability, claims, facts, assets=None, dynamic_data=None, premi
                            fallback_plan=fallback_plan)
 
     # Basic modules (always built for BASIC / PREMIUM / UNKNOWN).
-    basic_modules = [_eval_module(spec, claims, facts, asset_index) for spec in REG.BASIC_MODULES]
+    basic_modules = [_eval_module(spec, claims, facts, asset_index, category)
+                     for spec in REG.BASIC_MODULES]
 
     # Dynamic pool evaluation (needed for PREMIUM and UNKNOWN draft).
     dynamic_eval, selected = [], []

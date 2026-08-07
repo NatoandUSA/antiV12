@@ -860,6 +860,106 @@ class CanonicalAuthorityMustCoverEveryLiveBlocklist(unittest.TestCase):
                             f"{surface}: a medical claim was not blocked")
 
 
+class DataFilePhraseAuthoritiesAreRegistered(unittest.TestCase):
+    """Closing the CLASS, not just the instance.
+
+    The previous round absorbed compliance/category_config.json's blocking phrases and pinned that
+    they stay covered (test_54). It did NOT stop a NEW screening list appearing in some other data
+    file, which is the residual that started this whole thread: source scanning cannot see phrases
+    that live in JSON.
+
+    Measured across the tree: of 61 tracked JSON files, exactly two carry arrays of phrase-like
+    strings. Both are registered below with their purpose, because they answer DIFFERENT questions:
+
+      compliance/category_config.json  unsafe CLAIM blocking -> must stay covered by the canonical
+                                       authority (test_54 enforces that)
+      compliance/ip_library.json       trademark / IP blocking -> brands, characters, celebrities,
+                                       universities. A different question entirely; it is not a
+                                       rival unsafe-claim authority and must NOT be absorbed.
+
+    A new phrase-bearing data file fails this test on purpose: someone must classify it rather than
+    let it become a silent third authority.
+    """
+
+    REGISTERED = {
+        "compliance/category_config.json": "unsafe-claim blocking; covered by the canonical authority",
+        "compliance/ip_library.json": "trademark/IP blocking; a different question, deliberately separate",
+    }
+
+    @staticmethod
+    def _phrase_like(s):
+        return (isinstance(s, str) and 2 <= len(s.split()) <= 5 and s == s.lower()
+                and s.replace(" ", "").replace("-", "").replace("'", "").isalpha())
+
+    @classmethod
+    def _has_phrase_array(cls, obj):
+        if isinstance(obj, dict):
+            return any(cls._has_phrase_array(v) for v in obj.values())
+        if isinstance(obj, list):
+            if sum(1 for x in obj if cls._phrase_like(x)) >= 5:
+                return True
+            return any(cls._has_phrase_array(v) for v in obj)
+        return False
+
+    def test_57_every_data_file_carrying_a_phrase_list_is_registered(self):
+        import subprocess
+        tracked = subprocess.run(["git", "ls-files", "*.json"], cwd=ROOT,
+                                 capture_output=True, text=True).stdout.split()
+        unregistered = []
+        for rel in tracked:
+            if "PROOF" in rel or "REPORT" in rel:      # generated evidence, not an authority
+                continue
+            path = os.path.join(ROOT, *rel.split("/"))
+            try:
+                with open(path, encoding="utf-8") as f:
+                    doc = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if self._has_phrase_array(doc) and rel not in self.REGISTERED:
+                unregistered.append(rel)
+        self.assertEqual(unregistered, [],
+                         "a data file carries a phrase list and is not registered, so it could be a "
+                         "silent second screening authority that no source scan can see: "
+                         + ", ".join(unregistered))
+
+    def test_58_the_ip_library_is_not_absorbed_into_the_claim_authority(self):
+        """It answers a different question. Absorbing brand names into the unsafe-CLAIM vocabulary
+        would block legitimate copy and confuse two separate compliance concerns."""
+        canonical = {UCP.normalize_text(r["phrase"]) for r in UCP.manifest()["rows"]}
+        with open(os.path.join(ROOT, "compliance", "ip_library.json"), encoding="utf-8") as f:
+            ip = json.load(f)
+        names = {UCP.normalize_text(s) for group in (ip.get("block") or {}).values()
+                 if isinstance(group, list) for s in group if isinstance(s, str)}
+        overlap = sorted(n for n in (names & canonical) if n)
+        self.assertEqual(overlap, [],
+                         "IP/trademark entries leaked into the unsafe-claim authority: " + ", ".join(overlap))
+
+
+class ImportedPhrasesCarryTheirProvenance(unittest.TestCase):
+    """Where a phrase came from is part of the record, not a comment.
+
+    31 phrases were absorbed from another compliance authority. Without provenance on the record,
+    the next reader cannot tell which entries this module owns and which mirror a second source that
+    still has to stay in step with it.
+    """
+
+    def test_59_every_record_declares_a_source(self):
+        missing = [r["phrase"] for r in UCP.manifest()["rows"] if not r.get("source")]
+        self.assertEqual(missing, [], "records with no provenance: " + ", ".join(missing[:10]))
+
+    def test_60_the_absorbed_phrases_name_the_file_they_came_from(self):
+        for phrase in ("clinically proven", "fda approved", "money back guarantee", "waterproof"):
+            rec = UCP.policy_for(phrase)
+            self.assertIsNotNone(rec, phrase)
+            self.assertIn("category_config.json", rec["source"],
+                          f"{phrase!r} was absorbed from the compliance blocklist but does not say so")
+
+    def test_61_phrases_this_module_owns_are_not_mislabelled_as_imported(self):
+        for phrase in ("never fades", "buttery soft", "machine embroidery"):
+            self.assertNotIn("category_config.json", UCP.policy_for(phrase)["source"],
+                             f"{phrase!r} is native to this authority, not imported")
+
+
 class SourceLineEndingCharacterization(unittest.TestCase):
     """Why any source-matching gate must normalise newlines before it matches.
 

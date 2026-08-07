@@ -178,6 +178,36 @@ def _embroider_machine(v):
     return "embroider" in s and ("machine" in s or "stitch" in s) and "hand" not in s
 
 
+# negation markers, matched on whitespace-delimited tokens so "no" never matches inside "nothing".
+_DENIAL_TOKENS = frozenset((
+    "no", "not", "none", "never", "without", "false", "excluded", "unavailable", "n/a", "na",
+    "dont", "doesnt", "cannot", "cant", "lacks", "lacking", "off",
+))
+_AFFIRM_TOKENS = frozenset(("yes", "true", "included", "includes", "include", "provided", "always"))
+
+
+def _tracking_included(v):
+    """Tracking is INCLUDED only when the owner's value actually affirms it.
+
+    The tracking claim's text is a FIXED assertion -- "Order tracking included." -- that ignores the
+    value entirely. Without a guard, a fact reading "we do not offer tracking", marked VERIFIED,
+    publishes the exact opposite of itself into bullets, description and A+ copy.
+
+    real_machine_embroidery and satin_stitch already carry guards for precisely this reason: a spec
+    whose text asserts a fixed sentence MUST qualify the value it is asserting about. tracking was
+    the only fixed-assertion spec in CLAIM_SPECS without one.
+
+    Fails CLOSED. A value this cannot read affirmatively does not verify, so an unusual phrasing
+    costs the owner a claim rather than costing a customer a false promise.
+    """
+    tokens = set(str(v or "").lower().replace("-", " ").replace(",", " ").split())
+    if not tokens:
+        return False
+    if tokens & _DENIAL_TOKENS:
+        return False
+    return bool("tracking" in tokens or "track" in tokens or (tokens & _AFFIRM_TOKENS))
+
+
 CLAIM_SPECS = [
     ClaimSpec("decoration_method", "decoration", ("decoration_method",),
               lambda v: f"Decorated with {str(v).lower()}.", components=(COMP_DECORATION_METHOD,)),
@@ -225,7 +255,7 @@ CLAIM_SPECS = [
               lambda v: f"Ships from {v}.", components=(COMP_SHIPPING_TIME,)),
     # tracking is not implied by "there is shipping" -> a dedicated tracking fact.
     ClaimSpec("tracking", "fulfillment", ("tracking",), lambda v: "Order tracking included.",
-              components=(COMP_SHIPPING_TIME,)),
+              guard=_tracking_included, components=(COMP_SHIPPING_TIME,)),
     ClaimSpec("packaging", "fulfillment", ("packaging",), lambda v: f"Arrives in {v}.",
               components=(COMP_PACKAGING,)),
     # durability is never read off embroidery presence -> needs its own explicit fact.

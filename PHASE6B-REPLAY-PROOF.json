@@ -1,0 +1,289 @@
+{
+  "proof": {
+    "schema": "phase6b-replay-sanitized-proof-v1",
+    "branch": "replay-phase6b-explicit-workspace-on-sanitized-main",
+    "base": "ae8d60b",
+    "historical_source_head": "2f7f2ca",
+    "historical_source_status": "SOURCE PATCH ONLY -- 2f7f2ca is where the fix came from. It is NOT the accepted head and is not proposed for merge. This replayed head is.",
+    "review_status": "SELF_AUTHORED_REPLAY_INDEPENDENT_REVIEW_REQUIRED",
+    "generated_from": "this replay's own evidence. The historical proof packet was NOT copied.",
+    "defect": {
+      "summary": "The Phase 6B CLI wrote one workspace and verified another.",
+      "mechanism": "main() called write_phase6b_artifacts() without workspace_dir. The writer then fell back to <repo>/runs/<result.workspace_id> -- the workspace's own recorded IDENTITY rather than the path the owner selected on the command line.",
+      "why_it_hid": "the run printed verify_ok=True, because the directory it verified was a different, internally consistent workspace. A false pass is the half that would have hidden this indefinitely.",
+      "blast_radius": "one call site. Every other Phase 6 writer call passes a workspace explicitly."
+    },
+    "fix": {
+      "files_changed": 2,
+      "production_lines": "4 added / 1 removed",
+      "change": "the CLI passes workspace_dir=args.run_dir explicitly",
+      "equivalence": "The production file is byte-identical on 85e67a6 and ae8d60b, so taking its 2f7f2ca content reproduces base+patch exactly. Equivalence is therefore asserted at BLOB IDENTITY, which is stronger than a patch that merely applies.",
+      "production_blob_identical_to_historical": true
+    },
+    "focused_tests": {
+      "nodes": 3,
+      "with_fix": "OK (3/3)",
+      "without_fix": "3 FAILURES -- production reverted to the ae8d60b version, test file kept",
+      "reproduction_proven_on_this_base": true
+    },
+    "mutation": {
+      "mutants": 5,
+      "survivors": [],
+      "restored_byte_identical": true,
+      "the_important_one": "MB2, the historical inline-__file__ fallback, must be COMPOUND: revert the CLI fix AND re-root the fallback. With the fix in place the fallback is unreachable from the CLI, so mutating it alone changes nothing observable -- recorded separately as MB2b, an EXPECTED survivor, rather than omitted.",
+      "observed_escape": "the compound mutant wrote FIVE artifacts into runs/T2 inside the replay worktree -- the same count as the original incident. Contained (its __file__ roots to the worktree, not the real repository, proven by path comparison) and removed. Note that runs/ is gitignored, so that escape was INVISIBLE to git status: which is exactly why the test needs a positive, destination-independent assertion instead of a clean-status check."
+    },
+    "differential": {
+      "verdict": "BASELINE_EQUIVALENT",
+      "collection": {
+        "base": 4724,
+        "target": 4727,
+        "target_only": 3,
+        "target_only_nodes": [
+          "test_phase6b_workspace_isolation.CliWorkspaceIsolation.test_cli_writes_only_inside_the_selected_workspace",
+          "test_phase6b_workspace_isolation.CliWorkspaceIsolation.test_decoy_workspace_is_untouched_on_content_and_mtime",
+          "test_phase6b_workspace_isolation.CliWorkspaceIsolation.test_verified_directory_is_the_directory_written"
+        ],
+        "baseline_only": 0,
+        "load_errors_base": 0,
+        "load_errors_target": 0
+      },
+      "execution": {
+        "base_sample_1": {
+          "ran": 4722,
+          "non_passing": 20
+        },
+        "base_sample_2": {
+          "ran": 4722,
+          "non_passing": 20
+        },
+        "target_sample_1": {
+          "ran": 4725,
+          "non_passing": 21
+        },
+        "target_sample_2": {
+          "ran": 4725,
+          "non_passing": 20
+        },
+        "base_samples_identical": true,
+        "target_samples_identical": false,
+        "baseline_only_non_passing": 0
+      },
+      "target_only_node": "DOCUMENTED_WINDOWS_LOOPBACK_FLAKE_NOT_A_REGRESSION",
+      "why_n2_mattered": "a single target sample would have shown a target-only node and looked like a regression. The second sample is what distinguishes a flake from a defect."
+    },
+    "residuals_disclosed": [
+      "Independent review NOT done. This is a self-authored replay.",
+      "The write_phase6b_artifacts fallback still exists. It is closed only because no caller omits the argument, which MB2b demonstrates by surviving. Removing the fallback outright is a separate decision and was NOT taken here -- this replay reproduces the accepted fix, it does not widen it.",
+      "main() retains a pre-existing unused 'manifest' local, deliberately untouched.",
+      "The documented Windows loopback flake can appear under suite load and did, once, in target sample 1. It is proven a flake, not a regression."
+    ],
+    "scope_discipline": {
+      "phase6c_touched": false,
+      "phase6d_touched": false,
+      "branch_a_touched": false,
+      "dashboard_touched": false,
+      "asset_ingestion_touched": false,
+      "files_changed_total": 2
+    },
+    "boundaries": [
+      "No Seller Central, SP-API, credentials or browser automation.",
+      "runs/T2 never opened, read, written or hashed.",
+      "Phase 6C, Phase 6D, Branch A, Dashboard and asset ingestion untouched.",
+      "No push, no merge, no tag."
+    ]
+  },
+  "patch_equivalence": {
+    "schema": "phase6b-replay-patch-equivalence-v1",
+    "historical_source_head": "2f7f2ca",
+    "historical_base": "85e67a6",
+    "replay_base": "ae8d60b",
+    "replay_branch": "replay-phase6b-explicit-workspace-on-sanitized-main",
+    "method": "The production file is byte-identical on 85e67a6 and ae8d60b, so taking its 2f7f2ca content reproduces base+patch exactly. Equivalence is therefore asserted at BLOB IDENTITY, which is stronger than a patch that merely applies.",
+    "files": {
+      "production": {
+        "path": "listing/keyword_allocation_planner.py",
+        "blob_at_85e67a6": "aa9ae612e2fee51c9e91ce0e1d78ce63f3450754",
+        "blob_at_ae8d60b": "aa9ae612e2fee51c9e91ce0e1d78ce63f3450754",
+        "base_unchanged_by_sanitisation": true,
+        "blob_at_2f7f2ca": "41610c1a405e069e754227bb732ab9dcd8144124",
+        "blob_replayed": "41610c1a405e069e754227bb732ab9dcd8144124",
+        "identical_to_historical": true,
+        "lines_changed": "4 added / 1 removed (the CLI now passes workspace_dir=args.run_dir explicitly)"
+      },
+      "test": {
+        "path": "tests/test_phase6b_workspace_isolation.py",
+        "absent_on_base": true,
+        "blob_at_2f7f2ca": "f12be109a86ba4c2e7766c33d7e06e1cd193478a",
+        "identical_to_historical": true,
+        "sensitive_scan": "clean -- no absolute local paths, no economics, no snapshot locations",
+        "incident_context_retained": "the module docstring explains WHY the test exists. It carries no absolute local path, no economics and no snapshot location; the material the sanitisation removed was local filesystem paths and cost data, none of which appears here."
+      }
+    },
+    "deliberately_not_replayed": {
+      "PHASE6B-WORKSPACE-ISOLATION-HOTFIX-PROOF.json": "the historical proof packet (commits c03ecac and 2f7f2ca). Regenerated from THIS replay's evidence instead of cherry-picked, per the replay rules -- a stale packet would reintroduce narrative the sanitisation removed and would describe measurements not taken on this base."
+    },
+    "reproduction_proven_on_this_base": {
+      "with_fix": "3 tests, OK",
+      "without_fix (production reverted, test kept)": "3 tests, 3 FAILURES",
+      "note": "the regression is demonstrated on ae8d60b itself, not inherited from the old branch"
+    },
+    "scope_discipline": {
+      "phase6c_touched": false,
+      "phase6d_touched": false,
+      "branch_a_touched": false,
+      "dashboard_touched": false,
+      "asset_ingestion_touched": false,
+      "files_changed_total": 2
+    }
+  },
+  "focused_tests": {
+    "schema": "phase6b-replay-focused-tests-v1",
+    "test_module": "tests.test_phase6b_workspace_isolation",
+    "nodes": 3,
+    "names": [
+      "test_cli_writes_only_inside_the_selected_workspace",
+      "test_decoy_workspace_is_untouched_on_content_and_mtime",
+      "test_verified_directory_is_the_directory_written"
+    ],
+    "with_the_fix": "OK (3/3)",
+    "without_the_fix": "3 FAILURES -- production reverted to the ae8d60b version, test file kept",
+    "why_that_matters": "the regression is demonstrated ON THIS BASE. A replayed test that passed either way would prove only that it still imports.",
+    "acceptance_focus_checks": {
+      "cli_main_passes_workspace_dir_explicitly": true,
+      "test_drives_main_not_only_the_writer": "yes -- the writer honours workspace_dir whenever it is passed, so an API-level test passes before AND after the fix and proves nothing",
+      "hermetic_temp_repository_with_a_decoy_runs_T2": "yes -- _ROOT is redirected for the process only and the decoy lives inside a temp fake-repo",
+      "real_runs_T2_never_opened": "yes -- verified by path comparison; the replay never referenced the real repository root",
+      "whole_tree_detection_of_writes_outside_the_selected_workspace": "yes -- the surviving prior manifest key is a positive, destination-independent assertion: setUp seeds started_at='prior', and if the CLI wrote elsewhere that value survives",
+      "observed_write_destination_equals_verified_destination": "asserted by test_verified_directory_is_the_directory_written",
+      "other_phase6_call_sites_still_pass_workspace_dir": "unchanged by this replay; the historical sweep found the defect was ONE call site and all nine call sites pass a workspace"
+    },
+    "runs_T2_access": "none"
+  },
+  "mutation": {
+    "schema": "phase6b-replay-mutation-v1",
+    "target": "listing/keyword_allocation_planner.py",
+    "baseline_clean": true,
+    "raw_sha256_before": "7486ef8f7da4cb3296298afbe6988f1058b7f1f6ce62920a90bc172972343653",
+    "raw_sha256_after": "7486ef8f7da4cb3296298afbe6988f1058b7f1f6ce62920a90bc172972343653",
+    "restored_byte_identical": true,
+    "eol_handling": "anchors matched on newline-normalised logical text; exact original raw bytes restored and verified by sha256; anchors not loosened",
+    "mutants": [
+      {
+        "id": "MB1",
+        "name": "cli_omits_workspace_dir_again",
+        "why": "the original defect: the CLI writes one workspace and verifies another",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "failing_tests": [
+          "test_cli_writes_only_inside_the_selected_workspace",
+          "test_decoy_workspace_is_untouched_on_content_and_mtime",
+          "test_verified_directory_is_the_directory_written"
+        ],
+        "reason_text_present": true
+      },
+      {
+        "id": "MB2",
+        "name": "inline___file___fallback_COMPOUND",
+        "why": "the historical M4. It must be COMPOUND -- revert the CLI fix AND re-root the fallback from __file__ instead of _ROOT -- because with the fix in place the fallback is unreachable from the CLI and mutating it alone changes nothing observable. The point of this mutant is to prove the TEST is not fail-open: a _ROOT-keyed assertion cannot see a write that lands in the real repository, so only a destination-independent assertion kills it.",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "failing_tests": [
+          "test_cli_writes_only_inside_the_selected_workspace"
+        ],
+        "reason_text_present": true
+      },
+      {
+        "id": "MB2b",
+        "name": "inline___file___fallback_ALONE_is_unreachable",
+        "why": "DOCUMENTS THE DISCLOSED RESIDUAL rather than hiding it. With the fix in place the CLI always passes workspace_dir, so the writer's fallback is dead code from that path and mutating it alone is expected to SURVIVE. Recording it as an expected survivor is honest; silently omitting the mutant would not be.",
+        "verdict": "EXPECTED_SURVIVOR_UNREACHABLE_CODE",
+        "source_changed": true,
+        "failing_tests": [],
+        "reason_text_present": true
+      },
+      {
+        "id": "MB3",
+        "name": "cli_passes_the_recorded_identity_instead_of_the_selected_path",
+        "why": "same class as the original: an identity read out of the workspace, not the chosen path",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "failing_tests": [
+          "test_cli_writes_only_inside_the_selected_workspace",
+          "test_decoy_workspace_is_untouched_on_content_and_mtime",
+          "test_verified_directory_is_the_directory_written"
+        ],
+        "reason_text_present": true
+      },
+      {
+        "id": "MB4",
+        "name": "verify_reads_a_different_workspace_than_the_write",
+        "why": "the half that hid the original defect -- a false verify_ok=True from a different, internally consistent workspace",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "failing_tests": [
+          "test_cli_writes_only_inside_the_selected_workspace",
+          "test_verified_directory_is_the_directory_written"
+        ],
+        "reason_text_present": true
+      }
+    ],
+    "survivors": []
+  },
+  "differential": {
+    "schema": "phase6b-replay-differential-v1",
+    "protocol": "n=2 per head, strictly sequential, fresh worktrees for BOTH heads, never concurrent with the mutation gate",
+    "base": "ae8d60b",
+    "target": "replay-phase6b-explicit-workspace-on-sanitized-main",
+    "collection": {
+      "base": 4724,
+      "target": 4727,
+      "target_only": 3,
+      "target_only_nodes": [
+        "test_phase6b_workspace_isolation.CliWorkspaceIsolation.test_cli_writes_only_inside_the_selected_workspace",
+        "test_phase6b_workspace_isolation.CliWorkspaceIsolation.test_decoy_workspace_is_untouched_on_content_and_mtime",
+        "test_phase6b_workspace_isolation.CliWorkspaceIsolation.test_verified_directory_is_the_directory_written"
+      ],
+      "baseline_only": 0,
+      "load_errors_base": 0,
+      "load_errors_target": 0
+    },
+    "execution": {
+      "base_sample_1": {
+        "ran": 4722,
+        "non_passing": 20
+      },
+      "base_sample_2": {
+        "ran": 4722,
+        "non_passing": 20
+      },
+      "target_sample_1": {
+        "ran": 4725,
+        "non_passing": 21
+      },
+      "target_sample_2": {
+        "ran": 4725,
+        "non_passing": 20
+      },
+      "base_samples_identical": true,
+      "target_samples_identical": false,
+      "baseline_only_non_passing": 0
+    },
+    "target_only_node_investigated": {
+      "node": "test_phase7_13_unified_owner_console.TestBody.test_52_request_size_bounded",
+      "appears_in": "target sample 1 only",
+      "verdict": "DOCUMENTED_WINDOWS_LOOPBACK_FLAKE_NOT_A_REGRESSION",
+      "not_dismissed_evidence": [
+        "failure is ConnectionAbortedError [WinError 10053] during a loopback POST -- the documented signature, which appears under concurrent suite load",
+        "blob of its test file identical on both heads: c59629864627ba5a3921de8a85a11c05521a118c",
+        "blob of the console module it exercises identical on both heads: 9cb0d2f4648eee5a0213b872c664215a437e3c18",
+        "it PASSED on the target head in sample 2",
+        "it passes 3 of 3 when run in isolation on the target head",
+        "the replay branch changes only listing/keyword_allocation_planner.py and adds one test file; it loads neither of the two files above"
+      ],
+      "why_n2_mattered": "a single target sample would have shown a target-only node and looked like a regression. The second sample is what distinguishes a flake from a defect."
+    },
+    "verdict": "BASELINE_EQUIVALENT",
+    "judged_differentially": "a fresh worktree has no runs/T2 (gitignored), so 14 T2-dependent nodes error on BOTH heads. Absolute non-zero is expected; only the delta is evidence."
+  }
+}

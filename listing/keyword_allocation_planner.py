@@ -1538,7 +1538,11 @@ def main(argv=None):
     ap.add_argument("--completed-at", default=None)
     args = ap.parse_args(argv)
     result = plan_keyword_allocation(args.run_dir)
-    manifest = write_phase6b_artifacts(result, started_at=args.started_at, completed_at=args.completed_at)
+    # workspace_dir is REQUIRED here, not optional: omitting it makes the writer fall back to
+    # <_ROOT>/runs/<result.workspace_id>, an identity read out of the workspace rather than the
+    # path the owner selected. The run then writes one workspace and verifies another.
+    manifest = write_phase6b_artifacts(result, workspace_dir=args.run_dir,
+                                       started_at=args.started_at, completed_at=args.completed_at)
     verdict = verify_phase6b_artifacts(phase6b_dir(args.run_dir), workspace_dir=args.run_dir)
     print(f"state={result.stage_state} eligible_safe={result.coverage['phase6b_eligible_safe_count']} "
           f"allocated={result.coverage['allocated_assignment_count']} verify_ok={verdict['ok']}")

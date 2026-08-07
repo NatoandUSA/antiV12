@@ -1,7 +1,7 @@
 {
   "proof": {
     "schema": "phase6d-unsafe-claim-sanitized-proof-v1",
-    "implementation_head": "c0db2d6",
+    "implementation_head": "cfbb30e",
     "base": "ae8d60b",
     "branch": "hotfix-phase6d-unsafe-claim-policy",
     "review_status": "SELF_REVIEW_ONLY_INDEPENDENT_REVIEW_REQUIRED",
@@ -22,18 +22,18 @@
     },
     "policy_decisions_all_92_phrases": {
       "shared_class_counts": {
-        "UNVERIFIABLE_SUPERLATIVE": 13,
-        "ABSOLUTE_OR_PERMANENCE": 6,
-        "GUARANTEE_OR_PROMISE": 6,
+        "UNVERIFIABLE_SUPERLATIVE": 16,
+        "ABSOLUTE_OR_PERMANENCE": 17,
+        "GUARANTEE_OR_PROMISE": 22,
         "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
-        "AMBIGUOUS": 5
+        "AMBIGUOUS": 6
       },
       "all_class_counts": {
-        "UNVERIFIABLE_SUPERLATIVE": 17,
-        "ABSOLUTE_OR_PERMANENCE": 32,
-        "GUARANTEE_OR_PROMISE": 20,
+        "UNVERIFIABLE_SUPERLATIVE": 20,
+        "ABSOLUTE_OR_PERMANENCE": 43,
+        "GUARANTEE_OR_PROMISE": 36,
         "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
-        "AMBIGUOUS": 8
+        "AMBIGUOUS": 9
       },
       "table": "PHASE6D-UNSAFE-CLAIM-POLICY-MANIFEST.json"
     },
@@ -48,17 +48,17 @@
       ]
     },
     "mutation": {
-      "mutants": 16,
+      "mutants": 19,
       "survivors": [],
       "note": "M11 (a screening list inside a function) SURVIVED the first module-attribute guard; the guard was replaced with a source-level collection-literal scan rather than the mutant being weakened",
       "restored_byte_identical": true,
       "eol_handling": {
         "files_are_crlf_on_this_checkout": {
-          "unsafe_claim_policy.py": true,
-          "aplus_builder.py": true,
           "page_auditor.py": true,
-          "test_unsafe_claim_policy.py": false,
-          "claim_evidence.py": true
+          "claim_evidence.py": true,
+          "aplus_builder.py": true,
+          "unsafe_claim_policy.py": true,
+          "test_unsafe_claim_policy.py": false
         },
         "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
         "anchors_loosened": false
@@ -88,11 +88,11 @@
           "non_passing": 20
         },
         "target_sample_1": {
-          "ran": 4773,
+          "ran": 4778,
           "non_passing": 20
         },
         "target_sample_2": {
-          "ran": 4773,
+          "ran": 4778,
           "non_passing": 20
         },
         "target_only_non_passing": 0,
@@ -129,18 +129,18 @@
       "acrylic": 47
     },
     "shared_class_counts": {
-      "UNVERIFIABLE_SUPERLATIVE": 13,
-      "ABSOLUTE_OR_PERMANENCE": 6,
-      "GUARANTEE_OR_PROMISE": 6,
+      "UNVERIFIABLE_SUPERLATIVE": 16,
+      "ABSOLUTE_OR_PERMANENCE": 17,
+      "GUARANTEE_OR_PROMISE": 22,
       "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
-      "AMBIGUOUS": 5
+      "AMBIGUOUS": 6
     },
     "all_class_counts": {
-      "UNVERIFIABLE_SUPERLATIVE": 17,
-      "ABSOLUTE_OR_PERMANENCE": 32,
-      "GUARANTEE_OR_PROMISE": 20,
+      "UNVERIFIABLE_SUPERLATIVE": 20,
+      "ABSOLUTE_OR_PERMANENCE": 43,
+      "GUARANTEE_OR_PROMISE": 36,
       "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
-      "AMBIGUOUS": 8
+      "AMBIGUOUS": 9
     },
     "live_consumers": [
       "page_auditor._audit_claims (title/description/bullets/publishable payload)",
@@ -538,6 +538,254 @@
         "required_concept_ids": [
           "fit"
         ],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY"
+      },
+      {
+        "scope": "shared",
+        "phrase": "guarantee",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "guaranteed",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "100 guarantee",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "money back guarantee",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "lifetime warranty",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "fda approved",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "fda cleared",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "clinically proven",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "doctor recommended",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "dermatologist recommended",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "certified organic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "nontoxic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "hypoallergenic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "antibacterial",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "cures",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "prevents disease",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "waterproof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never fade",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never crack",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never peel",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never shrink",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never wash out",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not peel",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not shrink",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not wash out",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "wont peel",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "wont shrink",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "best on amazon",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "number one",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "worlds best",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK"
+      },
+      {
+        "scope": "shared",
+        "phrase": "treats",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [],
         "allowed_surfaces": [],
         "clearance_rule": "BLOCK_PENDING_POLICY"
       },
@@ -1065,9 +1313,9 @@
         "UNVERIFIABLE_SUPERLATIVE": 11
       },
       "implemented": {
-        "ABSOLUTE_OR_PERMANENCE": 6,
-        "GUARANTEE_OR_PROMISE": 6,
-        "UNVERIFIABLE_SUPERLATIVE": 13
+        "ABSOLUTE_OR_PERMANENCE": 17,
+        "GUARANTEE_OR_PROMISE": 22,
+        "UNVERIFIABLE_SUPERLATIVE": 16
       },
       "deviation_1": {
         "change": "superlatives 11 -> 13",
@@ -1106,7 +1354,7 @@
   "tests": {
     "schema": "phase6d-unsafe-claim-tests-v1",
     "new_test_file": "tests/test_unsafe_claim_policy.py",
-    "nodes": 51,
+    "nodes": 56,
     "all_passing_at_implementation_head": true,
     "coverage": {
       "hard_block_matrix": "all 25 never-clearable shared phrases, each with the owner typing the phrase into a free-text fact and verifying it",
@@ -1152,7 +1400,7 @@
   "failing_tests": {
     "schema": "phase6d-unsafe-claim-failing-tests-v1",
     "state_measured_at": "the tests-first commit, authority present and consumers unwired",
-    "total_nodes": 51,
+    "total_nodes": 56,
     "failing_at_first_tests_commit": 8,
     "failing_at_remediation_tests_commit": 9,
     "remediation_failing_nodes": [
@@ -1181,7 +1429,7 @@
   },
   "implementation": {
     "schema": "phase6d-unsafe-claim-implementation-v1",
-    "implementation_head": "c0db2d6",
+    "implementation_head": "cfbb30e",
     "base": "ae8d60b",
     "commits": [
       {
@@ -1219,8 +1467,43 @@
       {
         "sha": "c0db2d6",
         "what": "tracking guard at the CLAIM, plus the second-authority guard made exercisable"
+      },
+      {
+        "sha": "e09dae6",
+        "what": "proof packet with the tracking root cause and the 24edbae verdict"
+      },
+      {
+        "sha": "911b999",
+        "what": "failing tests: contraction bypass + the data-file blocklist (7 failing)"
+      },
+      {
+        "sha": "cfbb30e",
+        "what": "apostrophe normalisation fix + 31 phrases absorbed from compliance"
       }
     ],
+    "contraction_bypass": {
+      "severity": "LIVE_BYPASS_OF_THE_AUTHORITY",
+      "symptom": "\"This design wont fade.\" was blocked; \"This design won't fade.\" published",
+      "cause": "normalize_text replaced the apostrophe with a SPACE, so \"won't fade\" became the three tokens \"won t fade\" and never matched the canonical entry \"wont fade\". The informal spelling was caught and the ordinary English one was not.",
+      "scope": "every never/will-not permanence phrase, plus curly-quote forms from word processors",
+      "fix": "apostrophes are deleted rather than spaced, so a contraction stays one token",
+      "found_by": "auditing compliance/category_config.json, which carries both spellings"
+    },
+    "second_live_blocklist_in_data": {
+      "location": "compliance/category_config.json, loaded by compliance/listing_validate.py, which pipeline.py runs as a stage",
+      "why_invisible": "the phrases are DATA loaded into a function-local dict, so neither the source scanner nor the runtime module-attribute scan could see them -- this is exactly the residual the previous packet disclosed and did not close",
+      "measured_severity": {
+        "can_it_permit_anything": "NO -- pure blocklist, no permit path, so not a safety hole",
+        "does_it_contradict_a_verified_clearance": "NO -- it hard-blocks zero canonical FACTUAL phrases",
+        "the_actual_danger_runs_the_other_way": "it screened 32 phrases the canonical authority had never heard of, and the Phase 6 chain does not run it, so on bullets, item highlights and A+ copy 'clinically proven', 'fda approved', 'cures', 'antibacterial', 'money back guarantee' and 'lifetime warranty' were screened by NOTHING"
+      },
+      "resolution": "31 phrases absorbed into the canonical authority with conservative classification; test_54 pins the invariant that every phrase that validator hard-fails must have a canonical record, so the vocabularies cannot diverge again",
+      "deliberately_not_imported": {
+        "#1": "normalises to the bare token '1'; this authority matches whole normalised tokens, so it would block every listing containing a size, quantity or measurement",
+        "superlative_warn (10 words)": "warnings in that validator, not hard failures; promoting best/perfect/premium/luxury to blocking phrases would change severity without an owner decision"
+      },
+      "left_for_the_owner": "'treats' is classed AMBIGUOUS and fails closed -- a medical verb ('treats eczema') and an ordinary product noun ('dog treats')"
+    },
     "root_cause_fix_T1": {
       "where_the_defect_actually_lived": "listing/claim_evidence.py, NOT the unsafe-claim policy",
       "predates_this_branch": "yes -- live on ae8d60b today",
@@ -1320,7 +1603,7 @@
     "schema": "phase6d-unsafe-claim-differential-v1",
     "protocol": "n=2 per head, strictly sequential, fresh worktrees, never concurrent with mutation",
     "base": "ae8d60b",
-    "target": "c0db2d6",
+    "target": "cfbb30e",
     "collection": {
       "base": 4724,
       "target": 4770,
@@ -1343,11 +1626,11 @@
         "non_passing": 20
       },
       "target_sample_1": {
-        "ran": 4773,
+        "ran": 4778,
         "non_passing": 20
       },
       "target_sample_2": {
-        "ran": 4773,
+        "ran": 4778,
         "non_passing": 20
       },
       "target_only_non_passing": 0,
@@ -1638,6 +1921,70 @@
         ]
       },
       {
+        "id": "M17",
+        "name": "normaliser_splits_contractions_again",
+        "why": "revert the apostrophe fix so \"won't fade\" becomes \"won t fade\" and bypasses the policy",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms",
+          "test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word"
+        ],
+        "killers_that_failed": [
+          "test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms",
+          "test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms",
+          "test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word",
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record"
+        ]
+      },
+      {
+        "id": "M18",
+        "name": "medical_claim_downgraded_to_factual",
+        "why": "let an ordinary product fact clear a clinical claim",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable"
+        ],
+        "killers_that_failed": [
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ]
+      },
+      {
+        "id": "M19",
+        "name": "drop_an_imported_compliance_phrase",
+        "why": "leave a phrase the compliance validator hard-fails unscreened on the Phase 6 surfaces",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ],
+        "killers_that_failed": [
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ]
+      },
+      {
         "id": "M8",
         "name": "bypass_one_live_surface",
         "why": "drop the A+ surface out of the policy, leaving the others covered",
@@ -1652,7 +1999,8 @@
         "declared_text_present": true,
         "all_failed_tests": [
           "test_18_aplus_surface_blocks_and_reached_the_path",
-          "test_19_acrylic_vocabulary_reaches_the_specialised_surfaces"
+          "test_19_acrylic_vocabulary_reaches_the_specialised_surfaces",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
         ]
       }
     ],
@@ -1660,11 +2008,11 @@
     "restored_byte_identical": true,
     "eol_handling": {
       "files_are_crlf_on_this_checkout": {
-        "unsafe_claim_policy.py": true,
-        "aplus_builder.py": true,
         "page_auditor.py": true,
-        "test_unsafe_claim_policy.py": false,
-        "claim_evidence.py": true
+        "claim_evidence.py": true,
+        "aplus_builder.py": true,
+        "unsafe_claim_policy.py": true,
+        "test_unsafe_claim_policy.py": false
       },
       "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
       "anchors_loosened": false

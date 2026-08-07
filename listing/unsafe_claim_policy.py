@@ -154,6 +154,51 @@ _SHARED_RECORDS = (
     ("printed in the usa", _M, ("production_location", "decoration_method"), ()),
     ("10 14 business days", _M, ("production_time",), ()),
     ("mock neck option", _M, ("fit",), ()),
+    # -- imported from compliance/category_config.json ---------------------------------------------
+    # compliance/listing_validate.py hard-fails these, and pipeline.py runs it, so they were already
+    # a LIVE blocklist -- just one held in a data file, invisible to this module and to the source
+    # scanner that guards against second authorities. The Phase 6 chain does not run that validator,
+    # so on bullets, item highlights and A+ copy these were screened by nothing at all. Medical,
+    # regulatory and warranty language is exactly the class that gets a listing pulled.
+    ("guarantee", _G, (), ()),
+    ("guaranteed", _G, (), ()),
+    ("100 guarantee", _G, (), ()),
+    ("money back guarantee", _G, (), ()),
+    ("lifetime warranty", _G, (), ()),
+    ("fda approved", _G, (), ()),
+    ("fda cleared", _G, (), ()),
+    ("clinically proven", _G, (), ()),
+    ("doctor recommended", _G, (), ()),
+    ("dermatologist recommended", _G, (), ()),
+    ("certified organic", _G, (), ()),
+    ("nontoxic", _G, (), ()),
+    ("hypoallergenic", _G, (), ()),
+    ("antibacterial", _G, (), ()),
+    ("cures", _G, (), ()),
+    ("prevents disease", _G, (), ()),
+    ("waterproof", _A, (), ()),
+    ("never fade", _A, (), ()),
+    ("never crack", _A, (), ()),
+    ("never peel", _A, (), ()),
+    ("never shrink", _A, (), ()),
+    ("never wash out", _A, (), ()),
+    ("will not peel", _A, (), ()),
+    ("will not shrink", _A, (), ()),
+    ("will not wash out", _A, (), ()),
+    ("wont peel", _A, (), ()),
+    ("wont shrink", _A, (), ()),
+    ("best on amazon", _U, (), ()),
+    ("number one", _U, (), ()),
+    ("worlds best", _U, (), ()),
+    # "treats" is a medical verb ("treats eczema") AND an ordinary product noun ("dog treats"). The
+    # owner's policy for that is not to guess, so it fails closed and is flagged for a decision.
+    ("treats", _M, (), ()),
+    # DELIBERATELY NOT IMPORTED: "#1", whose normalised form is the bare token "1". Importing it
+    # would block every listing containing the digit 1 -- a size, a quantity, a measurement. The
+    # compliance validator gets away with it because it substring-matches the raw "#1"; this
+    # authority matches whole normalised tokens, so the same entry would behave completely
+    # differently here. Recorded rather than silently dropped.
+
     # -- factual: the phrase asserts the CONCEPT, and the concept is evidence-verifiable ------------
     ("machine embroidery", _F, ("decoration_method",), ALL_SURFACES),
     ("real machine embroidery", _F, ("real_machine_embroidery",), ALL_SURFACES),
@@ -240,7 +285,16 @@ def policy_for(phrase, category=None):
 # ---------------------------------------------------------------- text helpers (own normaliser so the
 # authority stands alone and detection cannot drift from authorisation)
 def normalize_text(text):
-    s = str(text or "").lower().replace("-", " ")
+    """Lowercase, collapse hyphens and punctuation to spaces -- but DELETE apostrophes rather than
+    space them, so a contraction stays one token.
+
+    This is load-bearing, not cosmetic. Replacing the apostrophe with a space turned "won't fade"
+    into "won t fade", which never matched the canonical entry "wont fade". The informal spelling
+    was blocked and the ordinary English one -- the way a human actually writes it -- published
+    freely. Both curly and straight apostrophes are removed.
+    """
+    s = str(text or "").lower().replace("’", "").replace("ʼ", "").replace("'", "")
+    s = s.replace("-", " ")
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", s)).strip()
 
 

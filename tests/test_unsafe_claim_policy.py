@@ -450,6 +450,186 @@ class AuthorityInvariants(unittest.TestCase):
                                 f"{row['phrase']} is clearable but maps to no concept")
 
 
+class ShipFromCountryValueBinding(unittest.TestCase):
+    """Fulfillment origin must bind to a structured country VALUE, not to shipping prose.
+
+    The first version of this branch bound "ships from the us" to the generic `shipping_method`
+    concept and authorised on verified-ness alone, so a VERIFIED shipping method of ANY value cleared
+    it. claim_evidence._has_us_shipping only substring-scans the owner's free text, which is the same
+    "owner typed it, therefore it is true" pattern the whole policy exists to remove.
+    """
+
+    ORIGIN_PHRASES = ("ships from the us", "shipped from the us")
+
+    def test_32_us_ship_from_country_authorises_fulfillment_origin_wording(self):
+        _f, claims = facts_and_claims(ship_from_country="US")
+        for phrase in self.ORIGIN_PHRASES:
+            v = UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)
+            self.assertTrue(v["authorized"], f"{phrase} must clear on a VERIFIED US ship-from country")
+            self.assertEqual(v["required_concept_ids"], ["ship_from_country"])
+
+    def test_33_non_us_ship_from_country_blocks_the_phrase(self):
+        _f, claims = facts_and_claims(ship_from_country="Vietnam")
+        for phrase in self.ORIGIN_PHRASES:
+            v = UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)
+            self.assertFalse(v["authorized"],
+                             f"{phrase} cleared with a VERIFIED NON-US ship-from country")
+            self.assertEqual(v["block"]["reason_code"], UCP.MATCHING_CONCEPT_UNVERIFIED)
+
+    def test_34_absent_ship_from_country_blocks_the_phrase(self):
+        _f, claims = facts_and_claims()
+        for phrase in self.ORIGIN_PHRASES:
+            self.assertFalse(UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)["authorized"],
+                             f"{phrase} cleared with no ship-from country at all")
+
+    def test_35_shipping_prose_alone_cannot_authorise_fulfillment_origin(self):
+        """The exact regression: owner prose saying it ships from the US is not evidence."""
+        _f, claims = facts_and_claims(shipping_method="Ships from the US with tracking")
+        self.assertTrue(UCP._concept_verified(claims, "shipping_method"),
+                        "fixture guard: the generic shipping concept IS verified here")
+        for phrase in self.ORIGIN_PHRASES:
+            self.assertFalse(UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)["authorized"],
+                             f"{phrase} was authorised by free-text shipping prose")
+
+    def test_36_us_fulfillment_origin_never_authorises_manufacturing_origin(self):
+        """Shipping from the US says nothing about where the item was made."""
+        _f, claims = facts_and_claims(ship_from_country="US")
+        for phrase in ("made in the usa", "made in the us", "printed in the usa"):
+            v = UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)
+            self.assertFalse(v["authorized"],
+                             f"a US ship-from country authorised manufacturing origin {phrase!r}")
+            self.assertEqual(v["block"]["reason_code"], UCP.POLICY_DECISION_REQUIRED)
+
+    def test_37_an_unrelated_us_fact_cannot_authorise_fulfillment_origin(self):
+        """A US audience or a US-sounding address is not a ship-from country."""
+        _f, claims = facts_and_claims(audience="US nurses", production_location="US")
+        for phrase in self.ORIGIN_PHRASES:
+            self.assertFalse(UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)["authorized"],
+                             f"{phrase} was authorised by an unrelated US fact")
+
+
+class TrackingBinding(unittest.TestCase):
+    """Tracking binds to its own dedicated concept, never to generic shipping."""
+
+    TRACKING_PHRASES = ("tracking included", "with tracking", "includes tracking")
+
+    def test_38_dedicated_tracking_concept_authorises_tracking_wording(self):
+        _f, claims = facts_and_claims()          # SAFE_FACTS carries a tracking fact
+        self.assertTrue(UCP._concept_verified(claims, "tracking"), "fixture guard")
+        for phrase in self.TRACKING_PHRASES:
+            self.assertTrue(UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)["authorized"], phrase)
+
+    def test_39_generic_shipping_verification_cannot_authorise_tracking(self):
+        _f, claims = facts_and_claims(tracking="")
+        self.assertTrue(UCP._concept_verified(claims, "shipping_method"),
+                        "fixture guard: shipping IS verified, tracking is not")
+        self.assertFalse(UCP._concept_verified(claims, "tracking"), "fixture guard")
+        for phrase in self.TRACKING_PHRASES:
+            v = UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)
+            self.assertFalse(v["authorized"],
+                             f"{phrase} was authorised by generic shipping verification")
+            self.assertEqual(v["block"]["reason_code"], UCP.MATCHING_CONCEPT_UNVERIFIED)
+
+
+class CanonicalAuthorityIsSole(unittest.TestCase):
+    """No second LIVE unsafe-phrase authority may exist anywhere in the tree.
+
+    Value-based, not name-based: it looks for containers that actually hold canonical phrases, so
+    renaming a list does not make it invisible. This project has already been bitten twice by
+    name-keyed static guards failing open.
+    """
+
+    def test_40_no_module_outside_the_authority_holds_a_phrase_collection(self):
+        import importlib
+        import pkgutil
+        canonical = set(UCP.phrases_for("acrylic"))
+        allowed = {"unsafe_claim_policy", "page_auditor"}      # authority + its re-export
+        offenders = []
+        listing_dir = os.path.join(ROOT, "listing")
+        for mod in pkgutil.iter_modules([listing_dir]):
+            if mod.name in allowed:
+                continue
+            try:
+                m = importlib.import_module(mod.name)
+            except Exception:
+                continue
+            for attr in dir(m):
+                try:
+                    val = getattr(m, attr)
+                except Exception:
+                    continue
+                if isinstance(val, (tuple, list, set, frozenset)):
+                    hits = {x for x in val if isinstance(x, str) and x in canonical}
+                    if len(hits) >= 3:
+                        offenders.append(f"{mod.name}.{attr} holds {len(hits)} canonical phrases")
+        self.assertEqual(offenders, [],
+                         "a second live unsafe-phrase authority exists and can diverge from "
+                         "listing/unsafe_claim_policy.py: " + "; ".join(offenders))
+
+    def test_40b_no_phrase_collection_literal_anywhere_including_function_locals(self):
+        """The runtime scan above only sees MODULE-level attributes. A screening list declared
+        inside a function walks straight past it -- mutant M11 did exactly that and survived.
+
+        This scans the SOURCE for collection literals that gather canonical phrases. It keys on the
+        grouping, not on a name, so renaming the list does not hide it. Scattered phrase strings in
+        copy templates are NOT flagged: a template uses one phrase in one place, a screening list
+        gathers several, and the real tree is clean under this rule.
+        """
+        import ast
+        canonical = {UCP.normalize_text(p) for p in UCP.phrases_for("acrylic")}
+        allowed = {"unsafe_claim_policy.py"}
+        offenders = []
+        listing_dir = os.path.join(ROOT, "listing")
+        for fn in sorted(os.listdir(listing_dir)):
+            if not fn.endswith(".py") or fn in allowed:
+                continue
+            with open(os.path.join(listing_dir, fn), encoding="utf-8") as f:
+                try:
+                    tree = ast.parse(f.read())
+                except SyntaxError:
+                    continue
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    hits = {UCP.normalize_text(e.value) for e in node.elts
+                            if isinstance(e, ast.Constant) and isinstance(e.value, str)
+                            and UCP.normalize_text(e.value) in canonical}
+                    if len(hits) >= 3:
+                        offenders.append(f"{fn}:{node.lineno} gathers {len(hits)} canonical phrases")
+        self.assertEqual(offenders, [],
+                         "a second live unsafe-phrase authority exists as a collection literal: "
+                         + "; ".join(offenders))
+
+    def test_41_aplus_builder_self_check_uses_the_canonical_authority(self):
+        import aplus_builder as AB
+        self.assertFalse(hasattr(AB, "_UNSAFE_PHRASES"),
+                         "aplus_builder still defines its own phrase subset")
+        src = open(os.path.join(ROOT, "listing", "aplus_builder.py"), encoding="utf-8").read()
+        self.assertIn("unsafe_claim_policy", src,
+                      "aplus_builder does not consult the canonical policy authority")
+
+
+class SurfaceAllowlists(unittest.TestCase):
+    def test_42_every_clearable_record_declares_an_explicit_allowlist(self):
+        for row in UCP.manifest()["rows"]:
+            if row["clearance_rule"] == UCP.REQUIRE_ALL_CONCEPTS:
+                self.assertTrue(row["allowed_surfaces"],
+                                f"{row['phrase']} is clearable but declares no allowed surfaces")
+                for s in row["allowed_surfaces"]:
+                    self.assertIn(s, UCP.ALL_SURFACES, f"{row['phrase']} names unknown surface {s}")
+
+    def test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list(self):
+        rec = UCP.policy_for("measured from the real garment")
+        self.assertNotIn(UCP.SURFACE_ITEM_HIGHLIGHTS, rec["allowed_surfaces"],
+                         "fixture guard: this record must genuinely restrict a surface")
+        _f, claims = facts_and_claims()
+        allowed = UCP.evaluate("measured from the real garment", claims, UCP.SURFACE_CLAIMS)
+        refused = UCP.evaluate("measured from the real garment", claims,
+                               UCP.SURFACE_ITEM_HIGHLIGHTS)
+        self.assertTrue(allowed["authorized"], "permitted surface must still clear")
+        self.assertFalse(refused["authorized"], "a surface outside the allowlist must be refused")
+        self.assertEqual(refused["block"]["evidence_state"], "SURFACE_NOT_PERMITTED")
+
+
 class SourceLineEndingCharacterization(unittest.TestCase):
     """Why any source-matching gate must normalise newlines before it matches.
 

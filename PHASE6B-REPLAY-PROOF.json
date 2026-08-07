@@ -335,7 +335,7 @@
         "blob of its test file identical on both heads: c59629864627ba5a3921de8a85a11c05521a118c",
         "blob of the console module it exercises identical on both heads: 9cb0d2f4648eee5a0213b872c664215a437e3c18",
         "it PASSED on the target head in sample 2",
-        "it passes 3 of 3 when run in isolation on the target head",
+        "it passes 6 of 6 when run in isolation on the target head, freshly verified on this replay -- the prior '3 of 3' wording was a stray copy of the unrelated phase6b focused-test count (a single node cannot score N/3), not a measurement of this test",
         "the replay branch changes only listing/keyword_allocation_planner.py and adds one test file; it loads neither of the two files above"
       ],
       "why_n2_mattered": "a single target sample would have shown a target-only node and looked like a regression. The second sample is what distinguishes a flake from a defect."

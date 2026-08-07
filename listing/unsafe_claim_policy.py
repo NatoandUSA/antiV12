@@ -243,12 +243,31 @@ _ACRYLIC_RECORDS = (
 _CATEGORY_RECORDS = {"acrylic": _ACRYLIC_RECORDS}
 
 
+# ---------------------------------------------------------------- provenance
+# Where a phrase came from is part of its record, not a comment. These entries mirror a SECOND
+# compliance authority that still exists and still runs (compliance/listing_validate.py, invoked by
+# pipeline.py). Marking them means the next reader can tell which entries this module owns outright
+# and which have to stay in step with a source elsewhere in the tree.
+SOURCE_SELF = "listing/unsafe_claim_policy.py"
+SOURCE_COMPLIANCE = "compliance/category_config.json:claim_rules"
+
+_IMPORTED_FROM_COMPLIANCE = frozenset((
+    "guarantee", "guaranteed", "100 guarantee", "money back guarantee", "lifetime warranty",
+    "fda approved", "fda cleared", "clinically proven", "doctor recommended",
+    "dermatologist recommended", "certified organic", "nontoxic", "hypoallergenic", "antibacterial",
+    "cures", "prevents disease", "waterproof", "never fade", "never crack", "never peel",
+    "never shrink", "never wash out", "will not peel", "will not shrink", "will not wash out",
+    "wont peel", "wont shrink", "best on amazon", "number one", "worlds best", "treats",
+))
+
+
 def _record(row):
     phrase, cls, concepts, surfaces = row[:4]
     values = row[4] if len(row) > 4 else {}
     return {"phrase": phrase, "policy_class": cls, "required_concept_ids": tuple(concepts),
             "allowed_surfaces": tuple(surfaces), "clearance_rule": CLEARANCE_BY_CLASS[cls],
-            "required_concept_values": {k: tuple(v) for k, v in (values or {}).items()}}
+            "required_concept_values": {k: tuple(v) for k, v in (values or {}).items()},
+            "source": SOURCE_COMPLIANCE if phrase in _IMPORTED_FROM_COMPLIANCE else SOURCE_SELF}
 
 
 POLICY = {r["phrase"]: r for r in (_record(x) for x in _SHARED_RECORDS)}
@@ -481,5 +500,8 @@ def manifest():
             rows.append({"scope": scope, "phrase": phrase, "policy_class": r["policy_class"],
                          "required_concept_ids": list(r["required_concept_ids"]),
                          "allowed_surfaces": list(r["allowed_surfaces"]),
-                         "clearance_rule": r["clearance_rule"]})
+                         "clearance_rule": r["clearance_rule"],
+                         "required_concept_values": {k: list(v) for k, v
+                                                     in r["required_concept_values"].items()},
+                         "source": r["source"]})
     return {"schema_version": SCHEMA_VERSION, "phrase_count": len(rows), "rows": rows}

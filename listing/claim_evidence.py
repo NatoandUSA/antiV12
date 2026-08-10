@@ -208,6 +208,48 @@ def _tracking_included(v):
     return bool("tracking" in tokens or "track" in tokens or (tokens & _AFFIRM_TOKENS))
 
 
+# exact_personalization_promise and made_to_order (Session: 6C x 6D integration) are the same
+# fixed-assertion shape as tracking: the claim text ignores the value entirely. Tokenised with
+# UCP.normalize_text rather than the ad hoc split above, because it deletes apostrophes instead of
+# leaving them in place -- "won't"/"don't" must collapse to "wont"/"dont" to hit _DENIAL_TOKENS, the
+# same load-bearing normalisation unsafe_claim_policy already relies on for the same reason.
+_EXACT_PROMISE_AFFIRM_TOKENS = frozenset(("yes", "true", "1", "exact", "exactly", "entered", "submitted"))
+_MADE_TO_ORDER_DENIAL_TOKENS = _DENIAL_TOKENS | frozenset(("ready", "pre", "premade", "stock"))
+_MADE_TO_ORDER_AFFIRM_TOKENS = frozenset(("yes", "true", "1", "made", "order", "produced"))
+
+
+def _exact_personalization_promised(v):
+    """The owner explicitly promises literal personalization fidelity -- not merely that a
+    personalization field exists (personalization_fields already covers that, separately).
+
+    Same fixed-assertion shape as tracking: "Embroidered exactly as you enter it." ignores the
+    value. "not exact", "artist discretion" or "we may adjust" marked VERIFIED must not publish
+    an absolute promise the owner did not actually make. Fails CLOSED like every guard here.
+    """
+    tokens = set(UCP.normalize_text(v).split())
+    if not tokens:
+        return False
+    if tokens & _DENIAL_TOKENS:
+        return False
+    return bool(tokens & _EXACT_PROMISE_AFFIRM_TOKENS)
+
+
+def _made_to_order(v):
+    """The item is produced after the order, not fulfilled from ready-made stock.
+
+    "ready-made" and "pre-made" both contain the token "made", which is also this guard's own
+    affirmative signal -- so "ready"/"pre"/"premade"/"stock" are denial tokens in their own right,
+    checked (and winning) before the affirmative check runs, exactly as "not exact" must beat
+    "exact" above.
+    """
+    tokens = set(UCP.normalize_text(v).split())
+    if not tokens:
+        return False
+    if tokens & _MADE_TO_ORDER_DENIAL_TOKENS:
+        return False
+    return bool(tokens & _MADE_TO_ORDER_AFFIRM_TOKENS)
+
+
 CLAIM_SPECS = [
     ClaimSpec("decoration_method", "decoration", ("decoration_method",),
               lambda v: f"Decorated with {str(v).lower()}.", components=(COMP_DECORATION_METHOD,)),
@@ -229,6 +271,7 @@ CLAIM_SPECS = [
     ClaimSpec("exact_personalization_promise", "personalization",
               ("exact_personalization_promise",),
               lambda v: "Embroidered exactly as you enter it.",
+              guard=_exact_personalization_promised,
               components=(COMP_PERSONALIZATION, COMP_DECORATION_METHOD)),
     ClaimSpec("material_composition", "material", ("material_composition", "material"),
               lambda v: f"Made from {_joined(v)}.", components=(COMP_MATERIAL,)),
@@ -269,6 +312,7 @@ CLAIM_SPECS = [
     # now exists in the vocabulary, so the concept reads it directly and nothing else.
     ClaimSpec("made_to_order", "production", ("made_to_order",),
               lambda v: "Made to order after you purchase.",
+              guard=_made_to_order,
               components=(COMP_PRODUCTION_TIME,)),
     # ATOMIC recipient (Session 6C.1): the canonical text asserts ONLY the RECIPIENT component. It must
     # never carry personalization / gift language — those are independent claims below with their own

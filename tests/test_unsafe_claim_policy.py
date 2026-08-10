@@ -645,6 +645,94 @@ class TrackingClaimMustNotAssertTheOppositeOfItsFact(unittest.TestCase):
                          "guard qualifying that value: " + ", ".join(offenders))
 
 
+class PersonalizationPromiseAndMadeToOrderMustNotAssertTheOppositeOfTheirFact(unittest.TestCase):
+    """The same class of defect as tracking (test_44-47 above), for the two fixed-assertion specs
+    6C added on a branch authored before this guard convention existed: exact_personalization_promise
+    ("Embroidered exactly as you enter it.") and made_to_order ("Made to order after you purchase.").
+    Found only by combining 6C and 6D-unsafe-claim-policy -- neither branch's own suite could see it.
+
+    Unlike tracking, both canonical phrases ("exactly as you enter", "made to order") are classed
+    GUARANTEE_OR_PROMISE in unsafe_claim_policy -- ALWAYS_BLOCK, unconditionally, regardless of
+    evidence -- so UCP.evaluate() can never authorise them and is not the right assertion here.
+
+    A second consequence, discovered by running this (not assumed): each spec's own FIXED template
+    text ("Made to order after you purchase.", "Embroidered exactly as you enter it.") literally
+    contains its own now-hard-blocked phrase, so build_claim_record's ingestion guard --
+    UCP.screen_owner_value scanning `proposed`, not only the raw owner value -- refuses `publishable`
+    unconditionally, for EVERY value, guard or no guard. That is correct and not this fix's to
+    change: it is the same protection this whole branch exists to add, now also catching the
+    system's own generated text, not only what an owner types. What the guard controls is
+    verification_state -- whether the underlying fact bookkeeping is honest -- which matters to any
+    consumer that reads claims.claim(concept) directly rather than only the copy-surface audit.
+    """
+
+    PROMISE_AFFIRMATIVE = ["yes", "true", "exact", "exactly as entered", "embroidered exactly as submitted"]
+    PROMISE_NEGATIVE = ["", "unknown", "maybe", "depends", "not exact", "we may adjust",
+                        "artist discretion", "no", "false", "we don't guarantee exact wording"]
+
+    ORDER_AFFIRMATIVE = ["yes", "true", "made to order", "made-to-order", "produced after purchase"]
+    ORDER_NEGATIVE = ["", "unknown", "maybe", "no", "false", "ready-made", "ready-made stock only",
+                      "premade", "pre-made", "in stock", "we don't make to order"]
+
+    def test_48_affirmative_personalization_promise_verifies(self):
+        for val in self.PROMISE_AFFIRMATIVE:
+            _f, claims = facts_and_claims(exact_personalization_promise=val)
+            rec = claims.claim("exact_personalization_promise")
+            self.assertEqual(rec["verification_state"], "VERIFIED", f"{val!r} must verify")
+            # NOT publishable: the fixed sentence itself contains "exactly as you enter", a
+            # GUARANTEE_OR_PROMISE phrase 6D hard-blocks regardless of evidence. Correct, not a bug
+            # in this guard -- see the class docstring.
+            self.assertFalse(rec["publishable"], val)
+            self.assertEqual(rec.get("unsafe_claim_block", {}).get("phrase"), "exactly as you enter")
+
+    def test_49_denied_personalization_promise_must_not_verify_or_publish(self):
+        """THE DEFECT: without the guard, every one of these produced a VERIFIED claim asserting
+        'Embroidered exactly as you enter it.' regardless of what the owner actually wrote."""
+        leaked = []
+        for val in self.PROMISE_NEGATIVE:
+            _f, claims = facts_and_claims(exact_personalization_promise=val)
+            rec = claims.claim("exact_personalization_promise")
+            if rec["verification_state"] == "VERIFIED" or rec["publishable"]:
+                leaked.append((val, rec["proposed_text"]))
+        self.assertEqual(leaked, [],
+                         "a value that does not affirm exact personalization produced a VERIFIED "
+                         "claim asserting it does: " + "; ".join(f"{v!r} -> {t!r}" for v, t in leaked))
+
+    def test_50_affirmative_made_to_order_verifies(self):
+        for val in self.ORDER_AFFIRMATIVE:
+            _f, claims = facts_and_claims(made_to_order=val)
+            rec = claims.claim("made_to_order")
+            self.assertEqual(rec["verification_state"], "VERIFIED", f"{val!r} must verify")
+            # NOT publishable: the fixed sentence itself contains "made to order", a
+            # GUARANTEE_OR_PROMISE phrase 6D hard-blocks regardless of evidence. Correct, not a bug
+            # in this guard -- see the class docstring.
+            self.assertFalse(rec["publishable"], val)
+            self.assertEqual(rec.get("unsafe_claim_block", {}).get("phrase"), "made to order")
+
+    def test_51_denied_made_to_order_must_not_verify_or_publish(self):
+        """THE DEFECT: without the guard, 'ready-made stock only' marked VERIFIED produced a
+        VERIFIED claim asserting 'Made to order after you purchase.'."""
+        leaked = []
+        for val in self.ORDER_NEGATIVE:
+            _f, claims = facts_and_claims(made_to_order=val)
+            rec = claims.claim("made_to_order")
+            if rec["verification_state"] == "VERIFIED" or rec["publishable"]:
+                leaked.append((val, rec["proposed_text"]))
+        self.assertEqual(leaked, [],
+                         "a value that does not affirm made-to-order production produced a VERIFIED "
+                         "claim asserting it does: " + "; ".join(f"{v!r} -> {t!r}" for v, t in leaked))
+
+    def test_52_both_canonical_phrases_stay_always_blocked_regardless_of_evidence(self):
+        """Defense in depth, asserted rather than assumed: even a fully VERIFIED claim must not
+        authorise these phrases on the copy surface -- GUARANTEE_OR_PROMISE is a second, independent
+        backstop behind the guard, not a substitute for it (bookkeeping can still be wrong even when
+        this backstop happens to catch the copy-surface consequence)."""
+        _f, claims = facts_and_claims(exact_personalization_promise="yes", made_to_order="yes")
+        for phrase in ("exactly as you enter", "embroidered exactly", "made to order"):
+            self.assertFalse(UCP.evaluate(phrase, claims, UCP.SURFACE_CLAIMS)["authorized"],
+                             f"{phrase!r} must never authorise, even fully VERIFIED")
+
+
 class CanonicalAuthorityIsSole(unittest.TestCase):
     """No second LIVE unsafe-phrase authority may exist anywhere in the tree.
 

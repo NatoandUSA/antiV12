@@ -3208,7 +3208,8 @@ class TestDomRenderContract(unittest.TestCase):
                     {"stage_id": 1, "label": "Seed keyword", "group": "Research", "modeled": False,
                      "state": None, "components": {}, "blocked_by": [], "command": None,
                      "acceptance_required": False,
-                     "informational_reason": "No persisted artifact of its own."},
+                     "informational_reason": "Captured as part of Stage 3 (ASIN batches) -- no "
+                                             "separate action needed here."},
                     {"stage_id": 2, "label": "Import Amazon + Xray", "group": "Research",
                      "modeled": True, "state": "READY", "components": {}, "blocked_by": [],
                      "command": None, "acceptance_required": False, "informational_reason": None},
@@ -3230,7 +3231,7 @@ class TestDomRenderContract(unittest.TestCase):
                     {"stage_id": 7, "label": "Score + select opportunity", "group": "Decide",
                      "modeled": False, "state": None, "components": {}, "blocked_by": [],
                      "command": None, "acceptance_required": False,
-                     "informational_reason": "NOT_IMPLEMENTED_IN_CURRENT_PIPELINE."},
+                     "informational_reason": "Opportunity review -- not separately tracked."},
                     {"stage_id": 8, "label": "Keywords -> listing", "group": "Build",
                      "modeled": True, "state": "NOT_ACCEPTED", "components": {}, "blocked_by": [],
                      "command": "python -m listing.keyword_allocation_planner <run_dir>",

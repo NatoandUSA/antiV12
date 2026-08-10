@@ -340,17 +340,19 @@ def resolve_all(stage_table, workspace_dir, *, tags=None):
 # foundation plus a confirmed owner policy, and NEITHER is one of these 13 numbered stages. Stage 11
 # is therefore modelled with no blocking_stage_ids here; a real prerequisite exists in the code, it
 # is just outside what DASHBOARD-V1-SPEC.md's 13-stage numbering represents.
+# "note" is what a STAFF MEMBER reads in the Workflow view -- it must never be the developer
+# rationale above. An earlier draft put the raw finding (file names, module names, "NOT_
+# IMPLEMENTED_IN_CURRENT_PIPELINE") directly in "note" and it would have shipped verbatim to the
+# owner; caught in review by generating a real build_workflow_section() response and reading what
+# it actually said. The technical WHY stays in the comment block above, where a maintainer reads
+# it; "note" carries only what a non-technical reader needs.
 STAGE_1_SEED_KEYWORD = {
     "stage_id": 1, "name": "Seed keyword", "group": GROUP_RESEARCH,
-    "note": "No persisted artifact of its own. Embedded as an in-memory profile "
-           "(research/target_profile.py) inside Stage 3's own output.",
+    "note": "Captured as part of Stage 3 (ASIN batches) -- no separate action needed here.",
 }
 STAGE_7_OPPORTUNITY = {
     "stage_id": 7, "name": "Score + select opportunity", "group": GROUP_DECIDE,
-    "note": "NOT_IMPLEMENTED_IN_CURRENT_PIPELINE. research/demand_score.py performs GO/TEST/SKIP "
-           "scoring but is wired to the older pipeline.py orchestrator and the legacy "
-           "master-keywords.xlsx, not to Stage 6's MASTER-KEYWORDS-LEAN.json. Stage 8 reads "
-           "Stage 6 directly today, confirmed by reading listing/keyword_allocation_planner.py.",
+    "note": "Opportunity review -- not separately tracked.",
 }
 NOT_TRACKED_STAGES = (STAGE_1_SEED_KEYWORD, STAGE_7_OPPORTUNITY)
 

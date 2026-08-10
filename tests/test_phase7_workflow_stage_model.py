@@ -449,6 +449,26 @@ class AuthoritativeStageTable(unittest.TestCase):
         self.assertEqual(all_ids, list(range(1, 14)), "all 13 stage numbers must be accounted "
                                                        "for exactly once, tracked or not")
 
+    def test_not_tracked_notes_are_staff_facing_not_developer_notes(self):
+        """UX review finding, caught by generating a real build_workflow_section() response and
+        reading what it actually said: an earlier draft's Stage 7 "note" was
+        "NOT_IMPLEMENTED_IN_CURRENT_PIPELINE. research/demand_score.py performs GO/TEST/SKIP
+        scoring but is wired to the older pipeline.py orchestrator..." -- the code-review
+        rationale, shipped verbatim to a non-technical reader. This is what the console renders
+        directly for Stage 1/7 (production.phase7_unified_owner_console.build_workflow_section
+        copies "note" into "informational_reason" unchanged) -- it must read like something a
+        staff member wrote to another staff member, not a commit message."""
+        banned_markers = (".py", "_", "MASTER-", "CEREBRO-", "ASIN-", "pipeline.py",
+                          "NOT_IMPLEMENTED", "listing/", "research/", "production/")
+        for spec in WSM.NOT_TRACKED_STAGES:
+            note = spec["note"]
+            self.assertLess(len(note), 100, f"stage {spec['stage_id']}: too long to be a glance-"
+                                            f"able staff note ({len(note)} chars): {note!r}")
+            for marker in banned_markers:
+                self.assertNotIn(marker, note,
+                                 f"stage {spec['stage_id']} note leaks an internal identifier "
+                                 f"({marker!r}): {note!r}")
+
     def test_every_resolvable_stage_id_is_unique(self):
         ids = [s.stage_id for s in WSM.workflow_stage_table()]
         self.assertEqual(len(ids), len(set(ids)))

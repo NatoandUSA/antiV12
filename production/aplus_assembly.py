@@ -856,7 +856,8 @@ def assemble_phase6d(run_dir, connectivity_mode="CONNECTED_RESEARCH"):
     deps = load_phase6d_dependencies(run_dir)
     capability, capability_source, capability_verified = resolve_aplus_capability(deps)
 
-    result = AB.build_aplus(capability, deps.claims, deps.facts, assets=None)
+    result = AB.build_aplus(capability, deps.claims, deps.facts, assets=None,
+                            category=deps.policy.product_category)
 
     basic_doc = assemble_basic_aplus(deps, result, capability, capability_verified)
     premium_doc = assemble_premium_aplus_draft(deps, result, capability, capability_verified)

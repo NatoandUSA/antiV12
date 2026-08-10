@@ -308,6 +308,7 @@ def generate(folder, seed="", allow_legacy_unsafe=False, policy_registry=None):
     premium_confirmed = bool(brief_in.get("aplus_premium_confirmed"))
     try:
         aplus = ABU.build_aplus(aplus_capability_in, claims, facts_src, assets=aplus_assets,
+                                category=policy.product_category,
                                 dynamic_data=aplus_dynamic_data, premium_confirmed=premium_confirmed,
                                 garment=product["garment_type"])
     except AREG.InvalidCapabilityError as e:

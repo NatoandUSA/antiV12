@@ -68,6 +68,11 @@ SCALAR_FIELDS = (
     "brand", "product_type", "garment_type", "material", "material_composition", "fit",
     "decoration_method", "care_instructions", "production_location", "production_time_range",
     "handling_time", "shipping_method", "tracking", "packaging", "audience", "occasion",
+    # WHERE THE PARCEL SHIPS FROM, as a country the owner states outright. Deliberately separate
+    # from shipping_method (a carrier/service in free prose) and from production_location (where
+    # the item was MADE). Fulfillment origin and manufacturing origin are different claims with
+    # different legal weight, and this owner ships some SKUs domestically and some direct.
+    "ship_from_country",
     "verified_differentiator", "placement",
     # Both were already claims (claim_evidence.ClaimSpec), already required by bullet_engine
     # JOB_CONCEPTS and description_engine, already tracked as owner requirements in

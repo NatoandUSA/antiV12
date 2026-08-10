@@ -43,6 +43,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import unsafe_claim_policy as UCP
 import product_fact_loader as PFL
 
 # 1.1.0 (Session 6C.1): every claim now carries ATOMIC semantic components + an effective evidence
@@ -177,6 +178,36 @@ def _embroider_machine(v):
     return "embroider" in s and ("machine" in s or "stitch" in s) and "hand" not in s
 
 
+# negation markers, matched on whitespace-delimited tokens so "no" never matches inside "nothing".
+_DENIAL_TOKENS = frozenset((
+    "no", "not", "none", "never", "without", "false", "excluded", "unavailable", "n/a", "na",
+    "dont", "doesnt", "cannot", "cant", "lacks", "lacking", "off",
+))
+_AFFIRM_TOKENS = frozenset(("yes", "true", "included", "includes", "include", "provided", "always"))
+
+
+def _tracking_included(v):
+    """Tracking is INCLUDED only when the owner's value actually affirms it.
+
+    The tracking claim's text is a FIXED assertion -- "Order tracking included." -- that ignores the
+    value entirely. Without a guard, a fact reading "we do not offer tracking", marked VERIFIED,
+    publishes the exact opposite of itself into bullets, description and A+ copy.
+
+    real_machine_embroidery and satin_stitch already carry guards for precisely this reason: a spec
+    whose text asserts a fixed sentence MUST qualify the value it is asserting about. tracking was
+    the only fixed-assertion spec in CLAIM_SPECS without one.
+
+    Fails CLOSED. A value this cannot read affirmatively does not verify, so an unusual phrasing
+    costs the owner a claim rather than costing a customer a false promise.
+    """
+    tokens = set(str(v or "").lower().replace("-", " ").replace(",", " ").split())
+    if not tokens:
+        return False
+    if tokens & _DENIAL_TOKENS:
+        return False
+    return bool("tracking" in tokens or "track" in tokens or (tokens & _AFFIRM_TOKENS))
+
+
 CLAIM_SPECS = [
     ClaimSpec("decoration_method", "decoration", ("decoration_method",),
               lambda v: f"Decorated with {str(v).lower()}.", components=(COMP_DECORATION_METHOD,)),
@@ -222,9 +253,13 @@ CLAIM_SPECS = [
     ClaimSpec("shipping_method", "fulfillment", ("shipping_method",),
               lambda v: _shipping_text(v) if _has_us_shipping(v) else f"Shipping: {v}.",
               components=(COMP_SHIPPING_TIME,)),
+    # Fulfillment origin gets its own concept and is NEVER inferred from shipping prose. The
+    # unsafe-claim policy binds US fulfillment-origin wording to this concept AND to its VALUE.
+    ClaimSpec("ship_from_country", "fulfillment", ("ship_from_country",),
+              lambda v: f"Ships from {v}.", components=(COMP_SHIPPING_TIME,)),
     # tracking is not implied by "there is shipping" -> a dedicated tracking fact.
     ClaimSpec("tracking", "fulfillment", ("tracking",), lambda v: "Order tracking included.",
-              components=(COMP_SHIPPING_TIME,)),
+              guard=_tracking_included, components=(COMP_SHIPPING_TIME,)),
     ClaimSpec("packaging", "fulfillment", ("packaging",), lambda v: f"Arrives in {v}.",
               components=(COMP_PACKAGING,)),
     # durability is never read off embroidery presence -> needs its own explicit fact.
@@ -451,6 +486,23 @@ def build_claim_record(spec, facts, keyword_context, prohibited):
         spec.components, state, proposed, free_text=spec.free_text,
         value_tokens=_evidence_value_tokens(source_evidence))
     publishable = effective in PUBLISHABLE_STATES
+
+    # INGESTION GUARD. Claim text is spec.text_for(value) -- the owner's RAW FACT VALUE inside a
+    # template. Without this, an owner authorises any prohibited phrase simply by typing it into a
+    # free-text fact and marking it VERIFIED, because the claim then carries that text as "evidence".
+    # Owner-entered text is NOT evidence. The raw value is preserved untouched for audit; only its
+    # publishability is refused, and a structured blocker records why.
+    unsafe_block = None
+    if publishable:
+        for candidate in (proposed, value if isinstance(value, str) else None):
+            unsafe_block = UCP.screen_owner_value(
+                ", ".join(sorted(set(source_fields))) or spec.concept, candidate)
+            if unsafe_block:
+                break
+        if unsafe_block:
+            publishable = False
+            reasons = list(reasons) + [f"unsafe_owner_fact_value:{unsafe_block['phrase']}"]
+
     record = {
         "claim_id": _claim_id(spec.concept),
         "claim_type": spec.claim_type,
@@ -464,6 +516,7 @@ def build_claim_record(spec, facts, keyword_context, prohibited):
         "effective_evidence_state": effective,
         "owner_status": owner_status,
         "publishable": publishable,
+        "unsafe_claim_block": unsafe_block,
         "reasons": sorted(set(reasons)),
         "atomicity_reason_codes": atom_reasons,
         "warnings": sorted(set(warnings)),

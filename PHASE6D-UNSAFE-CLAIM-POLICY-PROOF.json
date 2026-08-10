@@ -1,0 +1,2371 @@
+{
+  "proof": {
+    "schema": "phase6d-unsafe-claim-sanitized-proof-v1",
+    "implementation_head": "995aa2f",
+    "base": "ae8d60b",
+    "branch": "hotfix-phase6d-unsafe-claim-policy",
+    "review_status": "SELF_REVIEW_ONLY_INDEPENDENT_REVIEW_REQUIRED",
+    "held_branch_untouched": {
+      "branch": "hotfix-phase6d-evidence-aware-page-audit",
+      "head": "24edbae",
+      "status": "FROZEN, NOT ACCEPTED, unchanged by this work"
+    },
+    "defect": {
+      "summary": "Owner-entered text authorised customer-facing claims.",
+      "measured_before": {
+        "shared_phrases": 45,
+        "self_authorisable": 45,
+        "in_never_clearable_classes": 26
+      },
+      "worked_example": "care_instructions='never fades' VERIFIED put a permanence claim into A+ copy",
+      "no_concept_binding": "a CARE fact cleared a DURABILITY claim"
+    },
+    "policy_decisions_all_92_phrases": {
+      "shared_class_counts": {
+        "UNVERIFIABLE_SUPERLATIVE": 16,
+        "ABSOLUTE_OR_PERMANENCE": 17,
+        "GUARANTEE_OR_PROMISE": 22,
+        "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
+        "AMBIGUOUS": 6
+      },
+      "all_class_counts": {
+        "UNVERIFIABLE_SUPERLATIVE": 20,
+        "ABSOLUTE_OR_PERMANENCE": 43,
+        "GUARANTEE_OR_PROMISE": 36,
+        "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
+        "AMBIGUOUS": 9
+      },
+      "table": "PHASE6D-UNSAFE-CLAIM-POLICY-MANIFEST.json"
+    },
+    "pre_existing_exposure_and_surfaces": {
+      "predates_the_held_branch": true,
+      "evidence": "_audit_claims was already text-based on ae8d60b, so bullets/title/description carried the hole before either branch existed",
+      "surfaces_affected": [
+        "claims copy",
+        "item highlights",
+        "A+ module copy",
+        "claim ingestion"
+      ]
+    },
+    "mutation": {
+      "mutants": 21,
+      "survivors": [],
+      "note": "M11 (a screening list inside a function) SURVIVED the first module-attribute guard; the guard was replaced with a source-level collection-literal scan rather than the mutant being weakened",
+      "restored_byte_identical": true,
+      "eol_handling": {
+        "files_are_crlf_on_this_checkout": {
+          "aplus_builder.py": true,
+          "page_auditor.py": true,
+          "claim_evidence.py": true,
+          "unsafe_claim_policy.py": true,
+          "test_unsafe_claim_policy.py": false
+        },
+        "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
+        "anchors_loosened": false
+      }
+    },
+    "differential": {
+      "verdict": "BASELINE_EQUIVALENT",
+      "collection": {
+        "base": 4724,
+        "target": 4770,
+        "target_only": 47,
+        "target_only_breakdown": {
+          "tests/test_unsafe_claim_policy.py": 46,
+          "tests/test_acrylic_listing_safety.py": 1
+        },
+        "baseline_only": 1,
+        "baseline_only_explained": "the acrylic test was RENAMED (test_a_verified_claim_publishes_the_phrase_and_an_unrelated_one_does_not -> test_a_safety_guarantee_phrase_is_not_unlocked_by_naming_it_in_evidence). Membership makes the rename visible; a count alone would have hidden it.",
+        "load_errors_both_heads": 0
+      },
+      "execution": {
+        "base_sample_1": {
+          "ran": 4722,
+          "non_passing": 20
+        },
+        "base_sample_2": {
+          "ran": 4722,
+          "non_passing": 20
+        },
+        "target_sample_1": {
+          "ran": 4783,
+          "non_passing": 20
+        },
+        "target_sample_2": {
+          "ran": 4783,
+          "non_passing": 20
+        },
+        "target_only_non_passing": 0,
+        "baseline_only_non_passing": 0,
+        "target_samples_identical": true
+      }
+    },
+    "eol_handling": {
+      "problem": "A previous harness joined anchors with LF; the checkout is CRLF, so all anchors missed and the gate measured nothing.",
+      "fix": "match on newline-normalised logical text, write back in the file's own EOL, restore exact original raw bytes verified by sha256. Anchors were NOT loosened.",
+      "characterisation_test": "tests/test_unsafe_claim_policy.py::test_31"
+    },
+    "residuals_and_disclosures": [
+      "Independent review NOT done. This is a self-review by the author of the change.",
+      "Two classification deviations from the commissioning document, both disclosed with evidence; the tracking one is LESS restrictive and the owner should confirm it.",
+      "'made in the usa' and four other value-encoding phrases are AMBIGUOUS and fail closed. That is a deliberate block pending an owner decision, not a solved problem.",
+      "listing/aplus_builder.py still carries a 20-phrase subset for its own self-check. Pre-existing; untouched because builder behaviour is out of scope.",
+      "The A+ builder still composes copy containing policy-relevant phrases. This branch changes what is AUTHORISED, not what is WRITTEN; a blocked phrase now produces a structured refusal rather than being silently emitted or silently cleared.",
+      "No owner-asset ingestion, no assets=None change, no A+ capability work, no 6A/6D photo reconciliation, no removal of the dead Phase 6D _is_safe_copy -- all forbidden by scope and all still open."
+    ],
+    "boundaries_preserved": [
+      "No Seller Central, SP-API, credentials or browser automation.",
+      "runs/T2 never opened, read, written or hashed.",
+      "No push, no merge, no tag.",
+      "The held 24edbae branch was not modified."
+    ]
+  },
+  "policy_manifest": {
+    "schema": "phase6d-unsafe-claim-policy-manifest-v1",
+    "authority_module": "listing/unsafe_claim_policy.py",
+    "total_phrases": 92,
+    "shared_phrases": 45,
+    "category_phrases": {
+      "acrylic": 47
+    },
+    "shared_class_counts": {
+      "UNVERIFIABLE_SUPERLATIVE": 16,
+      "ABSOLUTE_OR_PERMANENCE": 17,
+      "GUARANTEE_OR_PROMISE": 22,
+      "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
+      "AMBIGUOUS": 6
+    },
+    "all_class_counts": {
+      "UNVERIFIABLE_SUPERLATIVE": 20,
+      "ABSOLUTE_OR_PERMANENCE": 43,
+      "GUARANTEE_OR_PROMISE": 36,
+      "FACTUAL_AND_EVIDENCE_VERIFIABLE": 15,
+      "AMBIGUOUS": 9
+    },
+    "live_consumers": [
+      "page_auditor._audit_claims (title/description/bullets/publishable payload)",
+      "page_auditor._audit_item_highlights",
+      "page_auditor._audit_aplus_evidence",
+      "claim_evidence.build_claim_record (ingestion guard)"
+    ],
+    "stale_duplicate_list_found": {
+      "module": "listing/aplus_builder.py",
+      "symbol": "_UNSAFE_PHRASES",
+      "count": 20,
+      "note": "pre-existing 20-phrase subset used only for the builder self-check; the auditor is the authority"
+    },
+    "pre_existing_surface_gap": "_audit_item_highlights and _audit_aplus_evidence used the BASE list only, so the 47 acrylic phrases were unchecked on those two surfaces",
+    "classification_delta_vs_self_audit": {
+      "reported_in_command": {
+        "ABSOLUTE_OR_PERMANENCE": 6,
+        "GUARANTEE_OR_PROMISE": 9,
+        "UNVERIFIABLE_SUPERLATIVE": 11
+      },
+      "refined_here": {
+        "ABSOLUTE_OR_PERMANENCE": 6,
+        "GUARANTEE_OR_PROMISE": 9,
+        "UNVERIFIABLE_SUPERLATIVE": 13
+      },
+      "reason": "12 hour shifts and 12-hour shifts reclassified from factual to UNVERIFIABLE_SUPERLATIVE (a use-context comfort claim no fact can verify), so 11 -> 13"
+    },
+    "rows": [
+      {
+        "scope": "shared",
+        "phrase": "soft and comfortable",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "comfortable fit",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort",
+          "fit"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "soft against the skin",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "buttery soft",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "cozy and comfortable",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "all day comfort",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "perfect for long shifts",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "for long shifts",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "12 hour shifts",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "12-hour shifts",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "softness_comfort"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "any occasion",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "occasion"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "premium material",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "material_composition"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "premium fabric",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [
+          "material_composition"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "made to last",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [
+          "durability"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "built to last",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [
+          "durability"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not fade",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [
+          "durability"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "wont fade",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [
+          "durability"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never fades",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [
+          "durability"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "lasts forever",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [
+          "durability"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "exactly as you enter",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [
+          "exact_personalization_promise"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "exactly as entered",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [
+          "exact_personalization_promise"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "exactly what you enter",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [
+          "exact_personalization_promise"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "embroidered exactly",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [
+          "exact_personalization_promise"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "any name and credentials",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [
+          "personalization_fields"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "made to order",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [
+          "made_to_order"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "tracking included",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "tracking"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "with tracking",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "tracking"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "includes tracking",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "tracking"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "shipped from the us",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "ship_from_country"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {
+          "ship_from_country": [
+            "us",
+            "usa",
+            "u s a",
+            "united states",
+            "united states of america"
+          ]
+        },
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "ships from the us",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "ship_from_country"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {
+          "ship_from_country": [
+            "us",
+            "usa",
+            "u s a",
+            "united states",
+            "united states of america"
+          ]
+        },
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "made in the usa",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [
+          "production_location"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "made in the us",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [
+          "production_location"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "printed in the usa",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [
+          "production_location",
+          "decoration_method"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "10 14 business days",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [
+          "production_time"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "mock neck option",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [
+          "fit"
+        ],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "guarantee",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "guaranteed",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "100 guarantee",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "money back guarantee",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "lifetime warranty",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "fda approved",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "fda cleared",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "clinically proven",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "doctor recommended",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "dermatologist recommended",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "certified organic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "nontoxic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "hypoallergenic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "antibacterial",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "cures",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "prevents disease",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "waterproof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never fade",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never crack",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never peel",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never shrink",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "never wash out",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not peel",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not shrink",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "will not wash out",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "wont peel",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "wont shrink",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "best on amazon",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "number one",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "worlds best",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "treats",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "compliance/category_config.json:claim_rules"
+      },
+      {
+        "scope": "shared",
+        "phrase": "machine embroidery",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "decoration_method"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "real machine embroidery",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "real_machine_embroidery"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "satin stitch",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "satin_stitch"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "raised satin",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "satin_stitch"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "raised stitching",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "satin_stitch"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "embroidered name",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "decoration_method",
+          "personalization_fields"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "cotton blend",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "material_composition"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "measured from the real garment",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "measurements"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "measurements are taken from the real garment",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "measurements"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "shared",
+        "phrase": "measured from real garments",
+        "policy_class": "FACTUAL_AND_EVIDENCE_VERIFIABLE",
+        "required_concept_ids": [
+          "measurements"
+        ],
+        "allowed_surfaces": [
+          "claims",
+          "item_highlights",
+          "aplus"
+        ],
+        "clearance_rule": "REQUIRE_ALL_CONCEPTS",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "shatterproof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "shatter proof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "shatter resistant",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "unbreakable",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "break proof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "break resistant",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "impact resistant",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "virtually indestructible",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "indestructible",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "will not crack",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "wont crack",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "never cracks",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "crack proof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "will not yellow",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "wont yellow",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "never yellows",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "yellow resistant",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "non yellowing",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "uv proof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "uv resistant",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "fade proof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "will not warp",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "wont warp",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "scratch proof",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "scratch resistant",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "scratch free",
+        "policy_class": "ABSOLUTE_OR_PERMANENCE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "dishwasher safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "microwave safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "oven safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "heat resistant",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "heat proof",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "top rack safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "food safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "food grade",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "bpa free",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "non toxic",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "child safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "baby safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "toy safe",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "medical grade",
+        "policy_class": "GUARANTEE_OR_PROMISE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "crystal clear",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "optically clear",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "glass like clarity",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "clearer than glass",
+        "policy_class": "UNVERIFIABLE_SUPERLATIVE",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "ALWAYS_BLOCK",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "real glass",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "genuine glass",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      },
+      {
+        "scope": "acrylic",
+        "phrase": "tempered",
+        "policy_class": "AMBIGUOUS",
+        "required_concept_ids": [],
+        "allowed_surfaces": [],
+        "clearance_rule": "BLOCK_PENDING_POLICY",
+        "required_concept_values": {},
+        "source": "listing/unsafe_claim_policy.py"
+      }
+    ],
+    "classification_delta_vs_commissioning_document": {
+      "commissioned": {
+        "ABSOLUTE_OR_PERMANENCE": 6,
+        "GUARANTEE_OR_PROMISE": 9,
+        "UNVERIFIABLE_SUPERLATIVE": 11
+      },
+      "implemented": {
+        "ABSOLUTE_OR_PERMANENCE": 17,
+        "GUARANTEE_OR_PROMISE": 22,
+        "UNVERIFIABLE_SUPERLATIVE": 16
+      },
+      "deviation_1": {
+        "change": "superlatives 11 -> 13",
+        "phrases": [
+          "12 hour shifts",
+          "12-hour shifts"
+        ],
+        "reason": "use-context comfort claims that no product fact verifies; the earlier self-audit had them as factual",
+        "direction": "MORE restrictive"
+      },
+      "deviation_2": {
+        "change": "guarantee 9 -> 6; the three tracking phrases become FACTUAL",
+        "phrases": [
+          "tracking included",
+          "with tracking",
+          "includes tracking"
+        ],
+        "reason": "Whether an order carries tracking is an operational fact the owner controls and can verify. It is not a warranty, not regulated, not unprovable. Implementing it as a guarantee was measurably wrong: the existing shipping fixture's own value is 'Ships from the US with tracking', so the ingestion guard voided the whole shipping_method claim and four accepted tests failed.",
+        "evidence": "test_bullet_engine (2), test_description_engine (1), plus a bullet job count",
+        "direction": "LESS restrictive; owner should confirm"
+      },
+      "also": {
+        "change": "'ships from the us' / 'shipped from the us': AMBIGUOUS -> FACTUAL, bound to a NEW ship_from_country concept with a required US VALUE",
+        "superseded_reasoning": "An interim revision bound these to the generic shipping_method concept and justified it with claim_evidence._has_us_shipping. That was wrong: _has_us_shipping substring-scans the owner's free prose, so any VERIFIED shipping method cleared the phrase. Disclosed before review and now remediated.",
+        "final_model": {
+          "concept_id": "ship_from_country",
+          "required_value": "US (accepted spellings)",
+          "evidence_state": "VERIFIED",
+          "never_authorises": "manufacturing origin ('made in the usa'), which stays blocked"
+        },
+        "owner_decision": "APPROVED_AS_FACTUAL_FULFILLMENT_ORIGIN_CLAIMS_WITH_STRICT_BINDING; per-SKU fulfillment confirmed, which is why a per-product fact is the right shape",
+        "direction": "restrictive where it matters (value-bound), permissive only on a verified US value"
+      }
+    }
+  },
+  "tests": {
+    "schema": "phase6d-unsafe-claim-tests-v1",
+    "new_test_file": "tests/test_unsafe_claim_policy.py",
+    "nodes": 61,
+    "all_passing_at_implementation_head": true,
+    "coverage": {
+      "hard_block_matrix": "all 25 never-clearable shared phrases, each with the owner typing the phrase into a free-text fact and verifying it",
+      "right_reason": "test_01b pins the REASON CODE per class, not just refusal -- hard-block rows also carry empty allowed_surfaces, so refusal alone would still pass with a class-check bug and report the wrong reason to the owner",
+      "authorization": [
+        "exact concept",
+        "own concept unverified",
+        "unrelated claims",
+        "ALL not ANY",
+        "raw text cannot self-authorise",
+        "scattered words",
+        "unknown phrase",
+        "ambiguous",
+        "unknown surface",
+        "verified Vietnam location does not clear 'made in the usa'"
+      ],
+      "surfaces": [
+        "bullets",
+        "description",
+        "item highlights",
+        "A+",
+        "acrylic vocabulary on the specialised surfaces",
+        "a factual phrase still publishes on all three"
+      ],
+      "ingestion": [
+        "not publishable",
+        "raw value preserved",
+        "all blocker fields",
+        "ambiguous -> POLICY_DECISION_REQUIRED",
+        "safe value unchanged",
+        "factual phrase in a fact value is not an unsafe value"
+      ],
+      "invariants": [
+        "one list only",
+        "every phrase has a record",
+        "every mapped concept is real",
+        "only factual phrases are clearable",
+        "class counts pinned"
+      ],
+      "eol": "test_31 characterises the CRLF trap that silently disarmed a previous gate"
+    }
+  },
+  "failing_tests": {
+    "schema": "phase6d-unsafe-claim-failing-tests-v1",
+    "state_measured_at": "the tests-first commit, authority present and consumers unwired",
+    "total_nodes": 61,
+    "failing_at_first_tests_commit": 8,
+    "failing_at_remediation_tests_commit": 9,
+    "remediation_failing_nodes": [
+      "test_32",
+      "test_33",
+      "test_34",
+      "test_35",
+      "test_37",
+      "test_40",
+      "test_40b",
+      "test_41",
+      "test_43"
+    ],
+    "nodes": [
+      "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
+      "test_02_never_fades_in_care_instructions_cannot_authorise_permanence",
+      "test_15_bullets_surface_blocks_and_actually_audited_the_copy",
+      "test_16_description_surface_blocks",
+      "test_19_acrylic_vocabulary_reaches_the_specialised_surfaces",
+      "test_20_a_factual_phrase_still_publishes_on_every_surface",
+      "test_21_unsafe_owner_value_cannot_become_publishable_verified_evidence",
+      "test_27_one_list_only_page_auditor_reexports_the_authority"
+    ],
+    "note": "test_17 and test_18 (item-highlight and A+ surfaces) PASS before the fix, because the old code blocked everything indiscriminately. They are guards that the block PERSISTS once authorisation becomes selective, not regressions.",
+    "non_vacuity": "Every surface test asserts a fixture guard first -- publishable_count, aplus_evidence_results.present, module state READY, or the copy string itself -- so a test cannot pass because the copy was never audited."
+  },
+  "implementation": {
+    "schema": "phase6d-unsafe-claim-implementation-v1",
+    "implementation_head": "995aa2f",
+    "base": "ae8d60b",
+    "commits": [
+      {
+        "sha": "71ba449",
+        "what": "authority module + 33 tests (8 failing at that commit)"
+      },
+      {
+        "sha": "852eb5e",
+        "what": "all three audit surfaces wired; phrase lists re-exported; dead _verified_texts removed; acrylic test premise superseded"
+      },
+      {
+        "sha": "8207cec",
+        "what": "owner-fact ingestion guard in claim_evidence"
+      },
+      {
+        "sha": "3af3d82",
+        "what": "first proof packet (self-review); superseded by this one"
+      },
+      {
+        "sha": "582d4b4",
+        "what": "remediation tests for the three disclosed gaps (9 failing at that commit)"
+      },
+      {
+        "sha": "23e0cf4",
+        "what": "value binding + ship_from_country concept + one A+ authority + real surface allowlists"
+      },
+      {
+        "sha": "a414dc2",
+        "what": "proof packet at the remediated head"
+      },
+      {
+        "sha": "9145b1f",
+        "what": "failing tests for the tracking root cause (3 failing at that commit)"
+      },
+      {
+        "sha": "c0db2d6",
+        "what": "tracking guard at the CLAIM, plus the second-authority guard made exercisable"
+      },
+      {
+        "sha": "e09dae6",
+        "what": "proof packet with the tracking root cause and the 24edbae verdict"
+      },
+      {
+        "sha": "911b999",
+        "what": "failing tests: contraction bypass + the data-file blocklist (7 failing)"
+      },
+      {
+        "sha": "cfbb30e",
+        "what": "apostrophe normalisation fix + 31 phrases absorbed from compliance"
+      },
+      {
+        "sha": "05619a8",
+        "what": "proof packet for the contraction bypass and the data-file blocklist"
+      },
+      {
+        "sha": "9758f45",
+        "what": "failing tests: data-file authority registry + provenance (3 failing)"
+      },
+      {
+        "sha": "995aa2f",
+        "what": "provenance on every record; manifest exports it and the value bindings"
+      }
+    ],
+    "data_file_authority_registry": {
+      "why": "source scanning cannot see phrases that live in JSON. The previous round absorbed one data-file blocklist; this closes the CLASS by requiring any phrase-bearing data file to be registered and classified.",
+      "measured": "of 61 tracked JSON files, exactly TWO carry arrays of phrase-like strings",
+      "registered": {
+        "compliance/category_config.json": "unsafe CLAIM blocking -> must stay covered by the canonical authority (test_54)",
+        "compliance/ip_library.json": "trademark/IP blocking -- brands, characters, celebrities, universities. A DIFFERENT question; deliberately NOT absorbed, and test_58 pins that it never leaks into the claim vocabulary."
+      },
+      "effect": "a new phrase-bearing data file fails the test, forcing classification instead of letting it become a silent third authority"
+    },
+    "provenance": {
+      "why": "31 records mirror a second compliance source that still exists and still runs; a reader must be able to tell from the RECORD which entries this module owns outright and which have to stay in step with a file elsewhere",
+      "counts": {
+        "listing/unsafe_claim_policy.py": 92,
+        "compliance/category_config.json:claim_rules": 31
+      },
+      "also_exported": "required_concept_values now appears in the manifest -- a value binding nobody can see in the record is one nobody will maintain"
+    },
+    "false_positive_probes_r1_r4": {
+      "apostrophe_deletion": "probed possessives, surnames (O'Brien, Lands' End), contractions (don't, can't, it's), and none produce a false positive",
+      "intended_forms_still_caught": "won't / won’t / WON'T / mixed case all normalise to the canonical form",
+      "degenerate_tokens": "no record normalises to a bare token under 4 characters; sizes, quantities and years (1 pack, size 1, 2026 edition, pack of 12) publish"
+    },
+    "contraction_bypass": {
+      "severity": "LIVE_BYPASS_OF_THE_AUTHORITY",
+      "symptom": "\"This design wont fade.\" was blocked; \"This design won't fade.\" published",
+      "cause": "normalize_text replaced the apostrophe with a SPACE, so \"won't fade\" became the three tokens \"won t fade\" and never matched the canonical entry \"wont fade\". The informal spelling was caught and the ordinary English one was not.",
+      "scope": "every never/will-not permanence phrase, plus curly-quote forms from word processors",
+      "fix": "apostrophes are deleted rather than spaced, so a contraction stays one token",
+      "found_by": "auditing compliance/category_config.json, which carries both spellings"
+    },
+    "second_live_blocklist_in_data": {
+      "location": "compliance/category_config.json, loaded by compliance/listing_validate.py, which pipeline.py runs as a stage",
+      "why_invisible": "the phrases are DATA loaded into a function-local dict, so neither the source scanner nor the runtime module-attribute scan could see them -- this is exactly the residual the previous packet disclosed and did not close",
+      "measured_severity": {
+        "can_it_permit_anything": "NO -- pure blocklist, no permit path, so not a safety hole",
+        "does_it_contradict_a_verified_clearance": "NO -- it hard-blocks zero canonical FACTUAL phrases",
+        "the_actual_danger_runs_the_other_way": "it screened 32 phrases the canonical authority had never heard of, and the Phase 6 chain does not run it, so on bullets, item highlights and A+ copy 'clinically proven', 'fda approved', 'cures', 'antibacterial', 'money back guarantee' and 'lifetime warranty' were screened by NOTHING"
+      },
+      "resolution": "31 phrases absorbed into the canonical authority with conservative classification; test_54 pins the invariant that every phrase that validator hard-fails must have a canonical record, so the vocabularies cannot diverge again",
+      "deliberately_not_imported": {
+        "#1": "normalises to the bare token '1'; this authority matches whole normalised tokens, so it would block every listing containing a size, quantity or measurement",
+        "superlative_warn (10 words)": "warnings in that validator, not hard failures; promoting best/perfect/premium/luxury to blocking phrases would change severity without an owner decision"
+      },
+      "left_for_the_owner": "'treats' is classed AMBIGUOUS and fails closed -- a medical verb ('treats eczema') and an ordinary product noun ('dog treats')"
+    },
+    "root_cause_fix_T1": {
+      "where_the_defect_actually_lived": "listing/claim_evidence.py, NOT the unsafe-claim policy",
+      "predates_this_branch": "yes -- live on ae8d60b today",
+      "mechanism": "Three claim specs assert a FIXED sentence that ignores the fact value: real_machine_embroidery, satin_stitch and tracking. The first two carry a guard qualifying the value; tracking was the only one without. So tracking='we do not offer tracking' VERIFIED published 'Order tracking included.' as a VERIFIED claim.",
+      "customer_impact": "a false fulfillment promise in bullets, description and A+ copy",
+      "fix": "guard=_tracking_included on the tracking spec, negation-aware, failing closed. No new fact field and no parallel boolean -- the fix belongs at the claim, or every other consumer keeps publishing the false sentence.",
+      "invariant_pinned": "test_47 asserts that EVERY fixed-assertion spec carries a guard, so the next one cannot skip it",
+      "author_error_recorded": "I argued a tracking_included boolean was unnecessary because the dedicated concept was already structured. It is structured but not EXACT: a free-text field has no false state. I had built value binding for ship_from_country in the same commit and then defended the identical defect class for tracking.",
+      "disclosed_limitation": "the guard reads prose, so an unusual affirmative phrasing fails closed and costs a legitimate claim. A controlled-vocabulary tracking field would remove the ambiguity and is the right follow-up."
+    },
+    "subsumption_of_24edbae": {
+      "method": "behavioural, not textual: 24edbae's OWN test file was run against this head",
+      "result": "8 of 9 pass",
+      "the_one_failure": "test_04_verified_text_is_non_empty_when_claims_are_supplied, which calls PA._verified_texts -- the private bag-of-words helper this branch DELETED because its existence was the defect. It asserts the internals of a mechanism that no longer exists; concept binding supersedes it.",
+      "verdict": "RETIRE_24EDBAE -- functionally subsumed. No replay of its patch is needed, which also removes the textual conflict on the two shared function signatures.",
+      "caveat": "determined by the author of both branches; an independent reviewer should confirm."
+    },
+    "remediation_of_disclosed_gaps": {
+      "GAP_1_US_SHIPPING_VALUE_BINDING": {
+        "status": "CLOSED",
+        "how": "new ship_from_country product fact + claim concept; policy records may now require specific concept VALUES, read from the claim's structured source_evidence and never parsed from prose. 'ships from the us' requires ship_from_country VERIFIED in the accepted US set.",
+        "manufacturing_origin_isolated": "'made in the usa' is not reachable from ship_from_country and remains AMBIGUOUS/blocked (mutant M10 proves it)"
+      },
+      "GAP_2_SECOND_LIVE_A_PLUS_AUTHORITY": {
+        "status": "CLOSED",
+        "how": "aplus_builder._UNSAFE_PHRASES deleted; its self-check calls the canonical authority with the same structured evidence and the same A+ surface. build_aplus/_eval_module take an additive category argument; listing_generator and aplus_assembly pass theirs.",
+        "guard": "two tests -- a runtime module-attribute scan AND a source-level collection-literal scan. The first alone was fail-open: mutant M11 declared its list inside a function and survived."
+      },
+      "GAP_3_SURFACE_ALLOWLISTS": {
+        "status": "CLOSED",
+        "how": "'measured from the real garment' is restricted to claims + A+ (a methodology statement needs room to be qualified; an item highlight has none), so the allowlist constrains a real record rather than every record listing all three surfaces."
+      },
+      "TRACKING_STRUCTURED_VALUE_BINDING": {
+        "status": "SATISFIED_WITHOUT_A_NEW_FIELD",
+        "how": "binds to the dedicated `tracking` concept, not to generic shipping. Pinned by test_38/test_39.",
+        "deviation_from_the_contribution": "no parallel tracking_included boolean was added. The dedicated concept already is the structured binding; a second field for the same fact is a duplicate to keep in sync. Owner may overrule."
+      }
+    },
+    "files_changed": {
+      "added": [
+        "listing/unsafe_claim_policy.py",
+        "tests/test_unsafe_claim_policy.py"
+      ],
+      "modified": [
+        "listing/page_auditor.py",
+        "listing/claim_evidence.py",
+        "tests/test_acrylic_listing_safety.py"
+      ]
+    },
+    "authorization_model": {
+      "before": "substring match of the phrase against ALL publishable claim texts concatenated",
+      "after": "one independent evaluation per phrase hit against structured claim evidence; REQUIRE_ALL_CONCEPTS for factual phrases; never-clearable classes never consult evidence at all; unknown phrase and unknown surface fail closed",
+      "concept_binding_demonstrated_by_test": [
+        "test_05",
+        "test_06",
+        "test_07",
+        "test_08",
+        "test_09",
+        "test_14"
+      ],
+      "no_concatenation_anywhere": true
+    },
+    "ingestion_guard": {
+      "location": "claim_evidence.build_claim_record, at the point publishability is decided",
+      "screens": "never-clearable classes only",
+      "raw_value_preserved": true,
+      "structured_blocker_fields": [
+        "status",
+        "surface",
+        "phrase",
+        "policy_class",
+        "required_concept_ids",
+        "evidence_state",
+        "owner_fact_field",
+        "reason_code",
+        "next_action"
+      ],
+      "classification_not_duplicated": true
+    },
+    "surface_coverage": {
+      "_audit_claims": "title, description, bullets, publishable payload text",
+      "_audit_item_highlights": "each publishable highlight",
+      "_audit_aplus_evidence": "each READY A+ module body",
+      "bullets_note": "bullets reach the policy through _audit_claims, which audits the combined copy_text; test_15 pins that path explicitly rather than assuming it",
+      "category_resolution": "all three now resolve the category identically (policy.product_category); previously the two specialised surfaces used the base vocabulary only, leaving 47 acrylic safety phrases unchecked there"
+    },
+    "dead_code_removed": "_verified_texts had zero callers after the change and was deleted",
+    "second_list_found_not_removed": {
+      "module": "listing/aplus_builder.py",
+      "symbol": "_UNSAFE_PHRASES",
+      "count": 20,
+      "status": "PRE-EXISTING, UNCHANGED, DISCLOSED",
+      "why_left": "It drives the builder's own self-check, not the audit verdict; the auditor remains the authority and now covers every surface. Collapsing it into the authority is a real follow-up but is builder behaviour, which this branch's scope forbids touching."
+    }
+  },
+  "differential": {
+    "schema": "phase6d-unsafe-claim-differential-v1",
+    "protocol": "n=2 per head, strictly sequential, fresh worktrees, never concurrent with mutation",
+    "base": "ae8d60b",
+    "target": "995aa2f",
+    "collection": {
+      "base": 4724,
+      "target": 4770,
+      "target_only": 47,
+      "target_only_breakdown": {
+        "tests/test_unsafe_claim_policy.py": 46,
+        "tests/test_acrylic_listing_safety.py": 1
+      },
+      "baseline_only": 1,
+      "baseline_only_explained": "the acrylic test was RENAMED (test_a_verified_claim_publishes_the_phrase_and_an_unrelated_one_does_not -> test_a_safety_guarantee_phrase_is_not_unlocked_by_naming_it_in_evidence). Membership makes the rename visible; a count alone would have hidden it.",
+      "load_errors_both_heads": 0
+    },
+    "execution": {
+      "base_sample_1": {
+        "ran": 4722,
+        "non_passing": 20
+      },
+      "base_sample_2": {
+        "ran": 4722,
+        "non_passing": 20
+      },
+      "target_sample_1": {
+        "ran": 4783,
+        "non_passing": 20
+      },
+      "target_sample_2": {
+        "ran": 4783,
+        "non_passing": 20
+      },
+      "target_only_non_passing": 0,
+      "baseline_only_non_passing": 0,
+      "target_samples_identical": true
+    },
+    "verdict": "BASELINE_EQUIVALENT",
+    "regressions_found_and_fixed_during_the_work": [
+      "test_aplus_integration: removing the embedded claim_evidence fallback stopped safe_write_listing persisting the listing at all. Fixed by reading the embedded block's declared CONCEPTS.",
+      "test_bullet_engine / test_description_engine: classifying tracking as a guarantee voided the shipping claim, because the fixture's own shipping value contains 'with tracking'. Fixed by reclassifying tracking as factual -- a deviation, disclosed above."
+    ],
+    "judged_differentially": "A fresh worktree has no runs/T2 (gitignored), so 14 T2-dependent nodes error on BOTH heads. Only the delta is evidence."
+  },
+  "mutation": {
+    "mutants": [
+      {
+        "id": "M1",
+        "name": "restore_bag_of_words_authorization",
+        "why": "authorise a phrase whenever it appears in concatenated publishable claim text",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_09_raw_fact_text_alone_cannot_self_authorise_a_factual_phrase"
+        ],
+        "killers_that_failed": [
+          "test_09_raw_fact_text_alone_cannot_self_authorise_a_factual_phrase"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_05_factual_phrase_clears_only_through_its_exact_mapped_concept",
+          "test_09_raw_fact_text_alone_cannot_self_authorise_a_factual_phrase",
+          "test_13_unknown_surface_fails_closed_for_a_factual_phrase",
+          "test_35_shipping_prose_alone_cannot_authorise_fulfillment_origin"
+        ]
+      },
+      {
+        "id": "M2",
+        "name": "allow_hard_block_when_matching_fact_verified",
+        "why": "let a verified mapped concept clear a never-clearable class",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_01b_hard_block_phrases_are_refused_for_the_RIGHT_reason"
+        ],
+        "killers_that_failed": [
+          "test_01b_hard_block_phrases_are_refused_for_the_RIGHT_reason"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_01b_hard_block_phrases_are_refused_for_the_RIGHT_reason"
+        ]
+      },
+      {
+        "id": "M3",
+        "name": "downgrade_never_fades_to_factual",
+        "why": "reclassify a permanence claim as an ordinary verifiable fact",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_02_never_fades_in_care_instructions_cannot_authorise_permanence"
+        ],
+        "killers_that_failed": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_02_never_fades_in_care_instructions_cannot_authorise_permanence"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
+          "test_02_never_fades_in_care_instructions_cannot_authorise_permanence",
+          "test_21_unsafe_owner_value_cannot_become_publishable_verified_evidence",
+          "test_23_structured_blocker_has_every_required_field"
+        ]
+      },
+      {
+        "id": "M4",
+        "name": "skip_ingestion_guard",
+        "why": "let an owner-typed prohibited value become publishable VERIFIED evidence",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_21_unsafe_owner_value_cannot_become_publishable_verified_evidence"
+        ],
+        "killers_that_failed": [
+          "test_21_unsafe_owner_value_cannot_become_publishable_verified_evidence"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_21_unsafe_owner_value_cannot_become_publishable_verified_evidence"
+        ]
+      },
+      {
+        "id": "M5",
+        "name": "check_any_concept_instead_of_all",
+        "why": "clear a multi-concept phrase when only one of its concepts is verified",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_08_multi_concept_phrase_requires_all_concepts_not_any"
+        ],
+        "killers_that_failed": [
+          "test_08_multi_concept_phrase_requires_all_concepts_not_any"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_08_multi_concept_phrase_requires_all_concepts_not_any"
+        ]
+      },
+      {
+        "id": "M6",
+        "name": "concatenate_claim_texts_before_matching",
+        "why": "authorise when the phrase's WORDS appear anywhere across concatenated claim texts",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_10_words_scattered_across_claims_cannot_assemble_an_authorisation"
+        ],
+        "killers_that_failed": [
+          "test_10_words_scattered_across_claims_cannot_assemble_an_authorisation"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_09_raw_fact_text_alone_cannot_self_authorise_a_factual_phrase",
+          "test_10_words_scattered_across_claims_cannot_assemble_an_authorisation",
+          "test_35_shipping_prose_alone_cannot_authorise_fulfillment_origin"
+        ]
+      },
+      {
+        "id": "M7",
+        "name": "unknown_phrase_is_safe",
+        "why": "treat an unmapped phrase as authorised instead of failing closed",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_11_unknown_phrase_fails_closed"
+        ],
+        "killers_that_failed": [
+          "test_11_unknown_phrase_fails_closed"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_11_unknown_phrase_fails_closed"
+        ]
+      },
+      {
+        "id": "M9",
+        "name": "drop_ship_from_country_value_binding",
+        "why": "authorise US fulfillment-origin wording on concept verification alone, any value",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_33_non_us_ship_from_country_blocks_the_phrase"
+        ],
+        "killers_that_failed": [
+          "test_33_non_us_ship_from_country_blocks_the_phrase"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_33_non_us_ship_from_country_blocks_the_phrase"
+        ]
+      },
+      {
+        "id": "M10",
+        "name": "let_fulfillment_origin_authorise_manufacturing_origin",
+        "why": "reclassify 'made in the usa' as clearable from the ship-from country",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_36_us_fulfillment_origin_never_authorises_manufacturing_origin"
+        ],
+        "killers_that_failed": [
+          "test_36_us_fulfillment_origin_never_authorises_manufacturing_origin"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_24_ambiguous_owner_value_returns_policy_decision_required",
+          "test_36_us_fulfillment_origin_never_authorises_manufacturing_origin"
+        ]
+      },
+      {
+        "id": "M11",
+        "name": "restore_second_live_aplus_authority",
+        "why": "give the A+ builder back its own phrase list, able to diverge from the authority",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_40b_no_phrase_collection_anywhere_including_function_locals_and_split_literals"
+        ],
+        "killers_that_failed": [
+          "test_40b_no_phrase_collection_anywhere_including_function_locals_and_split_literals"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_40b_no_phrase_collection_anywhere_including_function_locals_and_split_literals"
+        ]
+      },
+      {
+        "id": "M12",
+        "name": "ignore_surface_allowlist",
+        "why": "let a clearable phrase publish on a surface its record does not list",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
+        ],
+        "killers_that_failed": [
+          "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_13_unknown_surface_fails_closed_for_a_factual_phrase",
+          "test_43_a_clearable_phrase_is_refused_on_a_surface_it_does_not_list"
+        ]
+      },
+      {
+        "id": "M13",
+        "name": "drop_tracking_guard",
+        "why": "let a fact that DENIES tracking publish the fixed claim 'Order tracking included.'",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_47_every_fixed_assertion_spec_carries_a_guard"
+        ],
+        "killers_that_failed": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_47_every_fixed_assertion_spec_carries_a_guard"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_46_a_negative_tracking_fact_cannot_authorise_tracking_wording",
+          "test_47_every_fixed_assertion_spec_carries_a_guard"
+        ]
+      },
+      {
+        "id": "M14",
+        "name": "tracking_guard_ignores_negation",
+        "why": "naive affirmative match, so 'no tracking' still qualifies",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_45_a_negative_tracking_fact_must_not_verify"
+        ],
+        "killers_that_failed": [
+          "test_45_a_negative_tracking_fact_must_not_verify"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_45_a_negative_tracking_fact_must_not_verify",
+          "test_46_a_negative_tracking_fact_cannot_authorise_tracking_wording"
+        ]
+      },
+      {
+        "id": "M15",
+        "name": "guard_rule_a_single_literal_removed",
+        "why": "delete the one-literal rule from the second-authority scanner",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "killers_that_failed": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ]
+      },
+      {
+        "id": "M16",
+        "name": "guard_rule_b_scope_aggregate_removed",
+        "why": "delete the per-scope aggregate rule, reopening the split/concatenated evasion",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "killers_that_failed": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_40c_the_guard_rules_actually_fire_on_evasions_and_spare_legitimate_code"
+        ]
+      },
+      {
+        "id": "M17",
+        "name": "normaliser_splits_contractions_again",
+        "why": "revert the apostrophe fix so \"won't fade\" becomes \"won t fade\" and bypasses the policy",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms",
+          "test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word"
+        ],
+        "killers_that_failed": [
+          "test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms",
+          "test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_52_apostrophe_forms_are_blocked_exactly_like_the_plain_forms",
+          "test_53_normalisation_collapses_the_apostrophe_rather_than_splitting_the_word",
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record"
+        ]
+      },
+      {
+        "id": "M18",
+        "name": "medical_claim_downgraded_to_factual",
+        "why": "let an ordinary product fact clear a clinical claim",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable"
+        ],
+        "killers_that_failed": [
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ]
+      },
+      {
+        "id": "M19",
+        "name": "drop_an_imported_compliance_phrase",
+        "why": "leave a phrase the compliance validator hard-fails unscreened on the Phase 6 surfaces",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ],
+        "killers_that_failed": [
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_00_class_counts_are_pinned_so_a_silent_reclassification_is_caught",
+          "test_01_every_hard_block_phrase_survives_owner_self_authorisation",
+          "test_54_every_hard_blocked_compliance_phrase_has_a_canonical_record",
+          "test_55_the_imported_medical_and_guarantee_claims_are_never_clearable",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface",
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ]
+      },
+      {
+        "id": "M20",
+        "name": "strip_provenance_from_records",
+        "why": "drop the source field, so an imported phrase is indistinguishable from a native one",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ],
+        "killers_that_failed": [
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_60_the_absorbed_phrases_name_the_file_they_came_from"
+        ]
+      },
+      {
+        "id": "M21",
+        "name": "unregister_a_data_phrase_authority",
+        "why": "let a phrase-bearing data file go unregistered, reopening the silent-third-authority path",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_57_every_data_file_carrying_a_phrase_list_is_registered"
+        ],
+        "killers_that_failed": [
+          "test_57_every_data_file_carrying_a_phrase_list_is_registered"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_57_every_data_file_carrying_a_phrase_list_is_registered"
+        ]
+      },
+      {
+        "id": "M8",
+        "name": "bypass_one_live_surface",
+        "why": "drop the A+ surface out of the policy, leaving the others covered",
+        "verdict": "KILLED",
+        "source_changed": true,
+        "declared_killers": [
+          "test_18_aplus_surface_blocks_and_reached_the_path"
+        ],
+        "killers_that_failed": [
+          "test_18_aplus_surface_blocks_and_reached_the_path"
+        ],
+        "declared_text_present": true,
+        "all_failed_tests": [
+          "test_18_aplus_surface_blocks_and_reached_the_path",
+          "test_19_acrylic_vocabulary_reaches_the_specialised_surfaces",
+          "test_56_a_medical_claim_is_blocked_on_every_phase6_surface"
+        ]
+      }
+    ],
+    "survivors": [],
+    "restored_byte_identical": true,
+    "eol_handling": {
+      "files_are_crlf_on_this_checkout": {
+        "aplus_builder.py": true,
+        "page_auditor.py": true,
+        "claim_evidence.py": true,
+        "unsafe_claim_policy.py": true,
+        "test_unsafe_claim_policy.py": false
+      },
+      "method": "anchors matched against newline-normalised logical text; written back in the file's own EOL; exact original raw bytes restored and verified by sha256",
+      "anchors_loosened": false
+    }
+  },
+  "replay_plan": {
+    "schema": "phase6d-unsafe-claim-replay-plan-v1",
+    "current_head_can_be_final": false,
+    "order": [
+      "Owner confirms the two classification deviations, especially tracking.",
+      "Independent review of this branch by an agent that did not write it, or /code-review ultra.",
+      "Keep 24edbae frozen until this policy branch is accepted.",
+      "Resolve merge order with Phase 6B and Phase 6C.",
+      "Replay the accepted policy patch onto post-6C main if needed.",
+      "Replay the six-line 24edbae evidence-plumbing patch onto the policy-hardened base.",
+      "Rerun: 9 Phase 6D tests, 5 original mutants, 33 policy tests, 8 policy mutants, matched differential, and the phrase policy audit.",
+      "Independent review on the exact replayed head, then merge and tag only that head."
+    ],
+    "hazards": [
+      "Proof text quotes line numbers; any 6B/6C change to page_auditor.py shifts them. Re-derive.",
+      "The mutation harness now normalises EOL. Do not 'simplify' it back to raw matching.",
+      "24edbae's six-line patch touches _audit_item_highlights and _audit_aplus_evidence signatures, which this branch ALSO changes. They will conflict textually even though they agree in intent: both add claim_evidence to those two functions. Expect to resolve by keeping this branch's version, which already threads the evidence."
+    ]
+  }
+}

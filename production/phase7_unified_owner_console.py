@@ -60,6 +60,7 @@ from production import phase7_connected_public_research as RESEARCH # noqa: E402
 from production import phase7_connected_research_watchlists as WATCH# noqa: E402  accepted 7.11 authority
 from production import phase7_owner_notification_delivery as NOTIFY # noqa: E402  accepted 7.12 authority
 from production import phase7_owner_next_action as NEXT             # noqa: E402  7.14 guidance read model
+from production import phase7_workflow_stage_model as WSM           # noqa: E402  Dashboard V1 stage engine
 from core import network_policy as NP                               # noqa: E402  the ONE network authority
 from core import diagnostics as DIAG                                # noqa: E402  redacted local diagnostics
 from core import money as MONEY                                     # noqa: E402  Decimal authority (parity import)
@@ -122,7 +123,7 @@ OWNER_LABELS = {
 # Owner-facing names for the integrated modules — the internal key is never the visible label.
 MODULE_OWNER_LABELS = {
     "analysis": "Analysis & Decisions", "research": "Research", "watchlists": "Watchlists & Alerts",
-    "notifications": "Notifications", "backup": "Backup & Recovery",
+    "notifications": "Notifications", "backup": "Backup & Recovery", "workflow": "Workflow",
 }
 
 # ---------------------------------------------------------------- limits
@@ -773,6 +774,125 @@ def build_backup_section(config, *, now):
             "reason": None}
 
 
+def _common_git_dir(repo_root):
+    """The git directory that actually holds refs/tags and packed-refs.
+
+    In an ordinary checkout, <repo_root>/.git is that directory directly. In a `git worktree`
+    checkout (this project uses worktrees routinely for review/testing -- see this repo's own
+    history), <repo_root>/.git is instead a FILE containing "gitdir: <path>" pointing at a
+    per-worktree private directory that holds only THIS worktree's HEAD/index; the actual shared
+    refs live in the directory named by that private directory's own "commondir" file (a path
+    relative to it, typically "../.."). Getting this wrong doesn't just miss tags in a test
+    fixture -- it makes accepted_tag_prefix checks silently see zero tags for any stage launched
+    from a worktree, misreporting every accepted stage as NOT_ACCEPTED."""
+    dotgit = os.path.join(repo_root, ".git")
+    if os.path.isdir(dotgit):
+        return dotgit
+    if not os.path.isfile(dotgit):
+        return None
+    try:
+        with open(dotgit, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+    except OSError:
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    worktree_gitdir = content[len("gitdir:"):].strip()
+    if not os.path.isabs(worktree_gitdir):
+        worktree_gitdir = os.path.join(repo_root, worktree_gitdir)
+    commondir_file = os.path.join(worktree_gitdir, "commondir")
+    if os.path.isfile(commondir_file):
+        try:
+            with open(commondir_file, "r", encoding="utf-8") as f:
+                rel = f.read().strip()
+        except OSError:
+            return worktree_gitdir
+        return os.path.normpath(os.path.join(worktree_gitdir, rel))
+    return worktree_gitdir
+
+
+def _repo_tags(repo_root):
+    """Every git tag name, by reading ref FILES only (never a subprocess) -- the same discipline
+    _repo_commit already uses, and the console's own zero-subprocess counter depends on staying
+    true. Loose tags live one-file-per-tag under <common-git-dir>/refs/tags/; this repo's 60+ tags
+    mostly live packed in <common-git-dir>/packed-refs as "<sha> refs/tags/<name>" lines alongside
+    branch entries, which must be excluded by their differing refs/heads/ prefix."""
+    git = _common_git_dir(repo_root)
+    if git is None:
+        return []
+    tags = []
+    loose_dir = os.path.join(git, "refs", "tags")
+    if os.path.isdir(loose_dir):
+        for root, _dirs, files in os.walk(loose_dir):
+            for f in files:
+                rel = os.path.relpath(os.path.join(root, f), loose_dir)
+                tags.append(rel.replace(os.sep, "/"))
+    packed = os.path.join(git, "packed-refs")
+    if os.path.isfile(packed):
+        try:
+            with open(packed, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith("#") or line.startswith("^") or " " not in line:
+                        continue
+                    _sha, name = line.split(" ", 1)
+                    name = name.strip()
+                    if name.startswith("refs/tags/"):
+                        tags.append(name[len("refs/tags/"):])
+        except OSError:
+            pass
+    return sorted(set(tags))
+
+
+def build_workflow_section(config, *, now):
+    """Dashboard V1 Workflow -- the 13-stage pipeline overview (DASHBOARD-V1-SPEC.md). Read-only
+    and purely additive: no existing section, the console readiness banner, module list, or any
+    action changes because this section exists -- it is a new top-level model field only.
+
+    Stage state comes from production.phase7_workflow_stage_model, NOT production.pipeline_status
+    (Branch A -- unmerged, HOLD pending independent re-audit); see that module's own docstring for
+    why the duplication is deliberate and disclosed rather than an accident.
+
+    The stage table's paths are relative to the PRODUCT workspace root (holds both phase6/ and
+    phase7/ as siblings), which is workspace_root's own parent -- config.workspace_root is scoped
+    to "the phase 7.3-7.12 workspaces" (DEFAULT_WORKSPACE_ROOT = runs/T2/phase7), one level below.
+    """
+    product_root = os.path.dirname(config.workspace_root.rstrip(os.sep))
+    if not os.path.isdir(product_root):
+        return {"status": MOD_UNAVAILABLE, "reason": "product workspace not present",
+                "product_root": product_root, "stages": [],
+                "counts": {"modeled": 0, "ready": 0, "blocked": 0}}
+    tags = _repo_tags(config.repo_root)
+    table = WSM.workflow_stage_table()
+    results = WSM.resolve_all(table, product_root, tags=tags)
+    stages = []
+    for spec in table:
+        r = results[spec.stage_id]
+        blocked_by = ([up for up in spec.blocking_stage_ids
+                      if results.get(up, {}).get("state") != WSM.READY]
+                     if r["state"] == WSM.BLOCKED else [])
+        stages.append({
+            "stage_id": spec.stage_id, "label": spec.name, "group": spec.group, "modeled": True,
+            "state": r["state"], "components": r["components"], "blocked_by": blocked_by,
+            "command": spec.command, "acceptance_required": bool(spec.accepted_tag_prefix),
+            "informational_reason": None,
+        })
+    for nt in WSM.NOT_TRACKED_STAGES:
+        stages.append({
+            "stage_id": nt["stage_id"], "label": nt["name"], "group": nt["group"],
+            "modeled": False, "state": None, "components": {}, "blocked_by": [],
+            "command": None, "acceptance_required": False,
+            "informational_reason": nt["note"],
+        })
+    stages.sort(key=lambda s: s["stage_id"])
+    ready = sum(1 for s in stages if s["state"] == WSM.READY)
+    blocked = sum(1 for s in stages if s["state"] == WSM.BLOCKED)
+    status = (MOD_READY if ready == len(table) else
+             MOD_READY_PARTIAL if ready else MOD_READY_EMPTY)
+    return {"status": status, "reason": None, "product_root": product_root, "stages": stages,
+            "counts": {"modeled": len(table), "ready": ready, "blocked": blocked}}
+
+
 def build_system_section(config, *, now, audit_state):
     phase_dirs = {}
     for stage in ("7.3", "7.4", "7.5", "7.6", "7.7", "7.8", "7.9", "7.10", "7.11", "7.12"):
@@ -938,6 +1058,11 @@ def build_console_model(config, *, now=None, audit=None):
         "watchlists": build_watchlist_section(config, now=now),
         "notifications": build_notification_section(config, now=now),
         "backup": build_backup_section(config, now=now),
+        # Deliberately NOT read by resolve_console_readiness / build_overview / build_modules --
+        # those enumerate the five sections above by name and predate this one. Wiring "workflow"
+        # into the console readiness banner or the module-card list is a UI-scope decision for
+        # Step 2D/2C, not a silent side effect of this section existing. See build_workflow_section.
+        "workflow": build_workflow_section(config, now=now),
     }
     freshness = build_freshness(config, now=now)
     readiness = resolve_console_readiness(sections, audit_state)
@@ -968,6 +1093,7 @@ SOURCE_AUTHORITIES = {
     "backup": "production.phase7_connected_backup_recovery (Phase 7.9)",
     "network_policy": "core.network_policy",
     "next_action": "production.phase7_owner_next_action (Phase 7.14, presentation only)",
+    "workflow": "production.phase7_workflow_stage_model (DASHBOARD-V1-SPEC.md, not Branch A)",
 }
 
 

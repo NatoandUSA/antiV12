@@ -1864,8 +1864,12 @@ class TestConsoleWiring(unittest.TestCase):
             self.assertIn('"%s"' % key, read(CONSOLE_PATH), key)
 
     def test_045f_module_owner_labels_declared(self):
+        # "workflow" (DASHBOARD-V1-SPEC.md's 13-stage overview) was added deliberately -- see
+        # production.phase7_workflow_stage_model / build_workflow_section. Same update already
+        # made to test_phase7_13_unified_owner_console.test_179_module_status_count.
         self.assertEqual(set(UC.MODULE_OWNER_LABELS),
-                         {"analysis", "research", "watchlists", "notifications", "backup"})
+                         {"analysis", "research", "watchlists", "notifications", "backup",
+                          "workflow"})
 
     def test_045g_favicon_served(self):
         self.assertIn("favicon.svg", UC.STATIC_FILES)

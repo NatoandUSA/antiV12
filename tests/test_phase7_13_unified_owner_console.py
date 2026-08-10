@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import threading
 import unittest
 import urllib.error
@@ -42,6 +43,7 @@ from production import phase7_connected_backup_recovery as BACKUP  # noqa: E402
 from production import phase7_connected_public_research as R       # noqa: E402
 from production import phase7_connected_research_watchlists as W   # noqa: E402
 from production import phase7_owner_notification_delivery as N     # noqa: E402
+from production import phase7_workflow_stage_model as WSM          # noqa: E402
 import network_policy as NP                                        # noqa: E402
 import diagnostics as DIAG                                         # noqa: E402
 import test_phase7_4_owner_dashboard as T4                         # noqa: E402
@@ -1912,8 +1914,12 @@ class TestOverviewCounts(Base):
         self.ov = UC.build_console_model(self.cfg(self.full_ws()), now=NOW())["overview"]
 
     def test_179_module_status_count(self):
+        # "workflow" (DASHBOARD-V1-SPEC.md's 13-stage overview) was added deliberately -- see
+        # build_workflow_section. Its own build_console_model call is exercised separately; this
+        # guard now protects against the NEXT unintended module appearing, not this one.
         self.assertEqual(set(self.ov["module_status"]),
-                         {"analysis", "research", "watchlists", "notifications", "backup"})
+                         {"analysis", "research", "watchlists", "notifications", "backup",
+                          "workflow"})
 
     def test_180_pending_decisions_count(self):
         self.assertIn("pending_decisions", self.ov)
@@ -2286,6 +2292,150 @@ class TestSanity(Base):
     def test_no_browser_flag_is_noop(self):
         a = UC.build_arg_parser().parse_args(["--no-browser", "serve"])
         self.assertTrue(a.no_browser)
+
+
+class WorkflowSection(Base):
+    """production.phase7_workflow_stage_model wired into build_console_model
+    (build_workflow_section). Step 2C: the API model is the sole authority for stage state -- the
+    frontend must be able to trust these fields without recomputing anything."""
+
+    def test_empty_workspace_is_all_not_started_or_blocked_no_crash(self):
+        ws = self.newroot()   # ws = .../runs/T2/phase7; no phase6/, no phase7/7.x fixtures at all
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        wf = model["sections"]["workflow"]
+        self.assertEqual(wf["status"], UC.MOD_READY_EMPTY)
+        self.assertEqual(wf["counts"], {"modeled": 11, "ready": 0, "blocked": wf["counts"]["blocked"]})
+        modeled_states = {s["stage_id"]: s["state"] for s in wf["stages"] if s["modeled"]}
+        self.assertEqual(set(modeled_states), {2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13})
+        for state in modeled_states.values():
+            self.assertIn(state, (WSM.NOT_STARTED, WSM.BLOCKED))
+
+    def test_stage_1_and_7_present_but_not_modeled(self):
+        ws = self.newroot()
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        by_id = {s["stage_id"]: s for s in model["sections"]["workflow"]["stages"]}
+        for sid in (1, 7):
+            self.assertFalse(by_id[sid]["modeled"], sid)
+            self.assertIsNone(by_id[sid]["state"], sid)
+            self.assertTrue(by_id[sid]["informational_reason"], sid)
+        self.assertEqual(sorted(by_id), list(range(1, 14)))
+
+    def test_full_synthetic_pipeline_resolves_every_modeled_stage_ready(self):
+        """Populate every real path build_workflow_section resolves against -- PRODUCT root
+        (parent of workspace_root, since workspace_root itself is scoped to phase7/7.x), in
+        dependency order, each write strictly newer than the last."""
+        ws = self.newroot()                              # .../runs/T2/phase7
+        product_root = os.path.dirname(ws)               # .../runs/T2
+        rels = [
+            "US_nurse.Xray.10.08.2026.xlsx", "ASIN-BATCHES.json",
+            "US_nurse.Cerebro.10.08.2026.xlsx", "CEREBRO-EVIDENCE-MATRIX.json",
+            "MASTER-KEYWORDS-LEAN.json",
+            "phase6/6B/KEYWORD-ALLOCATION-MAP.json",
+            "phase6/6C/PRODUCT-DETAIL-PAGE.json", "phase6/6D/BASIC-APLUS-CONTENT.json",
+            "phase6/6E/LISTING-IMAGE-PROMPTS.md", "phase6/6E/APLUS-IMAGE-PROMPTS.md",
+            "phase6/6E/CREATIVE-BRIEF.md",
+            "phase7/7.1E/final/PHASE7-1E-READINESS.json", "phase7/7.1E/final/MANUAL-ENTRY-GUIDE.md",
+            "phase7/7.2/final/PHASE7-REPORT-ANALYSIS-READINESS.json",
+            "phase7/7.3/promoted/analysis.json", "phase7/7.3/promoted/owner-decision-queue.csv",
+        ]
+        for i, rel in enumerate(rels):
+            p = os.path.join(product_root, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("{}")
+            t = time.time() - (len(rels) - i)
+            os.utime(p, (t, t))
+
+        # 7.1E's accepted_tag_prefix needs a real matching tag; this repo's own is a checkpoint
+        # only (confirmed earlier this session: no phase7-1e-accepted-* tag exists), so this
+        # assertion is expected to name that ONE stage as the reason, not a crash or a wrong path.
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        wf = model["sections"]["workflow"]
+        by_id = {s["stage_id"]: s for s in wf["stages"] if s["modeled"]}
+        non_ready = {sid: s["state"] for sid, s in by_id.items() if s["state"] != WSM.READY}
+        self.assertEqual(non_ready, {11: WSM.NOT_ACCEPTED},
+                         "every path must resolve except Stage 11's real, current NOT_ACCEPTED tag")
+
+    def test_composite_component_detail_survives_the_model(self):
+        """Only the listing half of Stage 9 -- the exact "partial progress" case the product
+        decision named. Stage 9's components inherit blocking_stage_ids=(8,), and Stage 8 itself
+        needs Stage 6, which needs 3+4 -- the whole chain must be genuinely READY first, or
+        "listing" would report BLOCKED instead of READY for a real reason (a first attempt at
+        this test populated only Stage 8's own file and got exactly that BLOCKED, correctly)."""
+        ws = self.newroot()
+        product_root = os.path.dirname(ws)
+        chain = [
+            "US_nurse.Xray.10.08.2026.xlsx", "ASIN-BATCHES.json",
+            "US_nurse.Cerebro.10.08.2026.xlsx", "CEREBRO-EVIDENCE-MATRIX.json",
+            "MASTER-KEYWORDS-LEAN.json", "phase6/6B/KEYWORD-ALLOCATION-MAP.json",
+        ]
+        for i, rel in enumerate(chain):
+            p = os.path.join(product_root, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("{}")
+            t = time.time() - (len(chain) - i) - 10   # strictly before stage 9's own files below
+            os.utime(p, (t, t))
+        p = os.path.join(product_root, "phase6", "6C", "PRODUCT-DETAIL-PAGE.json")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("{}")
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        stage9 = next(s for s in model["sections"]["workflow"]["stages"] if s["stage_id"] == 9)
+        self.assertEqual(stage9["state"], WSM.NOT_STARTED)
+        self.assertEqual(stage9["components"], {"listing": WSM.READY, "aplus": WSM.NOT_STARTED})
+
+    def test_json_serializable(self):
+        """The API returns this over HTTP -- every field must survive json.dumps unchanged."""
+        ws = self.newroot()
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        round_tripped = json.loads(json.dumps(model["sections"]["workflow"]))
+        self.assertEqual(round_tripped, model["sections"]["workflow"])
+
+    def test_workflow_appears_in_generic_module_status_without_a_missing_label(self):
+        ws = self.newroot()
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        self.assertIn("workflow", model["overview"]["module_status"])
+        self.assertIn("workflow", model["overview"]["module_labels"])
+        self.assertNotIn("workflow", model["overview"]["blocked_modules"],
+                         "build_workflow_section never returns MOD_BLOCKED at the section level")
+
+    def test_source_authorities_names_the_real_module_not_branch_a(self):
+        self.assertIn("phase7_workflow_stage_model", UC.SOURCE_AUTHORITIES["workflow"])
+        self.assertNotIn("pipeline_status", UC.SOURCE_AUTHORITIES["workflow"])
+
+
+class RepoTagsFileRead(Base):
+    """_repo_tags reads git ref files only -- never a subprocess, the same discipline
+    _repo_commit already uses and the console's own zero-subprocess counter depends on."""
+
+    def test_synthetic_loose_and_packed_tags_both_found(self):
+        git = os.path.join(self.tmp, "repo", ".git")
+        os.makedirs(os.path.join(git, "refs", "tags"))
+        with open(os.path.join(git, "refs", "tags", "loose-tag-1"), "w", encoding="utf-8") as f:
+            f.write("deadbeef\n")
+        with open(os.path.join(git, "packed-refs"), "w", encoding="utf-8") as f:
+            f.write("# pack-refs with: peeled fully-peeled sorted\n"
+                    "cafef00d refs/tags/packed-tag-1\n"
+                    "0000000000000000000000000000000000000000 refs/heads/main\n")
+        tags = UC._repo_tags(os.path.dirname(git))
+        self.assertEqual(tags, ["loose-tag-1", "packed-tag-1"])
+
+    def test_branch_refs_in_packed_refs_are_excluded(self):
+        git = os.path.join(self.tmp, "repo2", ".git")
+        os.makedirs(git)
+        with open(os.path.join(git, "packed-refs"), "w", encoding="utf-8") as f:
+            f.write("abc123 refs/heads/main\nabc124 refs/heads/feature-x\n")
+        self.assertEqual(UC._repo_tags(os.path.dirname(git)), [])
+
+    def test_missing_git_directory_returns_empty_not_an_error(self):
+        self.assertEqual(UC._repo_tags(os.path.join(self.tmp, "nonexistent")), [])
+
+    def test_real_repo_finds_a_known_accepted_tag(self):
+        """Sanity check against THIS repo's real .git, not only a synthetic fixture -- packed-refs
+        format details (comments, peeled lines) can differ from a hand-built one."""
+        tags = UC._repo_tags(ROOT)
+        self.assertIn("phase7-13-unified-owner-console-accepted-6114533", tags)
 
 
 if __name__ == "__main__":

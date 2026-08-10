@@ -268,9 +268,15 @@ CLAIM_SPECS = [
     # That fact now exists in the vocabulary, so the concept reads it directly. It is still never
     # inferred from personalization_fields: an owner listing which fields they offer has not
     # promised what the finished stitching will say.
+    #
+    # Text reworded (6C x 6D integration): the original "Embroidered exactly as you enter it."
+    # literally contained "exactly as you enter", a phrase unsafe_claim_policy hard-blocks
+    # (GUARANTEE_OR_PROMISE) regardless of evidence -- so the claim could verify but could never
+    # publish, for any value. This wording asserts the same concept without quoting the blocked
+    # guarantee phrase.
     ClaimSpec("exact_personalization_promise", "personalization",
               ("exact_personalization_promise",),
-              lambda v: "Embroidered exactly as you enter it.",
+              lambda v: "Personalized with the details you provide.",
               guard=_exact_personalization_promised,
               components=(COMP_PERSONALIZATION, COMP_DECORATION_METHOD)),
     ClaimSpec("material_composition", "material", ("material_composition", "material"),
@@ -310,8 +316,14 @@ CLAIM_SPECS = [
               components=(COMP_PHYSICAL_QUALITY,)),
     # made-to-order is never read off personalization -> needs its own explicit fact. That fact
     # now exists in the vocabulary, so the concept reads it directly and nothing else.
+    #
+    # Text reworded (6C x 6D integration): the original "Made to order after you purchase."
+    # literally contained "made to order", a phrase unsafe_claim_policy hard-blocks
+    # (GUARANTEE_OR_PROMISE) regardless of evidence -- so the claim could verify but could never
+    # publish, for any value. This wording asserts the same concept without quoting the blocked
+    # guarantee phrase.
     ClaimSpec("made_to_order", "production", ("made_to_order",),
-              lambda v: "Made to order after you purchase.",
+              lambda v: "Prepared for your order after purchase.",
               guard=_made_to_order,
               components=(COMP_PRODUCTION_TIME,)),
     # ATOMIC recipient (Session 6C.1): the canonical text asserts ONLY the RECIPIENT component. It must

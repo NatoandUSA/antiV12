@@ -414,11 +414,15 @@ class OwnerFactVocabulary(unittest.TestCase):
             self.assertIn(field, PFL.KNOWN_FIELDS)
 
     def test_supplying_them_clears_the_bullets_that_asked_for_them(self):
+        # Values deliberately avoid the literal phrases "made to order" / "embroidered exactly" --
+        # those are canonical GUARANTEE_OR_PROMISE phrases in unsafe_claim_policy, and owner-entered
+        # text containing them is blocked at ingestion regardless (owner text is never evidence).
+        # These affirm the same facts without quoting a hard-blocked phrase.
         facts = json.loads(json.dumps(FULL_FACTS))
-        facts["product"]["made_to_order"] = {"value": "made to order after purchase",
+        facts["product"]["made_to_order"] = {"value": "custom made after your order",
                                              "status": "VERIFIED"}
         facts["product"]["exact_personalization_promise"] = {
-            "value": "your name embroidered exactly as you type it", "status": "VERIFIED"}
+            "value": "your name added to the design exactly as typed", "status": "VERIFIED"}
         bl, _ = bullets_of(build_chain(facts))
         still_asking = sorted({m for b in bl for m in (b.get("missing_requirements") or [])}
                               & {"made_to_order", "exact_personalization_promise"})

@@ -1,0 +1,211 @@
+{
+ "document_type": "phase6c_evidence_aware_copy_gate_proof",
+ "project": "AMZ-FBM-Toolkit",
+ "generated_at": "2026-08-05",
+ "branch": "hotfix-phase6c-evidence-aware-title-validation",
+ "base_commit": "85e67a6",
+ "target_commit": "3941652",
+ "merge_status": "UNMERGED - blocked pending the Phase 6B verdict; replay onto main if it moves",
+ "acceptance_status": "NOT_ACCEPTED - self-reviewed, no independent verification",
+
+ "supersedes": {
+  "document": "AMZ_FBM_PHASE6A_OWNER_TRUTH_AND_BULLET_DIAGNOSTIC_DECISION_2026-08-05",
+  "why": "That plan treated real photographs as the prerequisite for bullet generation and ordered a Phase 6A owner-truth hotfix BEFORE the bullet diagnostic. Measurement reversed both. Its matrix cases 3 and 4 were unconstructible -- Phase 6 has no asset ingestion path at all -- and running the equivalent through the verified_assets API parameter showed assets are INERT for bullets: output byte-identical with and without all seven. Building the 6A truth fix first would have encoded 'three real assets required' as the honest owner message, which is wrong twice over: assets do not gate bullets, and 6A's seven-spec taxonomy is not 6D/6E's three-name taxonomy."
+ },
+
+ "defect": {
+  "summary": "Phase 6C's visible-copy gate read vocabulary where it claimed to read evidence.",
+  "mechanism": "_is_safe_copy kept [0] of KAP._classify_keyword's (verdict, concept, reason_code) and discarded the concept. It therefore asked 'does this copy mention a physical attribute?' while three separate comments in the module claimed it asked 'does this copy lean on an UNVERIFIED concept?'. Those questions have identical answers only while no fact is verified -- the condition every acceptance fixture ran under.",
+  "consequence": "With every product fact VERIFIED the bullet engine produced five complete bullets and Phase 6C blanked all five. FIT_SIZE_COLOR_ORDER_ACCURACY had NO missing requirements and was blanked anyway. The better the owner's evidence, the less copy survived.",
+  "second_defect_found_by_auditing_the_mutation_plan": "The bullet fix alone left the stage still crashing. validate_title_options rejects 'personalized'/'embroider'/'cotton'/'custom '/'monogram' unconditionally, while title_engine ADDS 'Embroidered'/'Personalized' only when their claims are VERIFIED. So write_phase6c_artifacts still raised Phase6CAssemblyError on a fully-verified workspace. This was found because a required mutant -- 'restore traceback' -- had nothing to restore.",
+  "why_the_earlier_mutation_plan_could_have_accepted_a_crashing_stage": "The mutation set and differential were scoped to the bullet gate. Every one would have passed while write_phase6c_artifacts still aborted, producing a complete acceptance packet for a stage that could not finish. Auditing each mutant against an existing killer test BEFORE running the harness is what surfaced it."
+ },
+
+ "measured_outcome": {
+  "measured_on": "A SYNTHETIC HERMETIC FIXTURE, not a real product. The workspace is built by the test's build_chain() with placeholder facts, and every fact is marked VERIFIED by the fixture rather than by an owner attesting to a real garment. The numbers below therefore prove the GATE behaves correctly given verified evidence; they do NOT prove a real listing.",
+  "not_yet_measured": "The same run against a real non-T2 workspace with fresh Helium 10 exports and the owner's own verified facts. That is the pilot, and it has not run. Until it does, '4 of 5 bullets' is a statement about the code path, not about any product.",
+  "before": {"title": "assembly OK, write ABORTED (Phase6CAssemblyError)", "publishable_bullets": 0},
+  "after": {"title": "Nurse Sweatshirt", "publishable_bullets": "4 of 5", "write": "OK"},
+  "remaining_empty_bullet": "EMBROIDERY_OR_DECORATION_PROOF - blocked inside bullet_engine.JOB_CONCEPTS, not by this gate; see boundaries",
+  "corroborating_non_fixture_observation": "The same 0-bullet starting condition was independently observed on a throwaway CLONE of the real runs/T2 workspace during recon, using the owner's actual keyword source. That established the defect on real data. The post-fix 4-of-5 figure was not re-measured there, because runs/T2 is quarantined and must not be used for live guidance."
+ },
+
+ "commits": {
+  "9a68b37": "test - failing first; the gate reads vocabulary where it claims to read evidence",
+  "355c8cd": "feat - gated_concepts() + _copy_gate(): every concept, own claim, surface-bound; structured blocking_concepts",
+  "f6a2ee6": "test - unknown-token and overlapping-concept semantics pinned by measurement",
+  "2123bd1": "feat - TITLE surface carries market identity only, so the stage can finish",
+  "a776c9e": "test - surface policy, shared-engine contract, and a mutation gate that bites",
+  "3941652": "feat - the two demonstrated owner facts get a field to live in, and their claim wiring"
+ },
+
+ "design": {
+  "gated_concepts": "Enumerates EVERY gated concept in lexicon order, reusing the Phase 6B classifier's own vocabulary and tokeniser rather than copying them, so a lexicon edit cannot leave this gate reading a stale word list. _classify_keyword returns only the highest-ranked hit; a gate built on it verifies that one concept and publishes copy whose second, unverified concept was never examined.",
+  "copy_gate": "Each concept is checked against its OWN claim via product_workspace._concept_verified -- the existing authority; this module never decides what 'verified' means. No import cycle: product_detail_page already imported product_workspace.",
+  "surfaces": "Surface policy is evaluated separately from evidence. TITLE = market identity only, any gated concept blocks whatever the evidence says. BODY = bullets and highlights, where a verified concept may be stated. Without this separation, making bullets evidence-aware would have silently reversed the owner's pure-identity title decision at the title call site.",
+  "structured_blocks": "A blocked bullet carries blocking_concepts: [{concept, reason_code, evidence_state, next_action}]. 'CLAIM_EVIDENCE_MISSING' is not something an owner can act on."
+ },
+
+ "unknown_token_contract": {
+  "position": "INHERITED, NOT REDEFINED. gated_concepts' fallthrough to (None, EXC_PRODUCT_FACT_UNKNOWN) is deliberately identical to _classify_keyword's own final return. Narrowing it inside 6C would make this stage strictly MORE PERMISSIVE than the Phase 6B authority it borrows the entire vocabulary from -- a divergence, not a fix.",
+  "measured_behaviour": {
+   "nurse sweatshirt": "[] - pure market identity, no gate entry",
+   "sweatshirt for the nurse": "[] - connectors alone never manufacture a concept",
+   "comfortable nurse sweatshirt": "[(differentiator, OWNER_FACT_REQUIRED)] - named and actionable",
+   "premium quality nurse sweatshirt": "[(differentiator, OWNER_FACT_REQUIRED)]",
+   "nurse sweatshirt with quantumweave nanofibre": "[(None, PRODUCT_FACT_UNKNOWN)] - fails closed"
+  },
+  "conclusion": "The feared over-block does not occur: the differentiator vocabulary claims quality adjectives before the fallthrough can. Blocking 'comfortable' is correct -- it is an unsubstantiated product claim. Unknown and unverified remain distinguishable, and characterization tests fail loudly if a future lexicon edit makes common copy fall through."
+ },
+
+ "overlap_policy": {
+  "term": "monogram",
+  "concepts": ["decoration_method", "personalization_fields"],
+  "policy": "ALL (intersection) - both claims must be VERIFIED before such copy publishes",
+  "status": "EXPLICIT AND CONSERVATIVE, not an accidental consequence of duplicate vocabulary membership. Pinned by test_monogram_needs_both_of_its_concepts_verified and by mutant M2+M7(b).",
+  "future": "A later vocabulary-policy review may decide some overlapping terms warrant ANY or a dedicated compound concept. Deliberately not redesigned here."
+ },
+
+ "title_surface_policy": {
+  "rule": "TITLE accepts components {identity, audience, brand}. decoration, personalization and differentiator stay out even when VERIFIED.",
+  "rationale": "A policy about the field, not a judgement about the evidence. The same attributes are carried by bullets, A+ and backend terms once the BODY surface admits them.",
+  "consequence": "No controlled term can reach a title, so validate_title_options' blacklist becomes a backstop that must never fire in production.",
+  "commercial_disclosure": "The A_CORE keyword 'personalized nurse sweatshirt' therefore stays out of the title and lives in backend terms. This is unchanged from the pre-fix behaviour -- the fix does not make it worse -- but it is a real ranking trade-off the owner chose explicitly."
+ },
+
+ "backstop_observability": {
+  "problem": "Under the pure-identity filter, production title assembly can never reach the controlled-term blacklist. A mutant disabling it would have survived every other test in the file. An unexercised backstop is indistinguishable from dead code -- the exact defect this project already found in Phase 6D's uncalled _is_safe_copy.",
+  "solution": "test_the_term_blacklist_backstop_still_fires_when_reached constructs a forbidden candidate INSIDE the test, without weakening production filtering, and asserts the validator returns a structured error list rather than raising. test_production_titles_never_reach_the_backstop asserts the complement.",
+  "mutant": "M4 disables the blacklist and is killed."
+ },
+
+ "shared_engine_contract": {
+  "change": "listing/title_engine.build_titles gains an optional allowed_component_ids.",
+  "compatibility": "None (the default) is byte-identical to omitting the parameter, verified by test_default_is_byte_identical_to_not_passing_the_parameter. Phase 5's listing_generator.py:232 call is unchanged and does not move.",
+  "empty_set": "Means identity only, NOT a silent fall back to legacy selection.",
+  "unknown_ids": "Match nothing and do not raise.",
+  "determinism": "Filtering is deterministic.",
+  "bug_found_in_this_change_by_the_contract": "identity_text = comps[0] would IndexError on a component set omitting 'identity', while the docstring written alongside it claimed identity is never filtered out. Identity is now structurally retained, which makes the docstring true. This was my own code asserting something the implementation did not deliver -- the same defect class this branch exists to fix."
+ },
+
+ "vocabulary_fields": {
+  "added": ["made_to_order", "exact_personalization_promise"],
+  "producer": "the owner, in <workspace>/product-facts.json",
+  "source_of_truth": "listing/product_fact_loader.SCALAR_FIELDS",
+  "consumers": [
+   "listing/bullet_engine.JOB_CONCEPTS - PRODUCT_AND_PERSONALIZATION and CARE_PRODUCTION_PACKAGING_DELIVERY",
+   "listing/description_engine - personalization and production sections",
+   "listing/a_plus_templates - made_to_order key",
+   "listing/aplus_module_registry - exact_personalization_promise conditional concept",
+   "production/product_workspace - both tracked as PRIORITY_OPTIONAL owner requirements"
+  ],
+  "why_they_were_missing": "Both were already ClaimSpecs in listing/claim_evidence and already required by the consumers above, but absent from the input vocabulary, so bullets asked the owner for facts the product-facts file had no field to express. aplus_module_registry states it in a comment: 'exact_personalization_promise has no evidence field, so it can never be verified here'.",
+  "claim_wiring": "Adding the fields alone was insufficient and the test still failed. Both ClaimSpecs carried evidence_fields=() with comments reading 'needs its own explicit fact'. Per the ClaimSpec docstring an empty tuple encodes 'the current fact schema carries no verifiable source for this concept' -- a placeholder awaiting the field. Each concept now reads its own field and nothing else; the no-inference rule is untouched.",
+  "backward_compatibility": "Absent means UNKNOWN exactly as for every other field; a workspace written before this change still loads. Tested by test_artifacts_without_them_still_load.",
+  "scope": "Only these two fields. The vocabulary is not otherwise changed."
+ },
+
+ "mutation_gate": {
+  "run_at_head": "3941652",
+  "note": "An earlier run at a776c9e is superseded; the vocabulary commit came afterwards, so only this run covers the shipped head.",
+  "activation_contract": [
+   "the exact target text must exist before editing, else NOT APPLICABLE rather than a silent pass",
+   "the file must differ after mutation (asserted on sha256)",
+   "the NAMED test must fail AND its failure text must match the intended defect",
+   "a mutant killed by SyntaxError / ImportError / AttributeError / NameError does not count",
+   "the file is restored in a finally block and byte identity re-verified",
+   "never run while a differential is in flight"
+  ],
+  "restoration_hashes_sha256_first32": {
+   "production/product_detail_page.py": "AE9B4E8BDD6328700440EAF8B9D91D80",
+   "tests/test_phase6c_evidence_aware_copy_gate.py": "3BCD4497397ACE879FDCEDF8DC22F2ED"
+  },
+  "mutants": [
+   {"id": "M1", "mutation": "keep only the first-ranked gated concept",
+    "killer": "test_every_gated_concept_is_examined_not_only_the_first", "outcome": "KILLED"},
+   {"id": "M2+M7", "mutation": "any verified concept authorises the rest",
+    "killer": "test_a_verified_material_claim_does_not_authorise_decoration_wording", "outcome": "KILLED"},
+   {"id": "M2+M7(b)", "mutation": "same source change, overlap killer",
+    "killer": "test_monogram_needs_both_of_its_concepts_verified", "outcome": "KILLED",
+    "note": "cross-authorisation and overlap-ANY are the SAME source change in this implementation; both named mutants are recorded, killed by different tests"},
+   {"id": "M3", "mutation": "break the fully-satisfied fixture (leave decoration_method in place)",
+    "killer": "test_a_blocked_bullet_names_the_concept_that_blocked_it (observability guard)", "outcome": "KILLED",
+    "note": "the review's original 'remove the fixture guard' formulation is unkillable -- removing a guard causes silent passing, not failure -- so it is inverted here"},
+   {"id": "M4", "mutation": "disable the controlled-term backstop",
+    "killer": "test_the_term_blacklist_backstop_still_fires_when_reached", "outcome": "KILLED"},
+   {"id": "M5", "mutation": "make the TITLE surface evidence-aware",
+    "killer": "test_a_verified_physical_concept_is_still_blocked_on_the_title_surface", "outcome": "KILLED"},
+   {"id": "M6", "mutation": "treat unknown vocabulary as safe",
+    "killer": "test_an_unknown_claim_like_term_fails_closed", "outcome": "KILLED"}
+  ],
+  "survivors": 0,
+  "self_corrections_the_gate_forced": [
+   "M1 and M6 were first reported KILLED-BUT-NOT-FOR-THE-INTENDED-REASON: the tests failed on an earlier assertion carrying no message, so the failure text did not match the declared defect. A kill nobody can attribute is not evidence.",
+   "M2 SURVIVED twice. The fixture copy 'embroidered, not printed' enumerates only decoration_method -- one concept, no second verified concept to cross-authorise from -- so the mutant was indistinguishable and the assertion passed while the defect lived. The copy is now 'cotton nurse sweatshirt with embroidery' (material VERIFIED, decoration not), and the test asserts that precondition so a future edit cannot silently remove it."
+  ]
+ },
+
+ "matched_differential": {
+  "base": "85e67a6", "target": "3941652",
+  "protocol": "n=2 per head, alternating b1/t1/b2/t2, strictly sequential, nothing else touching either worktree, mutation harness not running",
+  "collection": {
+   "method": "unittest.TestLoader().discover('tests') + test.id(), never a -v console log",
+   "baseline": {"collected": 4724, "load_errors": 0},
+   "target": {"collected": 4750, "load_errors": 0},
+   "target_only_nodes": 26,
+   "target_only_all_belong_to": "tests/test_phase6c_evidence_aware_copy_gate.py",
+   "baseline_only_nodes": 0
+  },
+  "execution": {
+   "b1": {"ran": 4722, "failures": 6, "errors": 14, "skipped": 329, "non_passing": 20},
+   "t1": {"ran": 4748, "failures": 6, "errors": 14, "skipped": 329, "non_passing": 20},
+   "b2": {"ran": 4722, "failures": 6, "errors": 14, "skipped": 329, "non_passing": 20},
+   "t2": {"ran": 4748, "failures": 6, "errors": 14, "skipped": 329, "non_passing": 20},
+   "baseline_samples_identical": true,
+   "target_samples_identical": true,
+   "target_only_non_passing": 0,
+   "baseline_only_non_passing": 0,
+   "loopback_flake": "test_52_request_size_bounded did NOT appear in any of the four runs. It appeared earlier today only in a baseline sample that ran concurrently with another suite; the strictly sequential protocol avoided that load condition. It is a known environment flake, not product evidence.",
+   "ran_vs_collected_gap": "2 nodes on both heads - RealT2.setUpClass raises SkipTest at class level when the gitignored runs/T2 is absent, always true in a fresh worktree.",
+   "classification": "BASELINE_EQUIVALENT_NONZERO"
+  },
+  "post_run_integrity": "target worktree verified byte-identical to 3941652 after both the differential and the mutation gate; origin/main unchanged at 85e67a6 throughout"
+ },
+
+ "boundaries_disclosed": {
+  "decoration_claim_mapping": {
+   "status": "OPEN, SEPARATE DEFECT, NOT FIXED HERE",
+   "detail": "EMBROIDERY_OR_DECORATION_PROOF stays empty with decoration_method VERIFIED, because bullet_engine.JOB_CONCEPTS draws it from ('real_machine_embroidery', 'satin_stitch', 'tatami_fill', 'decoration_method') and the engine reports decoration_method unsatisfied. That is claim mapping inside the bullet engine, not Phase 6C filtering.",
+   "pin": "test_the_copy_gate_no_longer_blocks_the_decoration_bullet asserts the copy gate is NOT the blocker and fails loudly if that changes."
+  },
+  "sku_dimension": {
+   "status": "UNSUPPORTED",
+   "detail": "Verification is product/workspace scoped. SKU-specific authorization is unsupported and untested: claim_evidence.py and product_workspace.py contain zero references to sku. The review contract asked for wrong-SKU tests; they are not written because there is no SKU dimension to bind to. Recorded rather than fabricated."
+  },
+  "fit_duplication": {
+   "status": "BACKLOG, cosmetic, separate module",
+   "detail": "A published bullet reads 'Unisex classic fit fit' -- the bullet engine appends a suffix to a value that already ends in the word. Not touched by this branch."
+  },
+  "product_path_completeness": {
+   "status": "NOT COMPLETE",
+   "detail": "This branch produces a functional listing draft. It does not complete the product path: the decoration bullet remains blocked, Phase 6D-6F still require end-to-end confirmation on a fresh workspace, Phase 6 still has no owner-asset ingestion path, and the real-product pilot has not run."
+  }
+ },
+
+ "boundary_compliance": {
+  "phase6b_branch_touched": false,
+  "branch_A_touched": false,
+  "dashboard_touched": false,
+  "runs_T2_touched": false,
+  "phase6d_dead_code_touched": false,
+  "stub_packages_deleted": false,
+  "amazon_or_seller_central_actions": 0,
+  "network_calls": 0,
+  "files_changed": 5
+ },
+
+ "independent_review": {
+  "performed": false,
+  "statement": "This packet was produced by the author of the change. It is a self-review, not the independent audit this project's acceptance convention requires. No accepted tag has been created."
+ }
+}

@@ -310,16 +310,32 @@ class TitleResult:
 
 # ---------------------------------------------------------------- entry point
 def build_titles(primary_keyword, claim_evidence, policy, mobile_cutoff=60,
-                 brand_required=False, brand_value=None, audience_hint=None):
+                 brand_required=False, brand_value=None, audience_hint=None,
+                 allowed_component_ids=None):
     """Build CONCISE / EXPANDED / RECOMMENDED titles + a word-boundary MOBILE_PREVIEW.
 
     `claim_evidence` is a claim_evidence.ClaimEvidence (or None); only VERIFIED claims may contribute.
     `policy` is a category_policy_registry.CategoryPolicy (title_hard_limit / title_recommended_target).
+
+    `allowed_component_ids` lets a CALLER restrict which components its own title surface accepts.
+    None (the default) keeps every verified component, which is what Phase 5 has always done and
+    must keep doing. A caller that passes a set is expressing a surface POLICY -- "this field
+    carries market identity only" -- which is a separate question from whether the evidence
+    exists, and one this engine does not get to decide on the caller's behalf.
+
+    IDENTITY IS STRUCTURAL, NOT OPTIONAL. It is the product itself, `comps[0]`, and the rest of
+    this function indexes it unconditionally. A caller restricting the surface is choosing which
+    ATTRIBUTES may appear, never whether the product may be named. So identity survives any
+    filter, an empty set means "identity only" rather than "no title", and a set that happens to
+    omit "identity" cannot produce an IndexError. Unknown component ids simply match nothing.
     """
     warnings = []
     limit = policy.title_hard_limit
     comps = _candidate_components(primary_keyword, claim_evidence, brand_required, brand_value,
                                   audience_hint)
+    if allowed_component_ids is not None:
+        comps = comps[:1] + [c for c in comps[1:]
+                             if c["component_id"] in allowed_component_ids]
     primary_norm = _norm(_sanitize_phrase(primary_keyword))
 
     # CONCISE: identity + the single highest-priority extra verified component that fits.

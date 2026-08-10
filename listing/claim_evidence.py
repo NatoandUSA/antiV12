@@ -192,7 +192,11 @@ CLAIM_SPECS = [
     ClaimSpec("personalization_fields", "personalization", ("personalization_fields",),
               lambda v: f"Add {_joined(v)} during checkout.", components=(COMP_PERSONALIZATION,)),
     # exact personalization is a promise, not the presence of a field -> needs its own explicit fact.
-    ClaimSpec("exact_personalization_promise", "personalization", (),
+    # That fact now exists in the vocabulary, so the concept reads it directly. It is still never
+    # inferred from personalization_fields: an owner listing which fields they offer has not
+    # promised what the finished stitching will say.
+    ClaimSpec("exact_personalization_promise", "personalization",
+              ("exact_personalization_promise",),
               lambda v: "Embroidered exactly as you enter it.",
               components=(COMP_PERSONALIZATION, COMP_DECORATION_METHOD)),
     ClaimSpec("material_composition", "material", ("material_composition", "material"),
@@ -226,8 +230,10 @@ CLAIM_SPECS = [
     # durability is never read off embroidery presence -> needs its own explicit fact.
     ClaimSpec("durability", "durability", (), lambda v: "Made to last.",
               components=(COMP_PHYSICAL_QUALITY,)),
-    # made-to-order is never read off personalization -> needs its own explicit fact.
-    ClaimSpec("made_to_order", "production", (), lambda v: "Made to order after you purchase.",
+    # made-to-order is never read off personalization -> needs its own explicit fact. That fact
+    # now exists in the vocabulary, so the concept reads it directly and nothing else.
+    ClaimSpec("made_to_order", "production", ("made_to_order",),
+              lambda v: "Made to order after you purchase.",
               components=(COMP_PRODUCTION_TIME,)),
     # ATOMIC recipient (Session 6C.1): the canonical text asserts ONLY the RECIPIENT component. It must
     # never carry personalization / gift language — those are independent claims below with their own

@@ -889,7 +889,14 @@ def build_workflow_section(config, *, now):
     blocked = sum(1 for s in stages if s["state"] == WSM.BLOCKED)
     status = (MOD_READY if ready == len(table) else
              MOD_READY_PARTIAL if ready else MOD_READY_EMPTY)
+    # "One primary next action" is a backend fact, not a client-side inference: the first modeled
+    # stage (in the table's own dependency order) that is not yet READY. The frontend must only
+    # read this field, never walk `stages` itself to guess -- the same separation NEXT.build_
+    # next_action already keeps for the console's overall next-action panel.
+    primary_next_stage_id = next((spec.stage_id for spec in table
+                                 if results[spec.stage_id]["state"] != WSM.READY), None)
     return {"status": status, "reason": None, "product_root": product_root, "stages": stages,
+            "primary_next_stage_id": primary_next_stage_id,
             "counts": {"modeled": len(table), "ready": ready, "blocked": blocked}}
 
 
@@ -1873,7 +1880,7 @@ def write_exports(base_dir, model, *, subdir="exports"):
 
 # ================================================================ HTTP server
 _READ_ENDPOINTS = ("health", "overview", "modules", "analysis", "research", "watchlists", "alerts",
-                   "notifications", "backups", "system", "activity", "next-action")
+                   "notifications", "backups", "system", "activity", "next-action", "workflow")
 
 
 class ConsoleServer(ThreadingHTTPServer):
@@ -2198,6 +2205,11 @@ def _make_handler():
                 return {"status": sec["status"], "snapshots": _page(sec["snapshots"], qs),
                         "update_check": sec["update_check"], "recovery_plans": sec["recovery_plans"],
                         "counts": sec["counts"]}, readiness
+            if endpoint == "workflow":
+                sec = model["sections"]["workflow"]
+                return {"status": sec["status"], "stages": sec["stages"], "counts": sec["counts"],
+                        "product_root": sec["product_root"],
+                        "primary_next_stage_id": sec.get("primary_next_stage_id")}, readiness
             if endpoint == "activity":
                 audit_state = self.server.audit.state()
                 events = self.server.audit.events()

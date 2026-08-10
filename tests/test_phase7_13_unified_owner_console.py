@@ -2309,6 +2309,9 @@ class WorkflowSection(Base):
         self.assertEqual(set(modeled_states), {2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13})
         for state in modeled_states.values():
             self.assertIn(state, (WSM.NOT_STARTED, WSM.BLOCKED))
+        # stage 2 is first in table order and not READY -> it is the primary next action, not
+        # a client-side guess.
+        self.assertEqual(wf["primary_next_stage_id"], 2)
 
     def test_stage_1_and_7_present_but_not_modeled(self):
         ws = self.newroot()
@@ -2355,6 +2358,7 @@ class WorkflowSection(Base):
         non_ready = {sid: s["state"] for sid, s in by_id.items() if s["state"] != WSM.READY}
         self.assertEqual(non_ready, {11: WSM.NOT_ACCEPTED},
                          "every path must resolve except Stage 11's real, current NOT_ACCEPTED tag")
+        self.assertEqual(wf["primary_next_stage_id"], 11)
 
     def test_composite_component_detail_survives_the_model(self):
         """Only the listing half of Stage 9 -- the exact "partial progress" case the product

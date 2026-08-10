@@ -130,7 +130,8 @@ function newEnv(overrides, opts) {
   const responses = Object.assign({
     session: FX.session, overview: FX.overview, activity: FX.activity,
     research: FX.research, backups: FX.backups, system: FX.system, alerts: FX.alerts,
-    notifications: FX.notifications, analysis: FX.analysis, watchlists: FX.watchlists
+    notifications: FX.notifications, analysis: FX.analysis, watchlists: FX.watchlists,
+    workflow: FX.workflow
   }, overrides || {});
   function respond(fx) {
     return Promise.resolve({ status: fx.status, json: () => Promise.resolve(fx.body) });
@@ -147,7 +148,7 @@ function newEnv(overrides, opts) {
       }
       if (method === 'POST' && path.indexOf('/actions/execute') >= 0) return respond(opts.execute || FX.execute_ok);
       const keys = ['session', 'overview', 'activity', 'next-action', 'research', 'backups',
-                    'system', 'alerts', 'notifications', 'analysis', 'watchlists'];
+                    'system', 'alerts', 'notifications', 'analysis', 'watchlists', 'workflow'];
       for (const k of keys) {
         if (path.indexOf('/' + k) >= 0) {
           const fx = responses[k === 'next-action' ? 'overview' : k];
@@ -180,7 +181,9 @@ function newEnv(overrides, opts) {
     + ' resetModal: resetModal, openBackdrop: openBackdrop, closeModal: closeModal,'
     + ' executeModal: executeModal, refreshExecuteEnabled: refreshExecuteEnabled,'
     + ' viewById: viewById, SECTION_ROUTE: SECTION_ROUTE,'
-    + ' renderWatchlists: renderWatchlists, renderNotifications: renderNotifications }; } })();');
+    + ' renderWatchlists: renderWatchlists, renderNotifications: renderNotifications,'
+    + ' renderWorkflow: renderWorkflow, workflowStageRow: workflowStageRow,'
+    + ' workflowPrimaryPanel: workflowPrimaryPanel }; } })();');
   vm.runInContext(hooked, sandbox, { filename: 'app.js' });
   return { dom, calls, api: sandbox.window.__api, sandbox };
 }
@@ -400,7 +403,10 @@ async function run() {
     api.buildNav();
     const nav = dom.doc.getElementById('nav-list');
     const groups = byClass(nav, 'nav-group-title').map(g => g.textContent);
-    assert('65_sidebar_groups', groups.length === 3 && groups.indexOf('OPERATIONS') >= 0
+    // WORKFLOW (Dashboard V1) was added deliberately, above INTELLIGENCE per DASHBOARD-V1-SPEC.md
+    // Section 3 -- see NAV_GROUPS in app.js.
+    assert('65_sidebar_groups', groups.length === 4 && groups.indexOf('WORKFLOW') >= 0
+      && groups.indexOf('OPERATIONS') >= 0
       && groups.indexOf('INTELLIGENCE') >= 0 && groups.indexOf('SYSTEM') >= 0, groups.join(','));
     const links = byTag(nav, 'A');
     assert('66_every_view_navigable', links.length === api.VIEWS.length,
@@ -932,11 +938,108 @@ async function run() {
       dom.doc.getElementById('modal-execute').hidden === true);
   }
 
+  // ---- Dashboard V1 Workflow view: thin renderer, backend is sole state authority ----------------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    assert('194_workflow_renders', byTag(root, 'H1')[0] && byTag(root, 'H1')[0].textContent === 'Workflow');
+    const na = dom.doc.getElementById('workflow-next');
+    assert('195_primary_next_panel_present', !!na, 'no #workflow-next -- primary_next_stage_id was set in the fixture');
+    assert('196_primary_next_names_the_stage',
+      !!na && na.textContent.indexOf('Stage ' + FX.workflow.body.data.primary_next_stage_id) >= 0);
+    const cmdBtn = na && findAll(na, n => n.getAttribute('data-act') === 'copy:command')[0];
+    assert('197_primary_next_command_copyable', !!cmdBtn, 'no copy:command control in the primary panel');
+  }
+
+  // ---- Workflow: all six modeled states render as distinct, non-colour-only tags ------------------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const rows = findAll(root, n => hasClass(n, 'stage-row'));
+    const byStage = {};
+    rows.forEach(r => { byStage[r.getAttribute('data-stage-id')] = r; });
+    const expected = FX.workflow_state_by_stage;   // {stage_id: state}, set by the Python fixture
+    // tag()'s last child is the raw-value text node (after the glyph span and the empty dot
+    // span, both element nodes) -- data-state is the DISPLAY BUCKET the value maps to (e.g.
+    // "NEEDS_SETUP" for NOT_STARTED), a different vocabulary from the raw backend state.
+    function tagRawValue(t) {
+      const kids = t.childNodes;
+      const last = kids[kids.length - 1];
+      return last && last.nodeType === 3 ? last._data : null;
+    }
+    let allDistinctGlyphs = true;
+    const seenStates = new Set();
+    Object.keys(expected).forEach(sid => {
+      const row = byStage[sid];
+      const t = row && byClass(row, 'status-tag')[0];
+      const raw = t && tagRawValue(t);
+      if (raw !== expected[sid]) allDistinctGlyphs = false;
+      if (raw) seenStates.add(raw);
+    });
+    assert('198_every_modeled_stage_shows_its_own_backend_state', allDistinctGlyphs,
+      JSON.stringify(expected));
+    assert('199_six_states_all_reachable_in_one_fixture', seenStates.size >= 6,
+      Array.from(seenStates).join(','));
+  }
+
+  // ---- Workflow: informational (not-modeled) stages never fake a six-state value -------------------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const row1 = find(root, n => hasClass(n, 'stage-row') && n.getAttribute('data-stage-id') === '1');
+    assert('200_stage_1_present_informational', !!row1 && hasClass(row1, 'informational'));
+    assert('201_stage_1_has_no_status_tag', !!row1 && byClass(row1, 'status-tag').length === 0,
+      'a NOT_STARTED-shaped tag on an unmodeled stage would be an invented state');
+    assert('202_stage_1_states_its_reason', !!row1
+      && row1.textContent.indexOf(FX.workflow.body.data.stages.filter(s => s.stage_id === 1)[0].informational_reason) >= 0);
+    const row7 = find(root, n => hasClass(n, 'stage-row') && n.getAttribute('data-stage-id') === '7');
+    assert('203_stage_7_present_informational', !!row7 && hasClass(row7, 'informational'));
+  }
+
+  // ---- Workflow: composite stage exposes per-component partial progress, not one opaque flag ------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const compositeId = FX.workflow_composite_stage_id;
+    const row = find(root, n => hasClass(n, 'stage-row') && n.getAttribute('data-stage-id') === String(compositeId));
+    const disc = row && byTag(row, 'DETAILS')[0];
+    assert('204_composite_has_component_disclosure', !!disc, 'no <details> on the composite stage row');
+    const dl = disc && byTag(disc, 'DL')[0];
+    assert('205_composite_component_detail_lists_each_part', !!dl && byTag(dl, 'DT').length >= 2,
+      dl ? byTag(dl, 'DT').length : 'no dl');
+  }
+
+  // ---- Workflow: empty workspace gets a real empty state, not a blank page -------------------------
+  {
+    const { dom, api } = newEnv({ workflow: { status: 200, body: { readiness: 'SESSION7_13_CONSOLE_READY',
+      data: { status: 'MODULE_UNAVAILABLE', stages: [], counts: { modeled: 0, ready: 0, blocked: 0 },
+             product_root: '/none', primary_next_stage_id: null } } } });
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const es = byClass(root, 'empty-state')[0];
+    assert('206_workflow_empty_workspace_has_empty_state', !!es, 'no empty state rendered');
+    assert('207_workflow_empty_never_bare', root.textContent.trim() !== '' && !es || es.textContent.trim() !== 'No data');
+  }
+
+  // ---- Workflow: reachable from grouped navigation -------------------------------------------------
+  {
+    const { dom, api } = newEnv();
+    api.buildNav();
+    const link = dom.doc.getElementById('nav-workflow');
+    assert('208_workflow_in_nav', !!link, 'no #nav-workflow -- WORKFLOW group missing from NAV_GROUPS');
+    assert('209_workflow_nav_is_pure_navigation',
+      !!link && api.controlKind(link.getAttribute('data-act')) === 'navigation');
+  }
+
   // ---- no dead control anywhere: every clickable control on every page is classified ------------
   {
-    const pages = ['renderOverview', 'renderAnalysis', 'renderManualActions', 'renderFollowups',
-                   'renderResearch', 'renderWatchlists', 'renderAlerts', 'renderNotifications',
-                   'renderBackups', 'renderSystem', 'renderActivity'];
+    const pages = ['renderOverview', 'renderWorkflow', 'renderAnalysis', 'renderManualActions',
+                   'renderFollowups', 'renderResearch', 'renderWatchlists', 'renderAlerts',
+                   'renderNotifications', 'renderBackups', 'renderSystem', 'renderActivity'];
     const bad = [];
     let seen = 0;
     for (const p of pages) {

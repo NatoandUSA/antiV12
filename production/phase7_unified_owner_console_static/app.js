@@ -50,7 +50,12 @@
     "SESSION7_14_USABILITY_BLOCKED": "BLOCKED",
     "UNKNOWN": "UNKNOWN", "QUEUED": "UNKNOWN", "PREVIEWED": "UNKNOWN", "RATE_LIMITED": "UNKNOWN",
     "QUIET_HOURS": "UNKNOWN", "SKIPPED": "UNKNOWN", "PROVIDER_UNAVAILABLE": "UNKNOWN",
-    "DISMISSED": "READY_EMPTY", "INFO": "READY_EMPTY"
+    "DISMISSED": "READY_EMPTY", "INFO": "READY_EMPTY",
+    // Dashboard V1 Workflow stage states (production.phase7_workflow_stage_model). READY/STALE/
+    // BLOCKED/UNKNOWN already match an existing key above by literal value; only these two are
+    // new. NOT_STARTED is not "READY_EMPTY" -- that means "checked, nothing to show", while a
+    // stage that has not been run yet is something the owner can act on right now.
+    "NOT_STARTED": "NEEDS_SETUP", "NOT_ACCEPTED": "ACTION_REQUIRED"
   };
 
   function ownerState(value) {
@@ -69,6 +74,7 @@
   // ---------------------------------------------------------------- views + grouped navigation
   var VIEWS = [
     { id: "overview", label: "Overview", icon: "icon-overview", render: renderOverview },
+    { id: "workflow", label: "Workflow", icon: "icon-workflow", render: renderWorkflow },
     { id: "analysis", label: "Analysis & Decisions", icon: "icon-analysis", render: renderAnalysis },
     { id: "manual-actions", label: "Manual Actions", icon: "icon-actions", render: renderManualActions },
     { id: "followups", label: "Follow-ups", icon: "icon-followups", render: renderFollowups },
@@ -82,6 +88,7 @@
   ];
   var NAV_GROUPS = [
     { title: null, items: ["overview"] },
+    { title: "WORKFLOW", items: ["workflow"] },
     { title: "OPERATIONS", items: ["analysis", "manual-actions", "followups"] },
     { title: "INTELLIGENCE", items: ["research", "watchlists", "alerts"] },
     { title: "SYSTEM", items: ["notifications", "backups", "system", "activity"] }
@@ -1062,6 +1069,115 @@
             { label: "Verify", action: "verify-backup", params: { snapshot_id: r.snapshot_id } },
             { label: "Recovery plan", action: "create-recovery-plan", params: { snapshot_id: r.snapshot_id } }
           ]; } }]
+    });
+  }
+
+  // ---------------------------------------------------------------- Dashboard V1 Workflow
+  /* Thin renderer only -- every field comes from production.phase7_workflow_stage_model via
+     build_workflow_section / GET /api/v1/workflow. This view computes NO readiness of its own:
+     not which state a stage is in, not which stage is "next". Both are backend facts read
+     verbatim (stage.state, wf.primary_next_stage_id). */
+  var WORKFLOW_GROUPS = ["Research", "Decide", "Build", "Launch"];
+
+  function commandCopyRow(command) {
+    var row = el("div", { class: "na-command" });
+    row.appendChild(el("code", { class: "mono", text: command }));
+    var cb = el("button", { class: "btn na-cta", type: "button", text: "Copy command",
+                            "data-act": "copy:command",
+                            "aria-label": "Copy the command " + command });
+    cb.addEventListener("click", function () { copyValue(command); });
+    row.appendChild(cb);
+    return row;
+  }
+
+  function workflowPrimaryPanel(s) {
+    var sec = el("section", { class: "panel next-action na-" + (STATUS[ownerState(s.state)] || STATUS.UNKNOWN).cls,
+                              id: "workflow-next", "data-block": "next-action",
+                              role: "region", "aria-label": "Your next workflow step" });
+    sec.appendChild(el("h2", { class: "na-title",
+      text: "Next: Stage " + s.stage_id + " — " + s.label }));
+    sec.appendChild(tag(s.state));
+    if (s.blocked_by && s.blocked_by.length) {
+      sec.appendChild(el("p", { class: "na-message" },
+        [document.createTextNode("Waiting on stage " + s.blocked_by.join(", ") + ".")]));
+    }
+    if (s.command) sec.appendChild(commandCopyRow(s.command));
+    return sec;
+  }
+
+  function workflowStageRow(s) {
+    var row = el("div", { class: "stage-row" + (s.modeled ? "" : " informational"),
+                          "data-stage-id": String(s.stage_id) });
+    row.appendChild(el("span", { class: "stage-num em", text: String(s.stage_id) }));
+    row.appendChild(el("span", { class: "stage-label", text: s.label }));
+    if (!s.modeled) {
+      row.appendChild(el("p", { class: "em small",
+        text: s.informational_reason || "Not separately tracked in this pipeline." }));
+      return row;
+    }
+    row.appendChild(tag(s.state));
+    if (s.state !== "READY" && s.blocked_by && s.blocked_by.length) {
+      row.appendChild(el("p", { class: "em small",
+        text: "Waiting on stage " + s.blocked_by.join(", ") + "." }));
+    }
+    if (s.state !== "READY" && s.command) row.appendChild(commandCopyRow(s.command));
+    var compKeys = s.components ? Object.keys(s.components).sort() : [];
+    if (compKeys.length) {
+      row.appendChild(details("View components (" + compKeys.length + ")", function (body) {
+        body.appendChild(kvList(compKeys.map(function (k) { return [k, s.components[k]]; })));
+      }));
+    }
+    return row;
+  }
+
+  function renderWorkflow() {
+    var root = document.getElementById("view-root");
+    root.textContent = "";
+    root.appendChild(loadingBlock("workflow"));
+    getJSON(API + "/workflow").then(function (res) {
+      root.textContent = "";
+      if (handleUnauthorized(res)) { root.appendChild(sessionExpiredPanel()); return; }
+      var wf = (res.body && res.body.data) || {};
+      var stages = wf.stages || [];
+      var head = el("section", { class: "panel" });
+      head.appendChild(el("h1", { text: "Workflow" }));
+      head.appendChild(el("p", { class: "sub",
+        text: "The listing + PPC pipeline, derived only from what is on disk. Nothing here runs "
+            + "anything for you — copy a command and run it yourself." }));
+      var counts = wf.counts || {};
+      head.appendChild(el("p", { class: "sub" }, [document.createTextNode(
+        (counts.ready || 0) + " of " + (counts.modeled || 0) + " tracked stages ready")]));
+      root.appendChild(head);
+
+      if (!stages.length) {
+        root.appendChild(emptyState({
+          title: "No product workspace found yet.", isError: false,
+          why: "The Workflow view reads a product workspace directly from disk; none exists yet.",
+          next: "Create a product workspace, then reload this page."
+        }));
+        return;
+      }
+
+      var byId = {};
+      stages.forEach(function (s) { byId[s.stage_id] = s; });
+      if (wf.primary_next_stage_id != null && byId[wf.primary_next_stage_id]) {
+        root.appendChild(workflowPrimaryPanel(byId[wf.primary_next_stage_id]));
+      }
+
+      WORKFLOW_GROUPS.forEach(function (g) {
+        var inGroup = stages.filter(function (s) { return s.group === g; });
+        if (!inGroup.length) return;
+        var gs = el("section", { class: "panel" });
+        gs.appendChild(el("h2", { text: g }));
+        var list = el("div", { class: "stage-list" });
+        inGroup.forEach(function (s) { list.appendChild(workflowStageRow(s)); });
+        gs.appendChild(list);
+        root.appendChild(gs);
+      });
+    }, function () {
+      root.textContent = "";
+      root.appendChild(el("div", { class: "notice bad", role: "alert",
+        text: "Could not load the workflow. Reload this page." }));
     });
   }
 

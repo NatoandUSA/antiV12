@@ -15,6 +15,9 @@
   <symbol id="icon-overview" viewBox="0 0 16 16">
     <path fill="currentColor" d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/>
   </symbol>
+  <symbol id="icon-workflow" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M1 11h3v3H1zM6.5 6.5h3v3h-3zM12 2h3v3h-3zM4 11.5l2-2 .9.9-2 2zM9.5 7l2-2 .9.9-2 2z"/>
+  </symbol>
   <symbol id="icon-analysis" viewBox="0 0 16 16">
     <path fill="currentColor" d="M2 13h12v1.5H2zM3.5 7h2v5h-2zM7 4h2v8H7zm3.5 3h2v5h-2z"/>
   </symbol>

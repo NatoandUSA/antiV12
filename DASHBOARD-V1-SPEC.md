@@ -279,11 +279,29 @@ the start.
 3. **Stage 11.** Show `NOT_ACCEPTED` and let the owner see the planning output anyway, or
    hide the stage until it is accepted? This spec assumes the former — hiding a stage of a
    13-stage pipeline is its own kind of lie.
-4. **NEW, found in F5 (2026-08-11): Phase 6A ("Product Truth") has no slot in the 13-stage
-   numbering at all.** It has a real, working CLI (`scripts/phase6a_build.py`) and Stage 9
-   (`product_detail_page.py`) hard-depends on its output — attempting Stage 9 first raises an
-   unhandled `Phase6CDependencyError`, not a clean `BLOCKED` state. Not fixed here: renumbering
-   or extending the 13-stage table is a bigger call than F5's UI/docs scope covers. Documented
-   as an explicit prerequisite in `docs/QUICKSTART-DASHBOARD-V1.md` §3 in the meantime. Owner
-   decision needed: add it as a tracked 14th stage (and where in the sequence), or leave it
-   permanently doc-only like Stage 1.
+4. ~~**Phase 6A ("Product Truth") has no slot in the 13-stage numbering.**~~ **ANSWERED
+   2026-08-11: TRACK_AS_A_REAL_PREREQUISITE, DO NOT RENUMBER.** Found in F5: it has a real,
+   working CLI (`scripts/phase6a_build.py`) with a real, stable artifact set, so the
+   NOT_TRACKED_STAGES informational-note pattern (used for Stages 1/7, which have no persisted
+   artifact at all) would misrepresent it. Renumbering the established 13-stage sequence, or
+   adding a synthetic "8.5", were both explicitly rejected — churn across spec/tests/docs/staff
+   mental model for a relationship that is a prerequisite, not a 14th stage.
+
+   Modelled as `production.phase7_workflow_stage_model.derive_product_truth_state` /
+   `build_workflow_section`'s `product_truth` field: an UNNUMBERED tracked prerequisite,
+   rendered first in the Build group, reusing three of the six stage states verbatim
+   (`NOT_STARTED` / `UNKNOWN` / `READY`) plus one new, disclosed, deliberately adapted state,
+   `OWNER_INPUT_REQUIRED` (named the way `phase7_minimal_launch_foundation` already names the
+   identical shape of gap) for the case none of the six fit: `ready_for_6b` being false, which is
+   the COMMON state of any product whose owner facts are not all confirmed yet, not a rare edge
+   case — forcing it into `NOT_STARTED` would have been dishonest, since the files do exist.
+   Staleness (a real check `load_phase6a_dependency` itself performs, hash-based against the raw
+   keyword source) is a disclosed, deliberate gap — not modelled, to avoid inventing a glob
+   convention this module has no existing coupling to.
+
+   Real consumer, confirmed by reading source and by actually running the command against a
+   Product-Truth-less clone of `runs/T2`: **Stage 8** (`listing/keyword_allocation_planner.py`),
+   not Stage 9 as first assumed — `plan_keyword_allocation()` calls `load_phase6a_dependency()`
+   as its very first step and raises the identical unhandled `Phase6ADependencyError`. Stage 9
+   needed no code change at all: it already inherits the block via its existing
+   `blocking_stage_ids=(8,)`.

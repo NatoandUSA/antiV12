@@ -571,5 +571,66 @@ class StageCommandsAreReal(unittest.TestCase):
             self.assertIn("--write", by_id[stage_id].command, stage_id)
 
 
+def _write_6a(product_root, *, ready_for_6b=True):
+    ws = {"workspace_id": "w1", "product_id": "w1",
+         "downstream_readiness": {"ready_for_6b": ready_for_6b}}
+    import json
+    for name in WSM.PRODUCT_TRUTH_ARTIFACTS:
+        p = os.path.join(product_root, name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            if name == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
+                json.dump(ws, f)
+            else:
+                f.write("{}")
+
+
+class ProductTruthPrerequisite(unittest.TestCase):
+    """Phase 6A ("Product Truth") -- a TRACKED PREREQUISITE, deliberately NOT one of the 11
+    resolvable stages (DASHBOARD-V1-SPEC.md Section 13 item 4). Verified against a real clone of
+    runs/T2/phase6/6A during design (see the module comment above this section for the full
+    evidence trail); these are the synthetic-fixture regression tests for that same logic."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="wsm-pt-")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_not_started_when_nothing_present(self):
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.NOT_STARTED)
+
+    def test_not_started_when_only_some_artifacts_present(self):
+        _write(os.path.join(self.d, WSM.PRODUCT_TRUTH_ARTIFACTS[0]))
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.NOT_STARTED)
+
+    def test_unknown_when_workspace_file_is_unparseable(self):
+        _write_6a(self.d, ready_for_6b=True)
+        with open(os.path.join(self.d, WSM.PRODUCT_TRUTH_WORKSPACE_FILE), "w",
+                 encoding="utf-8") as f:
+            f.write("{not valid json")
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_owner_input_required_when_ready_for_6b_false(self):
+        """The COMMON case -- confirmed against a real clone of runs/T2/phase6/6A during design --
+        not a rare edge case: most products have not had every owner fact confirmed on a first
+        phase6a_build.py run."""
+        _write_6a(self.d, ready_for_6b=False)
+        self.assertEqual(WSM.derive_product_truth_state(self.d),
+                         WSM.PRODUCT_TRUTH_OWNER_INPUT_REQUIRED)
+
+    def test_ready_when_artifacts_present_and_ready_for_6b_true(self):
+        _write_6a(self.d, ready_for_6b=True)
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.READY)
+
+    def test_not_one_of_the_11_resolvable_stages(self):
+        """The whole point of a TRACKED PREREQUISITE, not stage 14: it must never appear in the
+        numbered table or shift any existing stage_id."""
+        ids = [s.stage_id for s in WSM.workflow_stage_table()]
+        self.assertEqual(sorted(ids), [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13])
+        self.assertNotIn("product_truth", ids)
+
+
 if __name__ == "__main__":
     unittest.main()

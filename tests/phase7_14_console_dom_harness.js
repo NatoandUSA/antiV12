@@ -1093,6 +1093,32 @@ async function run() {
     assert('219_workspace_path_copyable', !!btn, 'no copy control for the workspace path');
   }
 
+  // ---- Workflow: Product Truth prerequisite (DASHBOARD-V1-SPEC.md Section 13 item 4) ---------------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const ptRow = find(root, n => hasClass(n, 'product-truth'));
+    assert('220_product_truth_row_present', !!ptRow, 'no Product Truth row -- FX.workflow.product_truth was set');
+    assert('221_product_truth_shows_backend_state',
+      !!ptRow && ptRow.textContent.indexOf(FX.workflow.body.data.product_truth.state) >= 0);
+    assert('222_product_truth_has_no_numeric_stage_id',
+      !ptRow || ptRow.getAttribute('data-stage-id') == null,
+      'a numeric stage-id on Product Truth would misrepresent it as one of the 13 stages');
+    // Stage 8 in this fixture is blocked_by_product_truth: true -- its row must say so in plain
+    // language, not just show a bare status tag.
+    const stage8 = find(root, n => hasClass(n, 'stage-row') && n.getAttribute('data-stage-id') === '8');
+    assert('223_stage_8_names_product_truth_as_the_reason',
+      !!stage8 && stage8.textContent.indexOf('Product Truth') >= 0);
+    // Product Truth must render BEFORE stage 8 within the Build group (its own group) -- it is the
+    // real prerequisite Stage 8 depends on, not slotted in arbitrarily.
+    const buildList = ptRow && ptRow.parentNode;
+    const kids = buildList ? Array.from(buildList.children) : [];
+    assert('224_product_truth_renders_before_stage_8',
+      !!buildList && kids.indexOf(ptRow) < kids.indexOf(stage8),
+      'Product Truth must lead its group, not trail it');
+  }
+
   // ---- no dead control anywhere: every clickable control on every page is classified ------------
   {
     const pages = ['renderOverview', 'renderWorkflow', 'renderAnalysis', 'renderManualActions',

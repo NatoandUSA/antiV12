@@ -59,7 +59,11 @@
     // Dashboard V1 workspace trust states (DASHBOARD-V1-SPEC.md Section 7). Without an explicit
     // mapping these would all fall through to the generic UNKNOWN default below -- including
     // HISTORICAL, which needs the same attention-grabbing treatment as BLOCKED, not a neutral one.
-    "TRUSTED": "READY", "UNVERIFIED": "UNKNOWN", "HISTORICAL": "BLOCKED"
+    "TRUSTED": "READY", "UNVERIFIED": "UNKNOWN", "HISTORICAL": "BLOCKED",
+    // Product Truth prerequisite state (DASHBOARD-V1-SPEC.md Section 13 item 4). Already falls
+    // through the generic "REQUIRED" substring rule below to ACTION_REQUIRED -- explicit anyway,
+    // matching this file's own convention of never leaving a known mapping to an implicit rule.
+    "OWNER_INPUT_REQUIRED": "ACTION_REQUIRED"
   };
 
   function ownerState(value) {
@@ -1106,8 +1110,27 @@
       sec.appendChild(el("p", { class: "na-message" },
         [document.createTextNode("Waiting on stage " + s.blocked_by.join(", ") + ".")]));
     }
+    if (s.blocked_by_product_truth) {
+      sec.appendChild(el("p", { class: "na-message", text: "Waiting on Product Truth." }));
+    }
     if (s.command) sec.appendChild(commandCopyRow(s.command));
     return sec;
+  }
+
+  // Phase 6A ("Product Truth") -- a TRACKED PREREQUISITE, deliberately not one of the 13 numbered
+  // stages (DASHBOARD-V1-SPEC.md Section 13 item 4). Same row shape as a numbered stage minus the
+  // stage number, since it isn't one; wf.product_truth.state/.command/.staff_note are read
+  // verbatim like everything else in this view.
+  function productTruthRow(pt) {
+    var row = el("div", { class: "stage-row product-truth", "data-role": "product-truth" });
+    row.appendChild(el("span", { class: "stage-num em", "aria-hidden": "true", text: "•" }));
+    row.appendChild(el("span", { class: "stage-label", text: pt.label + " (prerequisite)" }));
+    row.appendChild(tag(pt.state));
+    if (pt.state !== "READY" && pt.staff_note) {
+      row.appendChild(el("p", { class: "em small", text: pt.staff_note }));
+    }
+    if (pt.state !== "READY" && pt.command) row.appendChild(commandCopyRow(pt.command));
+    return row;
   }
 
   function workflowStageRow(s) {
@@ -1124,6 +1147,9 @@
     if (s.state !== "READY" && s.blocked_by && s.blocked_by.length) {
       row.appendChild(el("p", { class: "em small",
         text: "Waiting on stage " + s.blocked_by.join(", ") + "." }));
+    }
+    if (s.state !== "READY" && s.blocked_by_product_truth) {
+      row.appendChild(el("p", { class: "em small", text: "Waiting on Product Truth." }));
     }
     if (s.state !== "READY" && s.command) row.appendChild(commandCopyRow(s.command));
     var compKeys = s.components ? Object.keys(s.components).sort() : [];
@@ -1197,6 +1223,11 @@
         var gs = el("section", { class: "panel" });
         gs.appendChild(el("h2", { text: g }));
         var list = el("div", { class: "stage-list" });
+        // Product Truth renders first in its group -- it's the real prerequisite Stage 8 (the
+        // group's own first stage) depends on, not one of the 13 numbered stages itself.
+        if (wf.product_truth && wf.product_truth.group === g) {
+          list.appendChild(productTruthRow(wf.product_truth));
+        }
         inGroup.forEach(function (s) { list.appendChild(workflowStageRow(s)); });
         gs.appendChild(list);
         root.appendChild(gs);

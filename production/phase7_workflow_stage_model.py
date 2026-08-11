@@ -495,3 +495,75 @@ WSM_STAGE_13 = StageSpec(
     blocking_stage_ids=(12,),
     command="python -m production.phase7_ads_analysis --base-dir <run_dir>/phase7/7.3"
            " --phase7-2-dir <run_dir>/phase7/7.2")
+
+
+# ================================================================ Product Truth (Phase 6A) --
+# a TRACKED PREREQUISITE, deliberately NOT one of the 13 numbered stages. Owner decision,
+# DASHBOARD-V1-SPEC.md Section 13 item 4 (2026-08-11): Phase 6A has a real, stable persisted
+# artifact set -- forcing it into the informational NOT_TRACKED_STAGES pattern (like Stage 1/7,
+# which have no persisted artifact at all) would misrepresent it. Renumbering the established
+# 13-stage sequence was explicitly rejected -- this is a prerequisite relationship, not stage 14.
+#
+# Real consumer, confirmed by reading source and by actually running the command: it is Stage 8
+# (listing/keyword_allocation_planner.py), NOT Stage 9 -- plan_keyword_allocation() calls
+# load_phase6a_dependency() as its very first step, and an F5 follow-up investigation reproduced
+# the identical unhandled Phase6ADependencyError Stage 9 was known to raise. Stage 9 only inherits
+# the problem transitively through its own existing blocking_stage_ids=(8,) -- blocking Stage 8
+# here is therefore both the technically correct fix point AND sufficient for Stage 9 too.
+#
+# State model: load_phase6a_dependency's real failure modes (confirmed by reading it directly)
+# mostly map cleanly onto three of the six existing states -- missing artifact -> NOT_STARTED,
+# hash/identity mismatch -> UNKNOWN -- reused via the same shared _evidence_state core every
+# numbered stage goes through, so the frontend's existing tag()/ownerState() mapping needs no new
+# entries for them. One real failure mode does NOT fit any of the six: workspace.downstream_
+# readiness.ready_for_6b being false. This is not a rare edge case -- it is the DEFAULT, COMMON
+# state of any product whose owner facts are not all confirmed yet, which is most products right
+# after their first phase6a_build.py run. Forcing it into NOT_STARTED would be dishonest (the
+# files DO exist); PRODUCT_TRUTH_OWNER_INPUT_REQUIRED is a new, disclosed, deliberately adapted
+# state instead, named the way this codebase already names the identical shape of gap elsewhere
+# (production.phase7_minimal_launch_foundation's PHASE7_OWNER_INPUT_REQUIRED).
+#
+# Deliberately NOT modelled: keyword-source hash drift (load_phase6a_dependency's own STALE-
+# shaped check). That check is hash-based against the specific raw keyword-source file
+# listing.keyword_source_adapter resolves, which this module has no existing coupling to and no
+# established glob convention for (unlike the Xray/Cerebro raw-import globs Stages 2/4 already
+# use) -- inventing one would be exactly the kind of fabricated signal this whole design exists to
+# refuse. A disclosed gap, not an assumed absence: PRODUCT_TRUTH_STALE_UNMODELED records it below.
+PRODUCT_TRUTH_ARTIFACTS = (
+    "phase6/6A/PRODUCT-WORKSPACE.json", "phase6/6A/OWNER-INPUT-REQUIRED.json",
+    "phase6/6A/NORMALIZED-PRODUCT-FACTS.json", "phase6/6A/CLAIM-EVIDENCE.json",
+    "phase6/6A/STAGE-6A-MANIFEST.json",
+)
+PRODUCT_TRUTH_WORKSPACE_FILE = "phase6/6A/PRODUCT-WORKSPACE.json"
+PRODUCT_TRUTH_OWNER_INPUT_REQUIRED = "OWNER_INPUT_REQUIRED"
+# Named for the comment above, never returned: staleness genuinely isn't checked (disclosed gap).
+PRODUCT_TRUTH_STALE_UNMODELED = STALE
+
+PRODUCT_TRUTH_LABEL = "Product Truth"
+PRODUCT_TRUTH_GROUP = GROUP_BUILD
+PRODUCT_TRUTH_COMMAND = "python scripts/phase6a_build.py <run_dir>"
+PRODUCT_TRUTH_STAFF_NOTE = "Product Truth required before Listing + A+."
+
+
+def derive_product_truth_state(product_root):
+    """One of NOT_STARTED / UNKNOWN / STALE / READY / PRODUCT_TRUTH_OWNER_INPUT_REQUIRED for the
+    Phase 6A ('Product Truth') prerequisite. See the module comment above this section for the
+    full evidence trail behind this shape."""
+    state = _evidence_state(
+        output_paths=PRODUCT_TRUTH_ARTIFACTS, existence_globs=(), freshness_globs=(),
+        accepted_tag_prefix=None, workspace_dir=product_root, blocking_stage_ids=(),
+        stage_states_so_far={}, spec_by_id={}, tags=None)
+    if state != READY:
+        return state
+    # Existence, readability, and (the freshness_globs=() no-op aside) the shared core all say
+    # READY. The one check that core has no way to perform: does 6A's OWN readiness verdict say
+    # the owner facts are actually complete? The exact field load_phase6a_dependency hard-requires
+    # before Stage 8 will even start -- confirmed by reading it directly, not inferred.
+    path = os.path.join(product_root, PRODUCT_TRUTH_WORKSPACE_FILE)
+    try:
+        with open(path, "rb") as f:
+            workspace = json.loads(f.read().decode("utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return UNKNOWN
+    ready_for_6b = bool((workspace.get("downstream_readiness") or {}).get("ready_for_6b"))
+    return READY if ready_for_6b else PRODUCT_TRUTH_OWNER_INPUT_REQUIRED

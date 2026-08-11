@@ -2334,6 +2334,7 @@ class WorkflowSection(Base):
             "US_nurse.Xray.10.08.2026.xlsx", "ASIN-BATCHES.json",
             "US_nurse.Cerebro.10.08.2026.xlsx", "CEREBRO-EVIDENCE-MATRIX.json",
             "MASTER-KEYWORDS-LEAN.json",
+        ] + list(WSM.PRODUCT_TRUTH_ARTIFACTS) + [       # Product Truth precedes Stage 8 for real
             "phase6/6B/KEYWORD-ALLOCATION-MAP.json",
             "phase6/6C/PRODUCT-DETAIL-PAGE.json", "phase6/6D/BASIC-APLUS-CONTENT.json",
             "phase6/6E/LISTING-IMAGE-PROMPTS.md", "phase6/6E/APLUS-IMAGE-PROMPTS.md",
@@ -2346,7 +2347,11 @@ class WorkflowSection(Base):
             p = os.path.join(product_root, rel)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, "w", encoding="utf-8") as f:
-                f.write("{}")
+                if rel == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
+                    json.dump({"workspace_id": "w1", "product_id": "w1",
+                              "downstream_readiness": {"ready_for_6b": True}}, f)
+                else:
+                    f.write("{}")
             t = time.time() - (len(rels) - i)
             os.utime(p, (t, t))
 
@@ -2505,6 +2510,108 @@ class WorkspaceTrust(Base):
         model = UC.build_console_model(self.cfg(ws), now=NOW())
         round_tripped = json.loads(json.dumps(model["sections"]["workflow"]["trust"]))
         self.assertEqual(round_tripped, model["sections"]["workflow"]["trust"])
+
+
+class ProductTruthSection(Base):
+    """DASHBOARD-V1-SPEC.md Section 13 item 4 -- Product Truth (Phase 6A) as a TRACKED
+    PREREQUISITE, folded into build_workflow_section's "product_truth" field. Real consumer is
+    Stage 8 (confirmed by reading listing/keyword_allocation_planner.py and by actually running
+    its command against a Product-Truth-less clone of runs/T2 during design -- not Stage 9, as an
+    earlier draft of this decision assumed); Stage 9 needs no direct change since it already
+    blocks on Stage 8 via its existing blocking_stage_ids=(8,)."""
+
+    def _write_6a(self, product_root, *, ready_for_6b=True):
+        ws = {"workspace_id": "w1", "product_id": "w1",
+             "downstream_readiness": {"ready_for_6b": ready_for_6b}}
+        for name in WSM.PRODUCT_TRUTH_ARTIFACTS:
+            p = os.path.join(product_root, name)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                if name == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
+                    json.dump(ws, f)
+                else:
+                    f.write("{}")
+
+    def _write_stage_6(self, product_root):
+        """Stage 6 blocks on Stages 3+4, which block on Stage 2's existence-glob -- write the
+        whole chain, each strictly newer than the last, so Stage 6 itself genuinely resolves
+        READY rather than BLOCKED on ITS OWN upstream."""
+        rels = ["US_nurse.Xray.10.08.2026.xlsx", "ASIN-BATCHES.json",
+               "US_nurse.Cerebro.10.08.2026.xlsx", "MASTER-KEYWORDS-LEAN.json"]
+        for i, rel in enumerate(rels):
+            p = os.path.join(product_root, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("{}")
+            t = time.time() - (len(rels) - i)
+            os.utime(p, (t, t))
+
+    def test_stage_8_blocked_when_product_truth_missing_even_if_stage_6_ready(self):
+        """The exact case a naive fix would miss: Stage 6 (Stage 8's only NUMBERED blocker) is
+        genuinely READY, yet Stage 8 must still show BLOCKED because Product Truth isn't -- proving
+        the override isn't just piggy-backing on an already-BLOCKED state."""
+        ws = self.newroot()
+        product_root = os.path.dirname(ws)
+        self._write_stage_6(product_root)
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        wf = model["sections"]["workflow"]
+        self.assertEqual(wf["product_truth"]["state"], WSM.NOT_STARTED)
+        by_id = {s["stage_id"]: s for s in wf["stages"] if s["modeled"]}
+        self.assertEqual(by_id[8]["state"], WSM.BLOCKED)
+        self.assertTrue(by_id[8]["blocked_by_product_truth"])
+        self.assertEqual(by_id[8]["blocked_by"], [], "stage 6 IS ready -- only Product Truth blocks")
+        # Stage 9's OWN output doesn't exist in this fixture either, so the shared _evidence_state
+        # core's own-existence check (checked BEFORE any blocking check, the same precedence every
+        # other stage already follows) reports NOT_STARTED here, not BLOCKED -- Stage 9 still can
+        # never reach READY while 8 isn't, it just surfaces as "haven't started" until it has one.
+        self.assertEqual(by_id[9]["state"], WSM.NOT_STARTED)
+
+    def test_stage_8_not_blocked_by_product_truth_when_ready(self):
+        ws = self.newroot()
+        product_root = os.path.dirname(ws)
+        self._write_stage_6(product_root)
+        self._write_6a(product_root, ready_for_6b=True)
+        p8 = os.path.join(product_root, "phase6", "6B", "KEYWORD-ALLOCATION-MAP.json")
+        os.makedirs(os.path.dirname(p8), exist_ok=True)
+        with open(p8, "w", encoding="utf-8") as f:
+            f.write("{}")
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        wf = model["sections"]["workflow"]
+        self.assertEqual(wf["product_truth"]["state"], WSM.READY)
+        by_id = {s["stage_id"]: s for s in wf["stages"] if s["modeled"]}
+        self.assertFalse(by_id[8]["blocked_by_product_truth"])
+        self.assertEqual(by_id[8]["state"], WSM.READY)
+
+    def test_owner_input_required_is_the_common_case_not_unknown(self):
+        """The COMMON state (owner facts not all confirmed yet) must be visibly distinct from
+        UNKNOWN (unreadable/corrupt) -- conflating them would misreport a normal, expected state
+        as a data-integrity problem."""
+        ws = self.newroot()
+        product_root = os.path.dirname(ws)
+        self._write_6a(product_root, ready_for_6b=False)
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        self.assertEqual(model["sections"]["workflow"]["product_truth"]["state"],
+                         WSM.PRODUCT_TRUTH_OWNER_INPUT_REQUIRED)
+
+    def test_product_truth_none_when_no_product_workspace(self):
+        self._n += 1
+        ws = os.path.join(self.tmp, "nonexistent%d" % self._n, "phase7")
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        self.assertIsNone(model["sections"]["workflow"]["product_truth"])
+
+    def test_json_serializable(self):
+        ws = self.newroot()
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        round_tripped = json.loads(json.dumps(model["sections"]["workflow"]["product_truth"]))
+        self.assertEqual(round_tripped, model["sections"]["workflow"]["product_truth"])
+
+    def test_still_exactly_11_modeled_stages(self):
+        """The whole point of a prerequisite, not stage 14: build_workflow_section's own stage
+        count must not move."""
+        ws = self.newroot()
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        modeled = [s for s in model["sections"]["workflow"]["stages"] if s["modeled"]]
+        self.assertEqual(len(modeled), 11)
 
 
 class RepoTagsFileRead(Base):

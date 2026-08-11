@@ -895,12 +895,24 @@ def build_workflow_section(config, *, now):
     product_root = os.path.dirname(config.workspace_root.rstrip(os.sep))
     if not os.path.isdir(product_root):
         return {"status": MOD_UNAVAILABLE, "reason": "product workspace not present",
-                "product_root": product_root, "stages": [], "trust": None,
+                "product_root": product_root, "stages": [], "trust": None, "product_truth": None,
                 "counts": {"modeled": 0, "ready": 0, "blocked": 0}}
     trust = _workspace_trust_state(product_root)
     tags = _repo_tags(config.repo_root)
     table = WSM.workflow_stage_table()
     results = WSM.resolve_all(table, product_root, tags=tags)
+    # Product Truth (Phase 6A) -- a TRACKED PREREQUISITE, deliberately not one of the 13 numbered
+    # stages (owner decision, DASHBOARD-V1-SPEC.md Section 13 item 4). Its real consumer is Stage
+    # 8 (confirmed by reading listing/keyword_allocation_planner.py and by actually running its
+    # command against a Product-Truth-less workspace: it raises the same unhandled
+    # Phase6ADependencyError Stage 9 was already known to raise). Overriding Stage 8's own computed
+    # state here -- rather than adding a numeric blocking_stage_ids entry -- because Product Truth
+    # is not in WSM.workflow_stage_table() and has no numeric stage_id to reference; Stage 9 needs
+    # no change at all, since it already blocks on Stage 8 via its existing blocking_stage_ids=(8,).
+    product_truth_state = WSM.derive_product_truth_state(product_root)
+    product_truth_blocks_stage_8 = product_truth_state != WSM.READY
+    if product_truth_blocks_stage_8:
+        results[8] = {"state": WSM.BLOCKED, "components": results[8]["components"]}
     stages = []
     for spec in table:
         r = results[spec.stage_id]
@@ -910,6 +922,7 @@ def build_workflow_section(config, *, now):
         stages.append({
             "stage_id": spec.stage_id, "label": spec.name, "group": spec.group, "modeled": True,
             "state": r["state"], "components": r["components"], "blocked_by": blocked_by,
+            "blocked_by_product_truth": spec.stage_id == 8 and product_truth_blocks_stage_8,
             "command": spec.command, "acceptance_required": bool(spec.accepted_tag_prefix),
             "informational_reason": None,
         })
@@ -931,8 +944,14 @@ def build_workflow_section(config, *, now):
     # next_action already keeps for the console's overall next-action panel.
     primary_next_stage_id = next((spec.stage_id for spec in table
                                  if results[spec.stage_id]["state"] != WSM.READY), None)
+    product_truth = {
+        "label": WSM.PRODUCT_TRUTH_LABEL, "group": WSM.PRODUCT_TRUTH_GROUP,
+        "state": product_truth_state, "command": WSM.PRODUCT_TRUTH_COMMAND,
+        "staff_note": WSM.PRODUCT_TRUTH_STAFF_NOTE,
+    }
     return {"status": status, "reason": None, "product_root": product_root, "stages": stages,
-            "trust": trust, "primary_next_stage_id": primary_next_stage_id,
+            "trust": trust, "product_truth": product_truth,
+            "primary_next_stage_id": primary_next_stage_id,
             "counts": {"modeled": len(table), "ready": ready, "blocked": blocked}}
 
 

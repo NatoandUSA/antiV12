@@ -24,12 +24,13 @@ Trang Workflow đọc trực tiếp thư mục này. Mở trang Workflow, dòng 
 folder"** ở đầu trang cho biết chính xác thư mục nó đang đọc — bấm **Copy path** để copy
 đường dẫn đó vào lệnh bên dưới.
 
-## 3. Nhập Product Truth (Phase 6A) — **làm bước này trước**, chưa hiện trên Workflow
+## 3. Nhập Product Truth (Phase 6A) — **làm bước này trước** bước 8 (Keywords -> listing)
 
-Đây là bước khai báo sự thật vật lý về sản phẩm (chất liệu, cách trang trí, v.v.) — bước bắt
-buộc trước khi làm Listing (bước 9 trên Workflow), nhưng **hiện chưa được liệt kê trong 13 bước
-của Workflow** (đã ghi nhận trong `DASHBOARD-V1-SPEC.md` §13 để sếp quyết định có thêm vào
-không). Vẫn phải chạy tay:
+Đây là bước khai báo sự thật vật lý về sản phẩm (chất liệu, cách trang trí, v.v.) — bắt buộc
+trước khi làm bước 8. Trang Workflow hiện hiển thị **"Product Truth (prerequisite)"** ở đầu
+nhóm Build — không đánh số như 13 bước chính (đây là điều kiện tiên quyết, không phải bước 14),
+nhưng có trạng thái và nút Copy command như các bước khác. Nếu bước 8 hiện dòng "Waiting on
+Product Truth", quay lại đây trước.
 
 ```
 python scripts/phase6a_build.py <đường-dẫn-thư-mục-dự-án>
@@ -49,6 +50,8 @@ Không cần hiểu lệnh làm gì bên trong; chỉ cần trạng thái sau kh
 - **NOT_STARTED** = chưa có file, chạy lệnh copy được.
 - **UNKNOWN** = có file nhưng đọc lỗi — báo sếp, đừng tự sửa file JSON bằng tay.
 - **NOT_ACCEPTED** = code đã chạy đúng nhưng chưa qua review nội bộ — không phải lỗi thao tác.
+- **OWNER_INPUT_REQUIRED** (chỉ ở dòng Product Truth) = đã chạy xong nhưng còn thiếu thông tin
+  sếp cần xác nhận — mở `PRODUCT-READINESS-REPORT.md` (bước 3) để xem thiếu gì.
 
 ## 5. Chi phí / kinh tế (nền tảng Phase 7.1M, cho PPC — bước 11)
 

@@ -55,7 +55,11 @@
     // BLOCKED/UNKNOWN already match an existing key above by literal value; only these two are
     // new. NOT_STARTED is not "READY_EMPTY" -- that means "checked, nothing to show", while a
     // stage that has not been run yet is something the owner can act on right now.
-    "NOT_STARTED": "NEEDS_SETUP", "NOT_ACCEPTED": "ACTION_REQUIRED"
+    "NOT_STARTED": "NEEDS_SETUP", "NOT_ACCEPTED": "ACTION_REQUIRED",
+    // Dashboard V1 workspace trust states (DASHBOARD-V1-SPEC.md Section 7). Without an explicit
+    // mapping these would all fall through to the generic UNKNOWN default below -- including
+    // HISTORICAL, which needs the same attention-grabbing treatment as BLOCKED, not a neutral one.
+    "TRUSTED": "READY", "UNVERIFIED": "UNKNOWN", "HISTORICAL": "BLOCKED"
   };
 
   function ownerState(value) {
@@ -1130,6 +1134,20 @@
     return row;
   }
 
+  // DASHBOARD-V1-SPEC.md Section 7: exactly one workspace trust state. wf.trust.state / .reason
+  // are read verbatim -- this function derives and invents nothing.
+  function workflowTrustBanner(trust) {
+    // Reuses the existing next-action panel's colour-coded border (.next-action.na-<cls> in
+    // console.css) rather than inventing a second banner style.
+    var sec = el("section", { class: "panel next-action na-" + (STATUS[ownerState(trust.state)] || STATUS.UNKNOWN).cls,
+                              id: "workspace-trust", role: "note",
+                              "aria-label": "Workspace trust state" });
+    sec.appendChild(el("h2", { class: "na-title", text: "Workspace" }));
+    sec.appendChild(tag(trust.state));
+    sec.appendChild(el("p", { class: "na-message", text: trust.reason || "" }));
+    return sec;
+  }
+
   function renderWorkflow() {
     var root = document.getElementById("view-root");
     root.textContent = "";
@@ -1148,6 +1166,7 @@
       head.appendChild(el("p", { class: "sub" }, [document.createTextNode(
         (counts.ready || 0) + " of " + (counts.modeled || 0) + " tracked stages ready")]));
       root.appendChild(head);
+      if (wf.trust) root.appendChild(workflowTrustBanner(wf.trust));
 
       if (!stages.length) {
         root.appendChild(emptyState({
@@ -1650,7 +1669,10 @@
 
   // ---------------------------------------------------------------- router + boot
   function route() {
-    var hash = (window.location.hash || "#overview").replace("#", "");
+    // Default landing (DASHBOARD-V1-SPEC.md Section 13 Q2, resolved: Workflow for everyone).
+    // Overview stays fully reachable via nav and its own #overview hash -- only the no-hash
+    // entry point moved.
+    var hash = (window.location.hash || "#workflow").replace("#", "");
     if (hash === "alerts-view") hash = "alerts";      // accepted legacy route -> the real Alerts page
     var view = viewById(hash) || VIEWS[0];
     setActive(view.id);

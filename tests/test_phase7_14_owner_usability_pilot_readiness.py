@@ -3204,6 +3204,14 @@ class TestDomRenderContract(unittest.TestCase):
                 "status": "READY_PARTIAL",
                 "counts": {"modeled": 11, "ready": 6, "blocked": 1},
                 "product_root": "/runs/T2", "primary_next_stage_id": 3,
+                # DASHBOARD-V1-SPEC.md Section 7. This fixture's product_root ("/runs/T2") is the
+                # real quarantined workspace, so HISTORICAL is the narratively-consistent choice --
+                # the other two states are covered directly in WorkspaceTrust (Python), which
+                # exercises the real _workspace_trust_state logic; this fixture only needs to prove
+                # the DOM renders whatever state the backend sends.
+                "trust": {"state": "HISTORICAL",
+                         "reason": "Quarantined -- readable as history, never a basis for a new "
+                                   "decision."},
                 "stages": [
                     {"stage_id": 1, "label": "Seed keyword", "group": "Research", "modeled": False,
                      "state": None, "components": {}, "blocked_by": [], "command": None,

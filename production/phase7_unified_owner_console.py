@@ -61,6 +61,7 @@ from production import phase7_connected_research_watchlists as WATCH# noqa: E402
 from production import phase7_owner_notification_delivery as NOTIFY # noqa: E402  accepted 7.12 authority
 from production import phase7_owner_next_action as NEXT             # noqa: E402  7.14 guidance read model
 from production import phase7_workflow_stage_model as WSM           # noqa: E402  Dashboard V1 stage engine
+from production import seller_central_package as SCP                 # noqa: E402  accepted 6F package verify
 from core import network_policy as NP                               # noqa: E402  the ONE network authority
 from core import diagnostics as DIAG                                # noqa: E402  redacted local diagnostics
 from core import money as MONEY                                     # noqa: E402  Decimal authority (parity import)
@@ -844,6 +845,40 @@ def _repo_tags(repo_root):
     return sorted(set(tags))
 
 
+TRUST_TRUSTED = "TRUSTED"
+TRUST_UNVERIFIED = "UNVERIFIED"
+TRUST_HISTORICAL = "HISTORICAL"
+
+# Explicit, deliberate owner quarantine decisions (DASHBOARD-V1-SPEC.md Section 7 /
+# HANDOFF-2026-08-04 Section 5) -- never auto-derived. runs/T2 drifted from its accepted Phase 6F
+# package across stages 6A-6E; the accepted bytes are unrecoverable (never committed, runs/
+# gitignored, no backup), so no LIVE check can ever detect this drift after the fact --
+# verify_phase6f_artifacts would report today's (already-drifted) files as internally consistent,
+# because the promoted package's own index was itself built from those same drifted files. Decided
+# 2026-08-04. Matched by product-root basename, not full path, so this travels across machines.
+QUARANTINED_PRODUCT_ROOTS = frozenset({"T2"})
+
+
+def _workspace_trust_state(product_root):
+    """DASHBOARD-V1-SPEC.md Section 7 -- exactly one of TRUSTED / UNVERIFIED / HISTORICAL for the
+    PRODUCT workspace. Reuses production.seller_central_package.verify_phase6f_artifacts (the
+    accepted Phase 6F authority) rather than inventing a second lineage-verification mechanism;
+    the only new logic here is QUARANTINED_PRODUCT_ROOTS, which -- deliberately -- a live check
+    cannot replace (see its own comment)."""
+    basename = os.path.basename(os.path.normpath(product_root))
+    if basename in QUARANTINED_PRODUCT_ROOTS:
+        return {"state": TRUST_HISTORICAL,
+                "reason": "Quarantined -- readable as history, never a basis for a new decision."}
+    package_root = SCP.package_root_dir(product_root)
+    if not os.path.isdir(package_root):
+        return {"state": TRUST_UNVERIFIED, "reason": "No accepted package yet to compare against."}
+    report = SCP.verify_phase6f_artifacts(package_root, workspace_dir=product_root)
+    if report.get("blockers"):
+        return {"state": TRUST_UNVERIFIED,
+                "reason": "An accepted package exists but no longer verifies against this workspace."}
+    return {"state": TRUST_TRUSTED, "reason": "Lineage verified against the accepted package."}
+
+
 def build_workflow_section(config, *, now):
     """Dashboard V1 Workflow -- the 13-stage pipeline overview (DASHBOARD-V1-SPEC.md). Read-only
     and purely additive: no existing section, the console readiness banner, module list, or any
@@ -860,8 +895,9 @@ def build_workflow_section(config, *, now):
     product_root = os.path.dirname(config.workspace_root.rstrip(os.sep))
     if not os.path.isdir(product_root):
         return {"status": MOD_UNAVAILABLE, "reason": "product workspace not present",
-                "product_root": product_root, "stages": [],
+                "product_root": product_root, "stages": [], "trust": None,
                 "counts": {"modeled": 0, "ready": 0, "blocked": 0}}
+    trust = _workspace_trust_state(product_root)
     tags = _repo_tags(config.repo_root)
     table = WSM.workflow_stage_table()
     results = WSM.resolve_all(table, product_root, tags=tags)
@@ -896,7 +932,7 @@ def build_workflow_section(config, *, now):
     primary_next_stage_id = next((spec.stage_id for spec in table
                                  if results[spec.stage_id]["state"] != WSM.READY), None)
     return {"status": status, "reason": None, "product_root": product_root, "stages": stages,
-            "primary_next_stage_id": primary_next_stage_id,
+            "trust": trust, "primary_next_stage_id": primary_next_stage_id,
             "counts": {"modeled": len(table), "ready": ready, "blocked": blocked}}
 
 

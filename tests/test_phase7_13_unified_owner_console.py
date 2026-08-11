@@ -44,6 +44,7 @@ from production import phase7_connected_public_research as R       # noqa: E402
 from production import phase7_connected_research_watchlists as W   # noqa: E402
 from production import phase7_owner_notification_delivery as N     # noqa: E402
 from production import phase7_workflow_stage_model as WSM          # noqa: E402
+from production import seller_central_package as SCP               # noqa: E402
 import network_policy as NP                                        # noqa: E402
 import diagnostics as DIAG                                         # noqa: E402
 import test_phase7_4_owner_dashboard as T4                         # noqa: E402
@@ -2407,6 +2408,101 @@ class WorkflowSection(Base):
     def test_source_authorities_names_the_real_module_not_branch_a(self):
         self.assertIn("phase7_workflow_stage_model", UC.SOURCE_AUTHORITIES["workflow"])
         self.assertNotIn("pipeline_status", UC.SOURCE_AUTHORITIES["workflow"])
+
+
+class WorkspaceTrust(Base):
+    """DASHBOARD-V1-SPEC.md Section 7 -- workspace trust state (build_workflow_section's "trust"
+    field, computed by UC._workspace_trust_state). Reuses the accepted Phase 6F verification
+    authority (production.seller_central_package.verify_phase6f_artifacts) rather than a second
+    lineage mechanism; QUARANTINED_PRODUCT_ROOTS is the only genuinely new source of truth here,
+    covered separately below."""
+
+    def _fresh_product_root(self, name="prod"):
+        """A product root whose basename is deliberately NOT "T2" -- Base.newroot() always yields
+        .../T2/phase7 (the OTHER Workflow tests' convention), which would collide with
+        QUARANTINED_PRODUCT_ROOTS and silently turn every TRUSTED/UNVERIFIED case here into
+        HISTORICAL."""
+        self._n += 1
+        root = os.path.join(self.tmp, "%s%d" % (name, self._n))
+        os.makedirs(root)
+        return root
+
+    def _write_package(self, product_root, *, tamper_after_index=False):
+        """A minimal, hermetic, self-consistent Phase 6F package -- hand-built rather than cloning
+        the real (gitignored, environment-only) runs/T2, so these tests never join the
+        "missing runs/T2 outside the original checkout" baseline-skip category."""
+        package_root = SCP.package_root_dir(product_root)
+        os.makedirs(package_root)
+        body = b"# Read me\nSafe draft.\n"
+        with open(os.path.join(package_root, "00-READ-ME-FIRST.md"), "wb") as f:
+            f.write(body)
+        index_doc = {"entries": [{
+            "artifact_path": "00-READ-ME-FIRST.md", "required": True,
+            "sha256": hashlib.sha256(body).hexdigest(), "size_bytes": len(body),
+            "media_type": "text/markdown", "source_hashes": {},
+        }]}
+        index_bytes = json.dumps(index_doc).encode("utf-8")
+        with open(os.path.join(package_root, SCP.PACKAGE_INDEX_FILENAME), "wb") as f:
+            f.write(index_bytes)
+        with open(os.path.join(package_root, SCP.PACKAGE_INDEX_SHA_FILENAME), "wb") as f:
+            f.write(SCP.build_package_index_sha_line(index_bytes).encode("utf-8"))
+        if tamper_after_index:
+            # Simulate drift: the package's own bytes no longer match what its index recorded --
+            # the exact shape verify_phase6f_artifacts exists to catch.
+            with open(os.path.join(package_root, "00-READ-ME-FIRST.md"), "wb") as f:
+                f.write(b"# Read me\nTAMPERED after promotion.\n")
+        return package_root
+
+    def test_no_package_is_unverified(self):
+        trust = UC._workspace_trust_state(self._fresh_product_root())
+        self.assertEqual(trust["state"], UC.TRUST_UNVERIFIED)
+
+    def test_clean_package_is_trusted(self):
+        root = self._fresh_product_root()
+        self._write_package(root)
+        self.assertEqual(UC._workspace_trust_state(root)["state"], UC.TRUST_TRUSTED)
+
+    def test_drifted_package_is_unverified_not_trusted(self):
+        root = self._fresh_product_root()
+        self._write_package(root, tamper_after_index=True)
+        self.assertEqual(UC._workspace_trust_state(root)["state"], UC.TRUST_UNVERIFIED)
+
+    def test_quarantined_root_is_historical_even_with_a_verifying_package(self):
+        """The T2 quarantine decision must win even in the hypothetical where a package DOES
+        verify clean -- HISTORICAL is a deliberate owner decision, not something a live check can
+        overturn (see _workspace_trust_state's own docstring for why not)."""
+        root = os.path.join(self.tmp, "runs-like", "T2")
+        os.makedirs(root)
+        self._write_package(root)
+        self.assertEqual(UC._workspace_trust_state(root)["state"], UC.TRUST_HISTORICAL)
+
+    def test_quarantined_root_is_historical_with_no_package_too(self):
+        root = os.path.join(self.tmp, "runs-like2", "T2")
+        os.makedirs(root)
+        self.assertEqual(UC._workspace_trust_state(root)["state"], UC.TRUST_HISTORICAL)
+
+    def test_trust_folds_into_workflow_section(self):
+        root = self._fresh_product_root()
+        self._write_package(root)
+        ws = os.path.join(root, "phase7")
+        os.makedirs(ws, exist_ok=True)
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        self.assertEqual(model["sections"]["workflow"]["trust"]["state"], UC.TRUST_TRUSTED)
+
+    def test_trust_is_none_when_no_product_workspace_at_all(self):
+        self._n += 1
+        ws = os.path.join(self.tmp, "nonexistent%d" % self._n, "phase7")
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        self.assertIsNone(model["sections"]["workflow"]["trust"])
+
+    def test_json_serializable(self):
+        root = self._fresh_product_root()
+        self._write_package(root)
+        ws = os.path.join(root, "phase7")
+        os.makedirs(ws, exist_ok=True)
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        round_tripped = json.loads(json.dumps(model["sections"]["workflow"]["trust"]))
+        self.assertEqual(round_tripped, model["sections"]["workflow"]["trust"])
 
 
 class RepoTagsFileRead(Base):

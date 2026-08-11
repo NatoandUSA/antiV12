@@ -274,8 +274,8 @@ the start.
 
 1. ~~**Workspace disposition.**~~ **ANSWERED 2026-08-04: quarantine.** `runs/T2` is `HISTORICAL`;
    fresh workspace per real product. Folded into §7.
-2. **Landing screen.** Workflow for everyone, or Workflow only until the decision queue is
-   non-empty, then Overview?
+2. ~~**Landing screen.**~~ **ANSWERED 2026-08-11: Workflow for everyone.** Overview remains fully
+   reachable via nav and its own `#overview` route -- only the no-hash entry point moved.
 3. **Stage 11.** Show `NOT_ACCEPTED` and let the owner see the planning output anyway, or
    hide the stage until it is accepted? This spec assumes the former — hiding a stage of a
    13-stage pipeline is its own kind of lie.

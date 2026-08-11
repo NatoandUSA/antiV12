@@ -1035,6 +1035,51 @@ async function run() {
       !!link && api.controlKind(link.getAttribute('data-act')) === 'navigation');
   }
 
+  // ---- Workflow: workspace trust banner (DASHBOARD-V1-SPEC.md Section 7) --------------------------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const banner = dom.doc.getElementById('workspace-trust');
+    assert('210_trust_banner_present', !!banner, 'no #workspace-trust -- FX.workflow.trust was set');
+    const t = banner && byClass(banner, 'status-tag')[0];
+    assert('211_trust_banner_shows_backend_state',
+      !!t && t.textContent.indexOf(FX.workflow.body.data.trust.state) >= 0);
+    assert('212_trust_banner_shows_backend_reason',
+      !!banner && banner.textContent.indexOf(FX.workflow.body.data.trust.reason) >= 0);
+  }
+
+  // ---- Workflow: no trust banner when the backend sends none (no product workspace) ---------------
+  {
+    const { dom, api } = newEnv({ workflow: { status: 200, body: { readiness: 'SESSION7_13_CONSOLE_READY',
+      data: { status: 'MODULE_UNAVAILABLE', stages: [], trust: null,
+             counts: { modeled: 0, ready: 0, blocked: 0 },
+             product_root: '/none', primary_next_stage_id: null } } } });
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    assert('213_no_trust_banner_without_backend_trust', !dom.doc.getElementById('workspace-trust'));
+  }
+
+  // ---- default landing page (DASHBOARD-V1-SPEC.md Section 13 Q2, resolved: Workflow) --------------
+  {
+    const { dom, api, sandbox } = newEnv();
+    api.buildNav();
+    sandbox.window.location.hash = '';           // a fresh visit, no hash at all
+    api.route(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    assert('214_no_hash_lands_on_workflow', byTag(root, 'H1')[0].textContent === 'Workflow',
+      byTag(root, 'H1')[0].textContent);
+    assert('215_no_hash_marks_workflow_active',
+      dom.doc.getElementById('nav-workflow').getAttribute('aria-current') === 'page');
+    // Overview must stay fully reachable -- the decision retires it as the LANDING page only.
+    sandbox.window.location.hash = '#overview';
+    api.route(); await flush();
+    assert('216_overview_still_reachable', byTag(root, 'H1')[0].textContent === 'Overview',
+      byTag(root, 'H1')[0].textContent);
+    assert('217_overview_still_in_nav',
+      dom.doc.getElementById('nav-overview').getAttribute('aria-current') === 'page');
+  }
+
   // ---- no dead control anywhere: every clickable control on every page is classified ------------
   {
     const pages = ['renderOverview', 'renderWorkflow', 'renderAnalysis', 'renderManualActions',

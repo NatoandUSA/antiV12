@@ -279,3 +279,11 @@ the start.
 3. **Stage 11.** Show `NOT_ACCEPTED` and let the owner see the planning output anyway, or
    hide the stage until it is accepted? This spec assumes the former — hiding a stage of a
    13-stage pipeline is its own kind of lie.
+4. **NEW, found in F5 (2026-08-11): Phase 6A ("Product Truth") has no slot in the 13-stage
+   numbering at all.** It has a real, working CLI (`scripts/phase6a_build.py`) and Stage 9
+   (`product_detail_page.py`) hard-depends on its output — attempting Stage 9 first raises an
+   unhandled `Phase6CDependencyError`, not a clean `BLOCKED` state. Not fixed here: renumbering
+   or extending the 13-stage table is a bigger call than F5's UI/docs scope covers. Documented
+   as an explicit prerequisite in `docs/QUICKSTART-DASHBOARD-V1.md` §3 in the meantime. Owner
+   decision needed: add it as a tracked 14th stage (and where in the sequence), or leave it
+   permanently doc-only like Stage 1.

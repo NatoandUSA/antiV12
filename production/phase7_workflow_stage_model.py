@@ -414,6 +414,9 @@ WSM_STAGE_8 = StageSpec(
 # production/product_detail_page.py (6C) reads phase6/6B/KEYWORD-ALLOCATION-MAP.json directly
 # (KAP.phase6b_dir / "KEYWORD-ALLOCATION-MAP.json", confirmed by source). production/aplus_assembly.py
 # (6D) is the sibling A+ producer for the same stage.
+# F5 finding, confirmed by running the exact command that used to be here: both CLIs default to a
+# dry-run print-only mode -- --write is REQUIRED or PRODUCT-DETAIL-PAGE.json / BASIC-APLUS-CONTENT.json
+# are never written and the stage silently stays NOT_STARTED forever, with no error to explain why.
 WSM_STAGE_9 = StageSpec(
     9, "Listing + A+", GROUP_BUILD,
     components=(
@@ -421,11 +424,14 @@ WSM_STAGE_9 = StageSpec(
         StageComponent("aplus", ("phase6/6D/BASIC-APLUS-CONTENT.json",)),
     ),
     blocking_stage_ids=(8,),
-    command="python -m production.product_detail_page <run_dir>  # then aplus_assembly")
+    command="python -m production.product_detail_page <run_dir> --write"
+           "  # then: python -m production.aplus_assembly <run_dir> --write")
 
 # creative/creative_production_package.py's load_phase6e_dependencies() HARD-verifies both the 6C
 # and 6D output directories exist and pass verify_phase6c_artifacts / verify_phase6d_artifacts,
 # raising Phase6EDependencyError otherwise -- confirmed by reading the function body, not inferred.
+# F5 finding: same --write requirement as Stage 9 (confirmed by reading main() -- artifacts are
+# gated behind action="store_true" --write; the bare command silently never writes anything).
 WSM_STAGE_10 = StageSpec(
     10, "Photo / A+ prompts", GROUP_BUILD,
     components=(
@@ -434,7 +440,7 @@ WSM_STAGE_10 = StageSpec(
         StageComponent("creative_brief", ("phase6/6E/CREATIVE-BRIEF.md",)),
     ),
     blocking_stage_ids=(9,),
-    command="python -m creative.creative_production_package <run_dir>")
+    command="python -m creative.creative_production_package <run_dir> --write")
 
 # production/phase7_extended_launch_planning.py: NO source-code reference to phase6c_dir /
 # phase6d_dir / phase6e_dir was found (checked directly) -- its real gate is the accepted Phase
@@ -446,6 +452,8 @@ WSM_STAGE_10 = StageSpec(
 # Path: assemble_and_write_phase7_1e() writes to <run_dir>/phase7/7.1E/candidate/, verifies, then
 # PROMOTES to .../final/ (confirmed by reading the function body) -- the candidate dir is a
 # staging area, not evidence; only the promoted final/ counts.
+# F5 finding, confirmed by actually running this exact string: --run-dir is a REQUIRED FLAG on this
+# CLI, not a bare positional -- the command as it stood only printed argparse usage and did nothing.
 WSM_STAGE_11 = StageSpec(
     11, "PPC export", GROUP_LAUNCH,
     components=(
@@ -453,7 +461,7 @@ WSM_STAGE_11 = StageSpec(
                        accepted_tag_prefix="phase7-1e"),
         StageComponent("entry_guide", ("phase7/7.1E/final/MANUAL-ENTRY-GUIDE.md",)),
     ),
-    command="python -m production.phase7_extended_launch_planning <run_dir>")
+    command="python -m production.phase7_extended_launch_planning --run-dir <run_dir>")
 
 # production/phase7_report_ingestion.py: "owner-EXPORTED Amazon Ads report files ... placed in a
 # local inbox" -- the raw import itself has no fixed name (owner-driven, like stages 2/4), but the
@@ -462,10 +470,13 @@ WSM_STAGE_11 = StageSpec(
 # Path: workspace_dirs()'s _WORKSPACE_SUBDIRS includes "final" (promote_candidate writes there,
 # confirmed by reading run_ingestion's promotion call) -- same candidate/final/last_valid shape as
 # 7.1E, just under <run_dir>/phase7/7.2/.
+# F5 finding, confirmed by running the exact string: this CLI takes --base-dir (required), not a
+# positional run_dir at all -- and it wants the phase7/7.2 workspace itself, one level below
+# <run_dir>.
 WSM_STAGE_12 = StageSpec(
     12, "Import PPC reports", GROUP_LAUNCH,
     ("phase7/7.2/final/PHASE7-REPORT-ANALYSIS-READINESS.json",),
-    command="python -m production.phase7_report_ingestion <run_dir>")
+    command="python -m production.phase7_report_ingestion --base-dir <run_dir>/phase7/7.2")
 
 # production/phase7_ads_analysis.py: hard-coded to read ONLY the promoted Phase 7.2 "final/"
 # directory, raising AdsAnalysisError on any other source (confirmed by source) -- the strongest-
@@ -473,6 +484,8 @@ WSM_STAGE_12 = StageSpec(
 # subdir (D_PROMOTED = "promoted", confirmed), NOT "final/" -- 7.2 and 7.3 use different names for
 # the same concept, an inconsistency worth knowing rather than silently normalizing away.
 # runs/T2/phase7/7.3/promoted/owner-decision-queue.csv is DASHBOARD-V1-SPEC.md's own cited path.
+# F5 finding, confirmed by running the exact string: this CLI requires --base-dir AND
+# --phase7-2-dir, both flags, neither a bare positional -- the command as it stood was missing both.
 WSM_STAGE_13 = StageSpec(
     13, "Analyze + suggest", GROUP_LAUNCH,
     components=(
@@ -480,4 +493,5 @@ WSM_STAGE_13 = StageSpec(
         StageComponent("decision_queue", ("phase7/7.3/promoted/owner-decision-queue.csv",)),
     ),
     blocking_stage_ids=(12,),
-    command="python -m production.phase7_ads_analysis <run_dir>")
+    command="python -m production.phase7_ads_analysis --base-dir <run_dir>/phase7/7.3"
+           " --phase7-2-dir <run_dir>/phase7/7.2")

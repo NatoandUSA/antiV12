@@ -3247,7 +3247,7 @@ class TestDomRenderContract(unittest.TestCase):
                     {"stage_id": 9, "label": "Listing + A+", "group": "Build", "modeled": True,
                      "state": "NOT_STARTED",
                      "components": {"listing": "READY", "aplus": "NOT_STARTED"},
-                     "blocked_by": [], "command": "python -m production.product_detail_page <run_dir>",
+                     "blocked_by": [], "command": "python -m production.product_detail_page <run_dir> --write",
                      "acceptance_required": False, "informational_reason": None},
                     {"stage_id": 10, "label": "Photo / A+ prompts", "group": "Build",
                      "modeled": True, "state": "READY", "components": {"listing_image_prompts": "READY"},

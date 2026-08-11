@@ -528,5 +528,48 @@ class AuthoritativeStageTable(unittest.TestCase):
                              f"stage {spec.stage_id} ({spec.name}): {results[spec.stage_id]}")
 
 
+class StageCommandsAreReal(unittest.TestCase):
+    """F5 finding: staff copy-paste `command` verbatim with no Python knowledge -- a real repo audit
+    found 5 of 11 modeled stages had a command that either silently wrote nothing (--write missing:
+    stages 9/10) or was rejected outright by its own argparse (wrong/missing required flag: stages
+    11/12/13). Actually invokes each command (offline, throwaway temp dir, no real workspace touched)
+    and asserts its OWN CLI accepts the flags -- not that the full business run succeeds, only that
+    it is not immediately bounced by argparse the way the original bug was."""
+
+    def test_every_modeled_command_survives_its_own_argument_parser(self):
+        import shlex
+        import subprocess
+        table = WSM.workflow_stage_table()
+        with tempfile.TemporaryDirectory() as tmp:
+            failures = []
+            for spec in table:
+                if not spec.command or not spec.command.startswith("python"):
+                    continue   # stages 2/4: "(place the export in the workspace folder)", no CLI
+                line = spec.command.split("#", 1)[0].strip()
+                # split FIRST, while placeholders are still plain text, then substitute the real
+                # (Windows, backslash-laden) temp path into each token -- shlex is POSIX-flavoured
+                # and treats a bare backslash as an escape character, so splitting AFTER substitution
+                # silently mangled every "C:\Users\...\tmpXXXX" path (this really happened: it wrote
+                # stray "UsersAdminAppDataLocal...T mp" directories straight into the repo root).
+                argv = [tok.replace("<run_dir>", tmp).replace("<folder>", tmp)
+                       for tok in shlex.split(line)]
+                argv[0] = sys.executable
+                proc = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, timeout=60)
+                # argparse itself rejects with exit code 2 + "usage:" on stderr -- the exact shape
+                # of the bug found. A real business-logic failure (e.g. a missing upstream artifact)
+                # exits differently and never prints "usage:".
+                if proc.returncode == 2 and "usage:" in proc.stderr:
+                    failures.append((spec.stage_id, spec.command, proc.stderr.strip().splitlines()[0]))
+            self.assertEqual(failures, [], failures)
+
+    def test_stages_9_and_10_commands_include_write_flag(self):
+        """The narrower, non-argparse-visible half of the same bug class: both CLIs default to a
+        dry-run/print-only mode and need --write to actually persist an artifact -- a command missing
+        it exits 0 with no error, so the argparse smoke test above cannot catch it."""
+        by_id = {s.stage_id: s for s in WSM.workflow_stage_table()}
+        for stage_id in (9, 10):
+            self.assertIn("--write", by_id[stage_id].command, stage_id)
+
+
 if __name__ == "__main__":
     unittest.main()

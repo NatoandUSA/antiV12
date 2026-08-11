@@ -2350,16 +2350,18 @@ class WorkflowSection(Base):
             t = time.time() - (len(rels) - i)
             os.utime(p, (t, t))
 
-        # 7.1E's accepted_tag_prefix needs a real matching tag; this repo's own is a checkpoint
-        # only (confirmed earlier this session: no phase7-1e-accepted-* tag exists), so this
-        # assertion is expected to name that ONE stage as the reason, not a crash or a wrong path.
+        # 7.1E's accepted_tag_prefix needs a real matching tag. F3 (2026-08-11) created and pushed
+        # phase7-1e-accepted-2f8712d, so this repo now HAS one -- every path resolves READY, with
+        # no remaining accepted-tag gap. (Before F3 this repo only had a checkpoint tag and Stage 11
+        # was the sole NOT_ACCEPTED holdout; if this ever regresses back to non-empty, check
+        # `git tag -l | grep phase7-1e` before assuming a code defect.)
         model = UC.build_console_model(self.cfg(ws), now=NOW())
         wf = model["sections"]["workflow"]
         by_id = {s["stage_id"]: s for s in wf["stages"] if s["modeled"]}
         non_ready = {sid: s["state"] for sid, s in by_id.items() if s["state"] != WSM.READY}
-        self.assertEqual(non_ready, {11: WSM.NOT_ACCEPTED},
-                         "every path must resolve except Stage 11's real, current NOT_ACCEPTED tag")
-        self.assertEqual(wf["primary_next_stage_id"], 11)
+        self.assertEqual(non_ready, {}, "every modeled stage must resolve READY now that a real "
+                                       "phase7-1e-accepted-* tag exists")
+        self.assertIsNone(wf["primary_next_stage_id"])
 
     def test_composite_component_detail_survives_the_model(self):
         """Only the listing half of Stage 9 -- the exact "partial progress" case the product

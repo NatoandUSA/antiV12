@@ -1080,6 +1080,19 @@ async function run() {
       dom.doc.getElementById('nav-overview').getAttribute('aria-current') === 'page');
   }
 
+  // ---- Workflow: product workspace path is shown and copyable (F5 finding) -------------------------
+  {
+    const { dom, api } = newEnv();
+    api.renderWorkflow(); await flush();
+    const root = dom.doc.getElementById('view-root');
+    const expected = FX.workflow.body.data.product_root;
+    assert('218_workspace_path_visible', root.textContent.indexOf(expected) >= 0,
+      'product_root not rendered anywhere -- staff told to use "the workspace folder" with no way to find it');
+    const btn = findAll(root, n => n.tagName === 'BUTTON'
+      && (n.getAttribute('aria-label') || '').indexOf(expected) >= 0)[0];
+    assert('219_workspace_path_copyable', !!btn, 'no copy control for the workspace path');
+  }
+
   // ---- no dead control anywhere: every clickable control on every page is classified ------------
   {
     const pages = ['renderOverview', 'renderWorkflow', 'renderAnalysis', 'renderManualActions',

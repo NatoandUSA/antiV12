@@ -1083,12 +1083,13 @@
      verbatim (stage.state, wf.primary_next_stage_id). */
   var WORKFLOW_GROUPS = ["Research", "Decide", "Build", "Launch"];
 
-  function commandCopyRow(command) {
+  function commandCopyRow(command, label) {
+    label = label || "Copy command";
     var row = el("div", { class: "na-command" });
     row.appendChild(el("code", { class: "mono", text: command }));
-    var cb = el("button", { class: "btn na-cta", type: "button", text: "Copy command",
+    var cb = el("button", { class: "btn na-cta", type: "button", text: label,
                             "data-act": "copy:command",
-                            "aria-label": "Copy the command " + command });
+                            "aria-label": label + ": " + command });
     cb.addEventListener("click", function () { copyValue(command); });
     row.appendChild(cb);
     return row;
@@ -1165,6 +1166,13 @@
       var counts = wf.counts || {};
       head.appendChild(el("p", { class: "sub" }, [document.createTextNode(
         (counts.ready || 0) + " of " + (counts.modeled || 0) + " tracked stages ready")]));
+      // F5 finding: every stage command below says "the workspace folder" -- staff had no way to
+      // see which folder that actually is. product_root was already in the API response, just
+      // never rendered.
+      if (wf.product_root) {
+        head.appendChild(el("p", { class: "sub", text: "Product workspace folder:" }));
+        head.appendChild(commandCopyRow(wf.product_root, "Copy path"));
+      }
       root.appendChild(head);
       if (wf.trust) root.appendChild(workflowTrustBanner(wf.trust));
 

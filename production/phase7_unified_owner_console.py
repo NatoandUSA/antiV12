@@ -897,6 +897,20 @@ def build_workflow_section(config, *, now):
         return {"status": MOD_UNAVAILABLE, "reason": "product workspace not present",
                 "product_root": product_root, "stages": [], "trust": None, "product_truth": None,
                 "counts": {"modeled": 0, "ready": 0, "blocked": 0}}
+    try:
+        return _build_workflow_section_body(config, product_root)
+    except Exception as e:   # noqa: BLE001 — degrade, never crash the whole console. Every
+        # sibling section builder (build_operations_model, build_watchlist_section, etc.) already
+        # catches around its own risky call; this one previously had no such guard at all, so an
+        # exception anywhere inside it (e.g. a malformed-but-parseable Product Truth artifact --
+        # see derive_product_truth_state's isinstance guards) took down the ENTIRE console model
+        # for that request, not just this section.
+        return {"status": MOD_BLOCKED, "reason": type(e).__name__,
+                "product_root": product_root, "stages": [], "trust": None, "product_truth": None,
+                "counts": {"modeled": 0, "ready": 0, "blocked": 0}}
+
+
+def _build_workflow_section_body(config, product_root):
     trust = _workspace_trust_state(product_root)
     tags = _repo_tags(config.repo_root)
     table = WSM.workflow_stage_table()

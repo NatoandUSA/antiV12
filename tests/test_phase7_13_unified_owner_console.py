@@ -2418,13 +2418,37 @@ class WorkflowSection(Base):
         round_tripped = json.loads(json.dumps(model["sections"]["workflow"]))
         self.assertEqual(round_tripped, model["sections"]["workflow"])
 
+    def test_section_degrades_to_blocked_instead_of_crashing_the_whole_model(self):
+        """Every sibling section builder (build_operations_model, build_watchlist_section, etc.)
+        already catches its own risky call and degrades to MOD_BLOCKED; build_workflow_section
+        previously had no such guard at all, so ANY exception anywhere inside it -- not just the
+        one isinstance() now closes in derive_product_truth_state -- took down every OTHER section
+        in the same model too. Forces an unrelated exception via a real product_root that exists,
+        so the crash happens deep inside the section body, not at the earlier "not a directory"
+        early return."""
+        ws = self.newroot()
+        import unittest.mock as mock
+        with mock.patch.object(UC.WSM, "derive_product_truth_state",
+                              side_effect=RuntimeError("forced for test")):
+            model = UC.build_console_model(self.cfg(ws), now=NOW())
+        wf = model["sections"]["workflow"]
+        self.assertEqual(wf["status"], UC.MOD_BLOCKED)
+        self.assertEqual(wf["reason"], "RuntimeError")
+        self.assertEqual(wf["stages"], [])
+        # The rest of the console model must be completely unaffected -- this is the whole point.
+        self.assertIn("overview", model)
+
     def test_workflow_appears_in_generic_module_status_without_a_missing_label(self):
         ws = self.newroot()
         model = UC.build_console_model(self.cfg(ws), now=NOW())
         self.assertIn("workflow", model["overview"]["module_status"])
         self.assertIn("workflow", model["overview"]["module_labels"])
         self.assertNotIn("workflow", model["overview"]["blocked_modules"],
-                         "build_workflow_section never returns MOD_BLOCKED at the section level")
+                         "workflow is excluded from build_overview's own aggregation (see the "
+                         "comment on the 'workflow' key in build_console_model's sections dict) -- "
+                         "a MOD_BLOCKED status is now reachable at the section level (see "
+                         "test_section_degrades_to_blocked_instead_of_crashing_the_whole_model), "
+                         "it just never reaches this rollup")
 
     def test_source_authorities_names_the_real_module_not_branch_a(self):
         self.assertIn("phase7_workflow_stage_model", UC.SOURCE_AUTHORITIES["workflow"])

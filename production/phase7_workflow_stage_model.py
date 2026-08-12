@@ -587,6 +587,12 @@ def derive_product_truth_state(product_root):
             manifest = json.loads(f.read().decode("utf-8"))
     except (OSError, ValueError, UnicodeDecodeError):
         return UNKNOWN
+    # _is_readable (inside the _evidence_state call above) only proves json.loads doesn't raise --
+    # "null", "42", and "[1]" all parse without error but are not objects, and every .get() below
+    # assumes one. Both must be dicts before either is trusted, same as an unparseable file: the
+    # evidence is unusable, not a green light.
+    if not isinstance(workspace, dict) or not isinstance(manifest, dict):
+        return UNKNOWN
     #   1. artifact hash agreement -- for whichever of PRODUCT_TRUTH_ARTIFACTS the manifest's own
     #      output_hashes records (keyed workspace-relative, exactly like PRODUCT_TRUTH_ARTIFACTS
     #      itself), the recomputed sha256 of what is actually on disk must match. An artifact this

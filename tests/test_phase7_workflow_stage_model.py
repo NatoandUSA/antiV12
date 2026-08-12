@@ -691,6 +691,41 @@ class ProductTruthPrerequisite(unittest.TestCase):
                       "output_hashes": {"phase6/6A/PRODUCT-READINESS-REPORT.md": "0" * 64}}, f)
         self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.READY)
 
+    def test_unknown_when_manifest_is_json_null(self):
+        """json.loads("null") succeeds -- _is_readable (inside _evidence_state) only proves the
+        file parses, not that it parses to an object. Every manifest.get() below would raise
+        AttributeError on None without the isinstance guard; UNKNOWN is the correct degrade, the
+        same as an unparseable file, not a crash."""
+        _write_6a(self.d, ready_for_6b=True)
+        with open(os.path.join(self.d, WSM.PRODUCT_TRUTH_MANIFEST_FILE), "w",
+                 encoding="utf-8") as f:
+            f.write("null")
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_unknown_when_manifest_is_json_array(self):
+        _write_6a(self.d, ready_for_6b=True)
+        with open(os.path.join(self.d, WSM.PRODUCT_TRUTH_MANIFEST_FILE), "w",
+                 encoding="utf-8") as f:
+            f.write("[1, 2, 3]")
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_unknown_when_manifest_is_json_number(self):
+        _write_6a(self.d, ready_for_6b=True)
+        with open(os.path.join(self.d, WSM.PRODUCT_TRUTH_MANIFEST_FILE), "w",
+                 encoding="utf-8") as f:
+            f.write("42")
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_unknown_when_workspace_is_json_null(self):
+        """Symmetric case for the workspace file -- the same isinstance guard covers both, and the
+        pre-existing workspace.get() call had this exact gap even before the manifest checks were
+        added."""
+        _write_6a(self.d, ready_for_6b=True)
+        with open(os.path.join(self.d, WSM.PRODUCT_TRUTH_WORKSPACE_FILE), "w",
+                 encoding="utf-8") as f:
+            f.write("null")
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
     def test_not_one_of_the_11_resolvable_stages(self):
         """The whole point of a TRACKED PREREQUISITE, not stage 14: it must never appear in the
         numbered table or shift any existing stage_id."""

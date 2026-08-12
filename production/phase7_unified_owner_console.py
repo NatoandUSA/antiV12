@@ -900,19 +900,24 @@ def build_workflow_section(config, *, now):
     trust = _workspace_trust_state(product_root)
     tags = _repo_tags(config.repo_root)
     table = WSM.workflow_stage_table()
-    results = WSM.resolve_all(table, product_root, tags=tags)
     # Product Truth (Phase 6A) -- a TRACKED PREREQUISITE, deliberately not one of the 13 numbered
     # stages (owner decision, DASHBOARD-V1-SPEC.md Section 13 item 4). Its real consumer is Stage
     # 8 (confirmed by reading listing/keyword_allocation_planner.py and by actually running its
     # command against a Product-Truth-less workspace: it raises the same unhandled
-    # Phase6ADependencyError Stage 9 was already known to raise). Overriding Stage 8's own computed
-    # state here -- rather than adding a numeric blocking_stage_ids entry -- because Product Truth
-    # is not in WSM.workflow_stage_table() and has no numeric stage_id to reference; Stage 9 needs
-    # no change at all, since it already blocks on Stage 8 via its existing blocking_stage_ids=(8,).
+    # Phase6ADependencyError Stage 9 was already known to raise). Forcing Stage 8's state via
+    # WSM.resolve_all's state_overrides -- rather than adding a numeric blocking_stage_ids entry,
+    # since Product Truth is not in WSM.workflow_stage_table() and has no numeric stage_id to
+    # reference -- BEFORE resolve_all runs, not by patching its result afterward: Stage 9 blocks on
+    # Stage 8 via its existing blocking_stage_ids=(8,), but that check only sees the forced BLOCKED
+    # if Stage 8's OWN evidence is overridden while Stage 9 is still being resolved. A prior version
+    # of this patched results[8] after the fact and left Stage 9+ resolved against Stage 8's
+    # un-overridden state -- if Stage 8's own artifacts already existed from an earlier successful
+    # run, Stage 9 (and anything chained beyond it) reported READY while Stage 8 showed BLOCKED on
+    # the same screen. Reproduced directly before this fix; see the regression test added alongside.
     product_truth_state = WSM.derive_product_truth_state(product_root)
     product_truth_blocks_stage_8 = product_truth_state != WSM.READY
-    if product_truth_blocks_stage_8:
-        results[8] = {"state": WSM.BLOCKED, "components": results[8]["components"]}
+    overrides = {8: WSM.BLOCKED} if product_truth_blocks_stage_8 else None
+    results = WSM.resolve_all(table, product_root, tags=tags, state_overrides=overrides)
     stages = []
     for spec in table:
         r = results[spec.stage_id]

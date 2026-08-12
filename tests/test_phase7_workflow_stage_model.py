@@ -9,6 +9,7 @@ Extended for the real 13-stage mapping's own findings (not assumed): stages 2/4 
 filename (existence_globs), and stages 9/10/11/13 are produced by more than one script sharing one
 conceptual stage (StageComponent + composite rollup).
 """
+import json
 import os
 import sys
 import tempfile
@@ -154,6 +155,21 @@ class TwoStageDependency(unittest.TestCase):
         self.assertEqual(_state(results, 1), WSM.NOT_ACCEPTED)
         self.assertEqual(_state(results, 2), WSM.BLOCKED,
                          "a NOT_ACCEPTED upstream must not silently unblock its downstream")
+
+    def test_state_override_propagates_to_a_downstream_blocking_check(self):
+        """state_overrides forces stage 1's OWN result BEFORE stage 2 is resolved -- unlike
+        patching resolve_all's return value afterward, which stage 2 would never see (this is the
+        Product Truth / Stage 8 propagation defect: build_workflow_section used to patch results[8]
+        after resolve_all returned, and Stage 9 resolved against the un-overridden value)."""
+        up = os.path.join(self.d, "UP.json")
+        down = os.path.join(self.d, "DOWN.json")
+        _write(up)
+        _touch_older(up, seconds_ago=100)
+        _write(down)   # both stage 1 and stage 2 would genuinely resolve READY on their own
+        results = WSM.resolve_all(self._table(), self.d, state_overrides={1: WSM.BLOCKED})
+        self.assertEqual(_state(results, 1), WSM.BLOCKED)
+        self.assertEqual(_state(results, 2), WSM.BLOCKED,
+                         "stage 2 must see the OVERRIDDEN stage 1, not its real on-disk state")
 
     def test_ready_when_upstream_ready_and_downstream_newer(self):
         up = os.path.join(self.d, "UP.json")
@@ -572,8 +588,13 @@ class StageCommandsAreReal(unittest.TestCase):
 
 
 def _write_6a(product_root, *, ready_for_6b=True):
+    """Writes a workspace_id/product_id-agreeing manifest (no output_hashes -- derive_product_
+    truth_state treats an artifact with no recorded hash as nothing to verify, so this stays a
+    synthetic, non-hash-checked fixture; it only needs to pass the IDENTITY check, added alongside
+    Stage 9's propagation fix, see tests below and DASHBOARD-V1-SPEC.md Section 13 item 4)."""
     ws = {"workspace_id": "w1", "product_id": "w1",
          "downstream_readiness": {"ready_for_6b": ready_for_6b}}
+    manifest = {"workspace_id": "w1", "product_id": "w1"}
     import json
     for name in WSM.PRODUCT_TRUTH_ARTIFACTS:
         p = os.path.join(product_root, name)
@@ -581,6 +602,8 @@ def _write_6a(product_root, *, ready_for_6b=True):
         with open(p, "w", encoding="utf-8") as f:
             if name == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
                 json.dump(ws, f)
+            elif name == WSM.PRODUCT_TRUTH_MANIFEST_FILE:
+                json.dump(manifest, f)
             else:
                 f.write("{}")
 
@@ -622,6 +645,50 @@ class ProductTruthPrerequisite(unittest.TestCase):
 
     def test_ready_when_artifacts_present_and_ready_for_6b_true(self):
         _write_6a(self.d, ready_for_6b=True)
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.READY)
+
+    def test_unknown_when_manifest_hash_disagrees_with_actual_bytes(self):
+        """A workspace that exists, parses, and says ready_for_6b=True must still not report
+        READY if the manifest's own recorded hash for a tracked artifact disagrees with what is
+        actually on disk -- the same corrupted-artifact case load_phase6a_dependency raises
+        Phase6ADependencyError on. Scoped to PRODUCT_TRUTH_ARTIFACTS only -- this deliberately does
+        NOT call production.product_workspace.verify_phase6a_artifacts, whose own REQUIRED_
+        ARTIFACTS also demands PRODUCT-READINESS-REPORT.md, a file this module never tracks."""
+        _write_6a(self.d, ready_for_6b=True)
+        manifest_path = os.path.join(self.d, WSM.PRODUCT_TRUTH_MANIFEST_FILE)
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump({"workspace_id": "w1", "product_id": "w1",
+                      "output_hashes": {WSM.PRODUCT_TRUTH_WORKSPACE_FILE: "0" * 64}}, f)
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_unknown_when_workspace_and_product_id_disagree(self):
+        """The ambiguous-identity case load_phase6a_dependency raises Phase6ADependencyError on --
+        workspace_id must equal product_id, not merely both be non-empty."""
+        _write_6a(self.d, ready_for_6b=True)
+        ws_path = os.path.join(self.d, WSM.PRODUCT_TRUTH_WORKSPACE_FILE)
+        with open(ws_path, "w", encoding="utf-8") as f:
+            json.dump({"workspace_id": "wA", "product_id": "wB",
+                      "downstream_readiness": {"ready_for_6b": True}}, f)
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_unknown_when_manifest_identity_disagrees_with_workspace(self):
+        """The manifest/workspace identity-disagreement case load_phase6a_dependency raises
+        Phase6ADependencyError on, distinct from the workspace's own internal id agreement above."""
+        _write_6a(self.d, ready_for_6b=True)
+        manifest_path = os.path.join(self.d, WSM.PRODUCT_TRUTH_MANIFEST_FILE)
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump({"workspace_id": "different", "product_id": "different"}, f)
+        self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.UNKNOWN)
+
+    def test_untracked_artifact_hash_not_required(self):
+        """A manifest that records a hash for a file outside PRODUCT_TRUTH_ARTIFACTS (e.g. the
+        real PRODUCT-READINESS-REPORT.md production.product_workspace tracks but this module does
+        not) must not affect the result either way -- only OUR tracked artifacts are ever checked."""
+        _write_6a(self.d, ready_for_6b=True)
+        manifest_path = os.path.join(self.d, WSM.PRODUCT_TRUTH_MANIFEST_FILE)
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump({"workspace_id": "w1", "product_id": "w1",
+                      "output_hashes": {"phase6/6A/PRODUCT-READINESS-REPORT.md": "0" * 64}}, f)
         self.assertEqual(WSM.derive_product_truth_state(self.d), WSM.READY)
 
     def test_not_one_of_the_11_resolvable_stages(self):

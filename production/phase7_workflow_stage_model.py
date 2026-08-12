@@ -15,6 +15,7 @@ is ever accepted, this derivation should be replaced by a call into it -- a disc
 duplication for now, not an accident.
 """
 import glob
+import hashlib
 import json
 import os
 
@@ -291,13 +292,23 @@ def derive_composite_state(spec, workspace_dir, stage_states_so_far, spec_by_id,
     return overall, component_states
 
 
-def resolve_all(stage_table, workspace_dir, *, tags=None):
+def resolve_all(stage_table, workspace_dir, *, tags=None, state_overrides=None):
     """Resolve every stage in `stage_table`, in the order given, returning
     {stage_id: {"state": ..., "components": {name: state, ...}}} -- "components" is empty for a
     plain stage. Callers must supply stages in dependency order: every stage_id named in a later
     stage's blocking_stage_ids must already have appeared earlier in the list. The authoritative
-    13-stage table satisfies this by construction (see workflow_stage_table)."""
+    13-stage table satisfies this by construction (see workflow_stage_table).
+
+    state_overrides: optional {stage_id: forced_state}, for a real prerequisite this table has no
+    stage_id for (Product Truth blocking Stage 8 -- see build_workflow_section). The override is
+    applied to that stage's OWN result BEFORE the next stage in the table is resolved, so every
+    later stage's blocking_stage_ids check sees the forced value through the exact same
+    states_only mechanism a genuinely-computed BLOCKED already uses -- the propagation to Stage 9
+    and beyond is automatic, not something each caller has to hand-roll. Applying an override
+    AFTER this loop returns would be too late: every later stage would already have resolved
+    against the un-overridden value."""
     spec_by_id = {s.stage_id: s for s in stage_table}
+    overrides = state_overrides or {}
     results = {}
     for spec in stage_table:
         states_only = {sid: r["state"] for sid, r in results.items()}
@@ -307,6 +318,8 @@ def resolve_all(stage_table, workspace_dir, *, tags=None):
         else:
             state = derive_stage_state(spec, workspace_dir, states_only, spec_by_id, tags=tags)
             components = {}
+        if spec.stage_id in overrides:
+            state = overrides[spec.stage_id]
         results[spec.stage_id] = {"state": state, "components": components}
     return results
 
@@ -512,10 +525,17 @@ WSM_STAGE_13 = StageSpec(
 # here is therefore both the technically correct fix point AND sufficient for Stage 9 too.
 #
 # State model: load_phase6a_dependency's real failure modes (confirmed by reading it directly)
-# mostly map cleanly onto three of the six existing states -- missing artifact -> NOT_STARTED,
-# hash/identity mismatch -> UNKNOWN -- reused via the same shared _evidence_state core every
-# numbered stage goes through, so the frontend's existing tag()/ownerState() mapping needs no new
-# entries for them. One real failure mode does NOT fit any of the six: workspace.downstream_
+# mostly map cleanly onto three of the six existing states -- missing artifact -> NOT_STARTED
+# (via the shared _evidence_state core every numbered stage goes through), hash/identity mismatch
+# -> UNKNOWN (via an explicit re-check below, NOT a call into production.product_workspace.
+# verify_phase6a_artifacts -- that function's own REQUIRED_ARTIFACTS also demands
+# PRODUCT-READINESS-REPORT.md, a file PRODUCT_TRUTH_ARTIFACTS below has never tracked; calling it
+# wholesale would silently add a new existence requirement this module never disclosed, not verify
+# one it already has. The check below recomputes sha256 directly -- a generic, unambiguous
+# operation, not domain logic -- scoped to exactly the artifacts PRODUCT_TRUTH_ARTIFACTS already
+# lists, against whichever of them the manifest's own output_hashes records).
+# Either way the frontend's existing tag()/ownerState() mapping needs no new entries for them.
+# One real failure mode does NOT fit any of the six: workspace.downstream_
 # readiness.ready_for_6b being false. This is not a rare edge case -- it is the DEFAULT, COMMON
 # state of any product whose owner facts are not all confirmed yet, which is most products right
 # after their first phase6a_build.py run. Forcing it into NOT_STARTED would be dishonest (the
@@ -535,6 +555,7 @@ PRODUCT_TRUTH_ARTIFACTS = (
     "phase6/6A/STAGE-6A-MANIFEST.json",
 )
 PRODUCT_TRUTH_WORKSPACE_FILE = "phase6/6A/PRODUCT-WORKSPACE.json"
+PRODUCT_TRUTH_MANIFEST_FILE = "phase6/6A/STAGE-6A-MANIFEST.json"
 PRODUCT_TRUTH_OWNER_INPUT_REQUIRED = "OWNER_INPUT_REQUIRED"
 # Named for the comment above, never returned: staleness genuinely isn't checked (disclosed gap).
 PRODUCT_TRUTH_STALE_UNMODELED = STALE
@@ -556,14 +577,46 @@ def derive_product_truth_state(product_root):
     if state != READY:
         return state
     # Existence, readability, and (the freshness_globs=() no-op aside) the shared core all say
-    # READY. The one check that core has no way to perform: does 6A's OWN readiness verdict say
-    # the owner facts are actually complete? The exact field load_phase6a_dependency hard-requires
-    # before Stage 8 will even start -- confirmed by reading it directly, not inferred.
-    path = os.path.join(product_root, PRODUCT_TRUTH_WORKSPACE_FILE)
+    # READY. Two checks that core has no way to perform, both of which load_phase6a_dependency
+    # itself raises Phase6ADependencyError on -- a workspace that looks READY here must not be
+    # invented-happy for either of them.
     try:
-        with open(path, "rb") as f:
+        with open(os.path.join(product_root, PRODUCT_TRUTH_WORKSPACE_FILE), "rb") as f:
             workspace = json.loads(f.read().decode("utf-8"))
+        with open(os.path.join(product_root, PRODUCT_TRUTH_MANIFEST_FILE), "rb") as f:
+            manifest = json.loads(f.read().decode("utf-8"))
     except (OSError, ValueError, UnicodeDecodeError):
         return UNKNOWN
+    #   1. artifact hash agreement -- for whichever of PRODUCT_TRUTH_ARTIFACTS the manifest's own
+    #      output_hashes records (keyed workspace-relative, exactly like PRODUCT_TRUTH_ARTIFACTS
+    #      itself), the recomputed sha256 of what is actually on disk must match. An artifact this
+    #      module doesn't track is never required just because it might exist.
+    output_hashes = manifest.get("output_hashes") or {}
+    for rel in PRODUCT_TRUTH_ARTIFACTS:
+        expected = output_hashes.get(rel)
+        if expected is None:
+            continue
+        h = hashlib.sha256()
+        try:
+            with open(os.path.join(product_root, rel), "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+        except OSError:
+            return UNKNOWN
+        if h.hexdigest() != expected:
+            return UNKNOWN
+    #   2. identity agreement -- workspace_id == product_id, and the manifest agrees with both.
+    ws_id = workspace.get("workspace_id")
+    prod_id = workspace.get("product_id")
+    if (not ws_id or not prod_id or ws_id != prod_id
+            or manifest.get("workspace_id") != ws_id or manifest.get("product_id") != prod_id):
+        return UNKNOWN
+    # Deliberately NOT re-checked here: keyword-source hash drift (see the disclosed-gap comment
+    # above, PRODUCT_TRUTH_STALE_UNMODELED) -- unlike the two checks above, that one requires a
+    # glob convention this module still has no coupling to.
+    #
+    # Does 6A's OWN readiness verdict say the owner facts are actually complete? The exact field
+    # load_phase6a_dependency hard-requires before Stage 8 will even start -- confirmed by reading
+    # it directly, not inferred.
     ready_for_6b = bool((workspace.get("downstream_readiness") or {}).get("ready_for_6b"))
     return READY if ready_for_6b else PRODUCT_TRUTH_OWNER_INPUT_REQUIRED

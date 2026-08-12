@@ -2350,6 +2350,11 @@ class WorkflowSection(Base):
                 if rel == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
                     json.dump({"workspace_id": "w1", "product_id": "w1",
                               "downstream_readiness": {"ready_for_6b": True}}, f)
+                elif rel == WSM.PRODUCT_TRUTH_MANIFEST_FILE:
+                    # Agreeing identity, no output_hashes -- derive_product_truth_state's identity
+                    # check (added alongside Stage 9's propagation fix) needs this to match the
+                    # workspace file above; nothing here is hash-verified either way.
+                    json.dump({"workspace_id": "w1", "product_id": "w1"}, f)
                 else:
                     f.write("{}")
             t = time.time() - (len(rels) - i)
@@ -2371,12 +2376,15 @@ class WorkflowSection(Base):
     def test_composite_component_detail_survives_the_model(self):
         """Only the listing half of Stage 9 -- the exact "partial progress" case the product
         decision named. Stage 9's components inherit blocking_stage_ids=(8,), and Stage 8 itself
-        needs Stage 6, which needs 3+4 -- the whole chain must be genuinely READY first, or
-        "listing" would report BLOCKED instead of READY for a real reason (a first attempt at
-        this test populated only Stage 8's own file and got exactly that BLOCKED, correctly)."""
+        needs Stage 6, which needs 3+4, AND Product Truth (added alongside Stage 9's propagation
+        fix, this stage-8 override now happens BEFORE resolve_all, so it reaches every component
+        that inherits blocking_stage_ids=(8,), not just Stage 8's own top-line state) -- the whole
+        chain must be genuinely READY first, or "listing" would report BLOCKED instead of READY
+        for a real reason (a first attempt at this test populated only Stage 8's own file and got
+        exactly that BLOCKED, correctly)."""
         ws = self.newroot()
         product_root = os.path.dirname(ws)
-        chain = [
+        chain = list(WSM.PRODUCT_TRUTH_ARTIFACTS) + [
             "US_nurse.Xray.10.08.2026.xlsx", "ASIN-BATCHES.json",
             "US_nurse.Cerebro.10.08.2026.xlsx", "CEREBRO-EVIDENCE-MATRIX.json",
             "MASTER-KEYWORDS-LEAN.json", "phase6/6B/KEYWORD-ALLOCATION-MAP.json",
@@ -2385,7 +2393,13 @@ class WorkflowSection(Base):
             p = os.path.join(product_root, rel)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, "w", encoding="utf-8") as f:
-                f.write("{}")
+                if rel == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
+                    json.dump({"workspace_id": "w1", "product_id": "w1",
+                              "downstream_readiness": {"ready_for_6b": True}}, f)
+                elif rel == WSM.PRODUCT_TRUTH_MANIFEST_FILE:
+                    json.dump({"workspace_id": "w1", "product_id": "w1"}, f)
+                else:
+                    f.write("{}")
             t = time.time() - (len(chain) - i) - 10   # strictly before stage 9's own files below
             os.utime(p, (t, t))
         p = os.path.join(product_root, "phase6", "6C", "PRODUCT-DETAIL-PAGE.json")
@@ -2517,18 +2531,29 @@ class ProductTruthSection(Base):
     PREREQUISITE, folded into build_workflow_section's "product_truth" field. Real consumer is
     Stage 8 (confirmed by reading listing/keyword_allocation_planner.py and by actually running
     its command against a Product-Truth-less clone of runs/T2 during design -- not Stage 9, as an
-    earlier draft of this decision assumed); Stage 9 needs no direct change since it already
-    blocks on Stage 8 via its existing blocking_stage_ids=(8,)."""
+    earlier draft of this decision assumed); Stage 9 needs no CODE change since it already blocks
+    on Stage 8 via its existing blocking_stage_ids=(8,) -- but it does need the override applied
+    BEFORE WSM.resolve_all runs, not patched onto the result afterward. An earlier version of this
+    section did the latter: if Stage 8's own artifacts already existed from an earlier successful
+    run, Stage 9 resolved against Stage 8's un-overridden (real, on-disk) state and could report
+    READY while Stage 8 showed BLOCKED on the same screen. See
+    test_stage_9_blocked_when_its_own_evidence_predates_product_truth_going_bad below."""
 
     def _write_6a(self, product_root, *, ready_for_6b=True):
+        """workspace_id/product_id-agreeing manifest, no output_hashes (nothing to hash-verify,
+        see derive_product_truth_state) -- just enough to pass the identity check added alongside
+        Stage 9's propagation fix."""
         ws = {"workspace_id": "w1", "product_id": "w1",
              "downstream_readiness": {"ready_for_6b": ready_for_6b}}
+        manifest = {"workspace_id": "w1", "product_id": "w1"}
         for name in WSM.PRODUCT_TRUTH_ARTIFACTS:
             p = os.path.join(product_root, name)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, "w", encoding="utf-8") as f:
                 if name == WSM.PRODUCT_TRUTH_WORKSPACE_FILE:
                     json.dump(ws, f)
+                elif name == WSM.PRODUCT_TRUTH_MANIFEST_FILE:
+                    json.dump(manifest, f)
                 else:
                     f.write("{}")
 
@@ -2581,6 +2606,38 @@ class ProductTruthSection(Base):
         by_id = {s["stage_id"]: s for s in wf["stages"] if s["modeled"]}
         self.assertFalse(by_id[8]["blocked_by_product_truth"])
         self.assertEqual(by_id[8]["state"], WSM.READY)
+
+    def test_stage_9_blocked_when_its_own_evidence_predates_product_truth_going_bad(self):
+        """The propagation defect this fixture is built to catch: Stage 8's OWN output already
+        exists and is fresh (as if Stage 8 ran successfully once, back when Product Truth was
+        still fine), and Stage 9's OWN component outputs also already exist and are fresh -- so
+        naively resolving the table first and patching Stage 8's state in afterward leaves Stage 9
+        resolved against the stale, un-overridden "Stage 8 = READY" and reports READY itself, right
+        next to a Stage 8 row showing BLOCKED. Product Truth going bad (owner walks back a claim, a
+        re-run flips ready_for_6b back to false, an artifact gets corrupted) must still block Stage
+        9, not just Stage 8's own top-line state."""
+        ws = self.newroot()
+        product_root = os.path.dirname(ws)
+        self._write_stage_6(product_root)
+        p8 = os.path.join(product_root, "phase6", "6B", "KEYWORD-ALLOCATION-MAP.json")
+        os.makedirs(os.path.dirname(p8), exist_ok=True)
+        with open(p8, "w", encoding="utf-8") as f:
+            f.write("{}")
+        for rel in ("phase6/6C/PRODUCT-DETAIL-PAGE.json", "phase6/6D/BASIC-APLUS-CONTENT.json"):
+            p9 = os.path.join(product_root, rel)
+            os.makedirs(os.path.dirname(p9), exist_ok=True)
+            with open(p9, "w", encoding="utf-8") as f:
+                f.write("{}")
+        # Product Truth is NOT written at all here -- NOT_STARTED, the simplest non-READY state.
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        wf = model["sections"]["workflow"]
+        self.assertEqual(wf["product_truth"]["state"], WSM.NOT_STARTED)
+        by_id = {s["stage_id"]: s for s in wf["stages"] if s["modeled"]}
+        self.assertEqual(by_id[8]["state"], WSM.BLOCKED)
+        self.assertEqual(by_id[9]["state"], WSM.BLOCKED,
+                         "Stage 9's own evidence exists and is fresh, so if this is anything "
+                         "other than BLOCKED, Product Truth's block on Stage 8 stopped there.")
+        self.assertIn(8, by_id[9]["blocked_by"])
 
     def test_owner_input_required_is_the_common_case_not_unknown(self):
         """The COMMON state (owner facts not all confirmed yet) must be visibly distinct from

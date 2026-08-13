@@ -17,6 +17,12 @@ KEY_MODULES = [
     "research/seed_expand.py", "research/keyword_intelligence.py",
     "research/competitor_gap_analyzer.py", "dashboard/app.py", "dashboard/templates/index.html",
     "listing/listing_generator.py", "listing/a_plus_templates.py",
+    "production/product_workspace.py", "production/product_detail_page.py",
+    "production/aplus_assembly.py", "creative/creative_production_package.py",
+    "production/seller_central_package.py", "production/phase7_minimal_launch_foundation.py",
+    "production/phase7_extended_launch_planning.py", "production/phase7_report_ingestion.py",
+    "production/phase7_ads_analysis.py", "production/phase7_owner_dashboard.py",
+    "production/phase7_unified_owner_console.py", "production/phase7_workflow_stage_model.py",
 ]
 
 def sha256(path):

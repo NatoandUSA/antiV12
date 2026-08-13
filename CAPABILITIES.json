@@ -5,9 +5,9 @@
     "backend_decision_engine": "PILOT_READY",
     "creative_planning": "PILOT_READY",
     "actual_asset_validation": "PILOT",
-    "smart_dashboard": "NOT_BUILT",
+    "dashboard_v1_console": "BUILT",
     "post_launch_learning_loop": "PARTIAL",
-    "market_beating_operating_system": "NOT_READY (backend hardened; web app pending)"
+    "market_beating_operating_system": "PILOT_READY (backend hardened, dashboard V1 accepted; cloud web app pending)"
   },
   "capabilities": {
     "research": {
@@ -112,7 +112,19 @@
       "path": "core/manifest.py",
       "note": "atomic writes, history, hash-bound approvals"
     },
-    "dashboard_ui": {
+    "dashboard_v1_console": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "production/phase7_unified_owner_console.py",
+      "note": "local unified console & workflow view (accepted Dashboard V1)"
+    },
+    "product_truth_prerequisite": {
+      "maturity": "BUILT",
+      "present": true,
+      "path": "production/phase7_workflow_stage_model.py",
+      "note": "Phase 6A product truth prerequisite tracking"
+    },
+    "web_app_v3": {
       "maturity": "NOT_BUILT",
       "present": false,
       "path": "apps/web",

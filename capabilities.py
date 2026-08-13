@@ -38,7 +38,9 @@ CAPS = {
     "post_launch":          ("creative/creative_diagnosis.py","PARTIAL","zero-safe diagnosis; no full query funnel"),
     "gate_engine":          ("core/gate_engine.py",         "BUILT", "per-gate pass statuses; READY_FOR_REVIEW != pass"),
     "manifest_approvals":   ("core/manifest.py",            "BUILT", "atomic writes, history, hash-bound approvals"),
-    "dashboard_ui":         ("apps/web",                    "NOT_BUILT", "web app is a separate program (OS-v3)"),
+    "dashboard_v1_console": ("production/phase7_unified_owner_console.py", "BUILT", "local unified console & workflow view (accepted Dashboard V1)"),
+    "product_truth_prerequisite": ("production/phase7_workflow_stage_model.py", "BUILT", "Phase 6A product truth prerequisite tracking"),
+    "web_app_v3":           ("apps/web",                    "NOT_BUILT", "web app is a separate program (OS-v3)"),
     "import_center":        ("services/import",             "NOT_BUILT", "planned OS-v3"),
     "database":             ("storage/db.sqlite",           "NOT_BUILT", "planned OS-v3"),
 }
@@ -55,9 +57,9 @@ def build():
                "backend_decision_engine": "PILOT_READY",
                "creative_planning": "PILOT_READY",
                "actual_asset_validation": "PILOT",
-               "smart_dashboard": "NOT_BUILT",
+               "dashboard_v1_console": "BUILT",
                "post_launch_learning_loop": "PARTIAL",
-               "market_beating_operating_system": "NOT_READY (backend hardened; web app pending)",
+               "market_beating_operating_system": "PILOT_READY (backend hardened, dashboard V1 accepted; cloud web app pending)",
            },
            "capabilities": caps}
     with open(os.path.join(ROOT, "CAPABILITIES.json"), "w", encoding="utf-8") as f:

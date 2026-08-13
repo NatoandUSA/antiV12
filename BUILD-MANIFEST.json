@@ -1,93 +1,153 @@
 {
   "tool_version": "2.4.0-rc2",
-  "built_at": "2026-07-15T12:27:22Z",
-  "test_count": 143,
-  "module_count_verified": 17,
+  "built_at": "",
+  "test_count": 4906,
+  "module_count_verified": 29,
   "modules": {
     "pipeline.py": {
       "status": "VERIFIED",
-      "sha256": "d1ff717cb14691be7fa2fb71b325aac9e04df0bd060f81aa1e60b057dda4809e",
-      "bytes": 28949
+      "sha256": "e1745cebc62279f36a522c43513f3b7d50bf6ec58738d41f43ad7259b6e42aa1",
+      "bytes": 30345
     },
     "core/gate_engine.py": {
       "status": "VERIFIED",
-      "sha256": "fabea576497ffbd1a0c680d3ade311f9e5671843b896330ec9aea4aab15c788c",
-      "bytes": 5504
+      "sha256": "01c22de5c1ef34f68041151ebfb447ec3b63610c3fe034076ee01c5e41dfeaf8",
+      "bytes": 5632
     },
     "core/manifest.py": {
       "status": "VERIFIED",
-      "sha256": "1b02a655c0f94c3fc56b5862fa3bf50d95c375d002779b11a61c2d7ea5e9542a",
-      "bytes": 10984
+      "sha256": "40de1083864ad15174504f2c8e98d7479ded37808f30b3b691a04f4651399375",
+      "bytes": 11213
     },
     "core/asset_validator.py": {
       "status": "VERIFIED",
-      "sha256": "10b8111c3c39ff835e2859d4223665a26a47e946a13bf5a4428622d0eba6965d",
-      "bytes": 5961
+      "sha256": "7a0f14287bda0cc49ccb14995a31f04a1f9531c3257c0a5f8522ebf393f3c2f5",
+      "bytes": 6074
     },
     "core/stages.py": {
       "status": "VERIFIED",
-      "sha256": "243c0cc79c196d525d65077388bbcfaf028214fb30e7281975906a0f01d34873",
-      "bytes": 5771
+      "sha256": "1119613b1b6851b31e84f54149627c59e117b4f6b72cfa90435c9588dbb5c976",
+      "bytes": 5857
     },
     "creative/creative_edge.py": {
       "status": "VERIFIED",
-      "sha256": "c5c409e25d59c629c4ae6efda38a0ec47819ab562c66b009ba95c52a62683fcb",
-      "bytes": 53949
+      "sha256": "0b16991fd52565bd8e4b6f30fc0372ce5f2fa8492375881060eecc0a1fd1b1d4",
+      "bytes": 54645
     },
     "compliance/listing_validate.py": {
       "status": "VERIFIED",
-      "sha256": "b4a431ffa5ddb85ea799d8173fc203a376b6bf220f9a052fc067d8e203d49926",
-      "bytes": 12733
+      "sha256": "5c87f2588450ebbe2f68c5ce54273c253faec6889a54b2352d9e06d2aea9ee9d",
+      "bytes": 19834
     },
     "compliance/ip_guard.py": {
       "status": "VERIFIED",
-      "sha256": "600f919136e0d4624c27346168e4aaa55339501cc5da398fb3bb3b44def9e82a",
-      "bytes": 7495
+      "sha256": "3662e9e6b4af0919553cc716cbfd0edcaa5cee58be18b3d06b7e119f379dd086",
+      "bytes": 7662
     },
     "research/phaseA_master.py": {
       "status": "VERIFIED",
-      "sha256": "4b0194ad30fdaa63cbfb95ed7d5b3d8f2d86472336965f9c287b3de65b3f3ccd",
-      "bytes": 17243
+      "sha256": "c80b2d9b6bfe2ea41f64a83d2786032df21c8aca0c343fe3e02f89ae7f631ce5",
+      "bytes": 18055
     },
     "research/asin_picker.py": {
       "status": "VERIFIED",
-      "sha256": "4e52ffc85bd533b1d1d9cd48b9911d0783d50c9e6bdf6c67e113fcc5f017874a",
-      "bytes": 13520
+      "sha256": "188300a108fa2646df6a3c8c903c6d91a139b0f9a546cc80175ec3d2bb632c20",
+      "bytes": 15076
     },
     "research/seed_expand.py": {
       "status": "VERIFIED",
-      "sha256": "754a2a5d38df885d61cca99031098a0f94a8f1567f423ebf25dec19709414a10",
-      "bytes": 7432
+      "sha256": "1ec505a18676a0fbc8a977d248a46eadc1677f5e12b3abebd74bee100072a385",
+      "bytes": 7595
     },
     "research/keyword_intelligence.py": {
       "status": "VERIFIED",
-      "sha256": "674d112963e40965a11277c5cc6b1ace6321860e45b4f3a619fc26a5215ce533",
-      "bytes": 12360
+      "sha256": "2f01228e9b4c0ffece699056698a12359f03766a3812af5843f97ffd2981c21d",
+      "bytes": 13260
     },
     "research/competitor_gap_analyzer.py": {
       "status": "VERIFIED",
-      "sha256": "6ef50cbcd315c34246e7c86a6fa097565aad9e17a1fffe03222d5fb95d342760",
-      "bytes": 9756
+      "sha256": "3954c30fb0763f6e54ba8ecf195ec2b2d90f7bf6b856a9873e2d65827df51174",
+      "bytes": 9970
     },
     "dashboard/app.py": {
       "status": "VERIFIED",
-      "sha256": "6f246c8ccdc02c6b3ec39668610997fe685ba133908845553ae2ca615506a710",
-      "bytes": 28178
+      "sha256": "4b85f8be9e3898c4706676405ea689164e5e5732bc53528d1cbfd5be7597d37b",
+      "bytes": 54994
     },
     "dashboard/templates/index.html": {
       "status": "VERIFIED",
-      "sha256": "ff7b6fb437560c71048dc0161ccd558a73ec787f775964983ac476a7a3f546ec",
-      "bytes": 32643
+      "sha256": "45241d61ba2c32497833f88d92abefcea31a7eb19a6cac9d2af62acdad0634a7",
+      "bytes": 51855
     },
     "listing/listing_generator.py": {
       "status": "VERIFIED",
-      "sha256": "845ca58a63e1141ad15cea20a3dee921d9294e3c45e1d289d2ebae133413d070",
-      "bytes": 11538
+      "sha256": "0249cef6fb5a0a9dcf11aa8aa7c0ca0f8ebd09aeced886d2d06a46a18711aa67",
+      "bytes": 33514
     },
     "listing/a_plus_templates.py": {
       "status": "VERIFIED",
-      "sha256": "77d67f4db8ca253c11655e5271bfb6046b499d6cde6aede7bef66d53cf4ea0eb",
-      "bytes": 5426
+      "sha256": "4b2c759ddd919492221eb9ebd818e26ff89355b8ad91d2403f05bb8c088f3801",
+      "bytes": 7640
+    },
+    "production/product_workspace.py": {
+      "status": "VERIFIED",
+      "sha256": "990ff30f175a4e4b2f2abf26bc80689ed3669a5568ca745b80a9d53034fe8a39",
+      "bytes": 68784
+    },
+    "production/product_detail_page.py": {
+      "status": "VERIFIED",
+      "sha256": "ae9b4e8bdd6328700440eaf8b9d91d80441e0d1618dd63d21267484b93a98c18",
+      "bytes": 77081
+    },
+    "production/aplus_assembly.py": {
+      "status": "VERIFIED",
+      "sha256": "cfb2e8428144a67a1ebe9c4881f516bcdb039695bdd48e1a28eefe168b2de4d2",
+      "bytes": 73985
+    },
+    "creative/creative_production_package.py": {
+      "status": "VERIFIED",
+      "sha256": "ddd4d83dc686b6d9e05bf0866c064787699af4424e2c6fb3cd6f732b96072e8a",
+      "bytes": 118705
+    },
+    "production/seller_central_package.py": {
+      "status": "VERIFIED",
+      "sha256": "2915004ec8e789d27b0728e8a6d3f8dece315991a4d5c9efdbe2200d1b9cadea",
+      "bytes": 90930
+    },
+    "production/phase7_minimal_launch_foundation.py": {
+      "status": "VERIFIED",
+      "sha256": "d21e092022ad14bda280f4795e78d6b1a197fe0b917f4ab0dee44594b910b4e7",
+      "bytes": 93787
+    },
+    "production/phase7_extended_launch_planning.py": {
+      "status": "VERIFIED",
+      "sha256": "1533d59154eb8138288f3a4780f48a03423c6da3663f6251244a8634ace94a27",
+      "bytes": 94630
+    },
+    "production/phase7_report_ingestion.py": {
+      "status": "VERIFIED",
+      "sha256": "02c1e3d8f4e411ccf24c23c99b229150e672693962dc4d6aad5637a651aabe0a",
+      "bytes": 125145
+    },
+    "production/phase7_ads_analysis.py": {
+      "status": "VERIFIED",
+      "sha256": "5ff7fd5683baaaaebc6dbdbfcf8d5a52c2ac34e201df1f57e060dda1a3247cfc",
+      "bytes": 58242
+    },
+    "production/phase7_owner_dashboard.py": {
+      "status": "VERIFIED",
+      "sha256": "5b4789c5471048f017732a1e889de9e937cc8c8e7580d22573f9d85018901bc8",
+      "bytes": 60833
+    },
+    "production/phase7_unified_owner_console.py": {
+      "status": "VERIFIED",
+      "sha256": "8035876a3bd5ae4ba80dc04cf8c5f445353989193bb49917888d29d84d7469e4",
+      "bytes": 124964
+    },
+    "production/phase7_workflow_stage_model.py": {
+      "status": "VERIFIED",
+      "sha256": "dd562bbf96d1289c307e6b3c13d8846f0785a50ba78814a7acb6c9ed3b30f683",
+      "bytes": 37115
     }
   },
   "note": "Compare these hashes against the archive to prove integrity. Modules marked UNAVAILABLE are not in this build."

@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    name: Test Suite (Read-Only)
+    name: Canonical Regression Gate (Read-Only)
     runs-on: windows-latest
 
     steps:
@@ -31,8 +31,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Test Suite
+      - name: Run Deterministic Regression Gate
         shell: powershell
         run: |
-          $env:PYTHONPATH = "core;listing;dashboard;production;compliance;research;creative"
-          python -m unittest discover -s tests -v
+          $env:PYTHONPATH = "core;listing;dashboard;production;compliance;research;creative;economics"
+          python scripts/ci_test_gate.py

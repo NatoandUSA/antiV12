@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "description": "Authoritative list of accepted environment-dependent test failures and errors for CI regression gating.",
+  "accepted_failures": [
+    {
+      "test_id": "test_autostart_fallback.AutostartFallback.test_15_to_20_startup_launcher_is_safe",
+      "reason": "Workspace path containing 'claude' triggers string-search false positive in launcher script test."
+    },
+    {
+      "test_id": "test_instance_manager.LiveLifecycle.test_16_17_23_32_33_34_full_lifecycle",
+      "reason": "Headless/sandboxed background subprocess startup timeout on Windows under test suite load."
+    },
+    {
+      "test_id": "test_instance_manager.LiveLifecycle.test_35_live_restart",
+      "reason": "Headless/sandboxed background subprocess startup timeout on Windows under test suite load."
+    },
+    {
+      "test_id": "test_offline_bootstrap.Validation.test_49_editable_env_records_pep517",
+      "reason": "Installation mode detection returns SOURCE_ON_PATH instead of PEP517_EDITABLE when run from worktree."
+    },
+    {
+      "test_id": "test_phase7_14_owner_usability_pilot_readiness.TestFreshTreeAndEvidence.test_199e_no_acceptance_tag_yet",
+      "reason": "Release acceptance tag phase7-14-composite-launcher-safety-hotfix-accepted-211f2f8 already applied."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_authoritative_copy_paste_pair_is_written",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    }
+  ],
+  "accepted_errors": [
+    {
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_backend_phrase_density_report_is_generated_and_committed",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_backend_phrase_plan_byte_identical_across_two_generations",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_backend_phrase_plan_is_generated_and_committed",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_committed_plan_matches_canonical_definition",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_master_keywords_hash_matches_t2_source",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_semantic_quality.T2Regeneration.test_all_10_bullet_specs_are_valid_and_non_trivial",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_semantic_quality.T2Regeneration.test_backend_search_terms_are_tight_and_unpolluted",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_semantic_quality.T2Regeneration.test_bullet_points_byte_identical_across_two_generations",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_semantic_quality.T2Regeneration.test_every_bullet_point_is_well_formed_and_on_concept",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_semantic_quality.T2Regeneration.test_semantic_quality_audit_is_committed_and_clean",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestSanitization.test_certification_does_not_mutate_repository_runs",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_no_wrong_audience_or_occasion_leakage",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_section_hashes_match_across_two_generations",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_t2_stays_safe_draft",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    }
+  ]
+}

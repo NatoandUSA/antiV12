@@ -2,7 +2,7 @@
   "tool_version": "2.4.0-rc2",
   "built_at": "",
   "test_count": 4906,
-  "module_count_verified": 29,
+  "module_count_verified": 30,
   "modules": {
     "pipeline.py": {
       "status": "VERIFIED",
@@ -148,6 +148,11 @@
       "status": "VERIFIED",
       "sha256": "dd562bbf96d1289c307e6b3c13d8846f0785a50ba78814a7acb6c9ed3b30f683",
       "bytes": 37115
+    },
+    "scripts/ci_test_gate.py": {
+      "status": "VERIFIED",
+      "sha256": "9d3d98cc860dac9d6b86075835c9770d8dc990b5be3b796ad35f1ffd70ee752b",
+      "bytes": 6157
     }
   },
   "note": "Compare these hashes against the archive to prove integrity. Modules marked UNAVAILABLE are not in this build."

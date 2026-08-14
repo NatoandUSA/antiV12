@@ -23,6 +23,7 @@ KEY_MODULES = [
     "production/phase7_extended_launch_planning.py", "production/phase7_report_ingestion.py",
     "production/phase7_ads_analysis.py", "production/phase7_owner_dashboard.py",
     "production/phase7_unified_owner_console.py", "production/phase7_workflow_stage_model.py",
+    "scripts/ci_test_gate.py",
 ]
 
 def sha256(path):

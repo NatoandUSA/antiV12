@@ -124,6 +124,12 @@
       "path": "production/phase7_workflow_stage_model.py",
       "note": "Phase 6A product truth prerequisite tracking"
     },
+    "dashboard_ui": {
+      "maturity": "NOT_BUILT",
+      "present": false,
+      "path": "apps/web",
+      "note": "web app is a separate program (OS-v3)"
+    },
     "web_app_v3": {
       "maturity": "NOT_BUILT",
       "present": false,

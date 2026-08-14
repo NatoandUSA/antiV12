@@ -40,6 +40,7 @@ CAPS = {
     "manifest_approvals":   ("core/manifest.py",            "BUILT", "atomic writes, history, hash-bound approvals"),
     "dashboard_v1_console": ("production/phase7_unified_owner_console.py", "BUILT", "local unified console & workflow view (accepted Dashboard V1)"),
     "product_truth_prerequisite": ("production/phase7_workflow_stage_model.py", "BUILT", "Phase 6A product truth prerequisite tracking"),
+    "dashboard_ui":         ("apps/web",                    "NOT_BUILT", "web app is a separate program (OS-v3)"),
     "web_app_v3":           ("apps/web",                    "NOT_BUILT", "web app is a separate program (OS-v3)"),
     "import_center":        ("services/import",             "NOT_BUILT", "planned OS-v3"),
     "database":             ("storage/db.sqlite",           "NOT_BUILT", "planned OS-v3"),

@@ -1,19 +1,7 @@
 {
-  "version": "1.0",
-  "description": "Authoritative list of accepted environment-dependent test failures and errors for CI regression gating.",
-  "accepted_failures": [
-    {
-      "test_id": "test_autostart_fallback.AutostartFallback.test_15_to_20_startup_launcher_is_safe",
-      "reason": "Workspace path containing 'claude' triggers string-search false positive in launcher script test."
-    },
-    {
-      "test_id": "test_instance_manager.LiveLifecycle.test_16_17_23_32_33_34_full_lifecycle",
-      "reason": "Headless/sandboxed background subprocess startup timeout on Windows under test suite load."
-    },
-    {
-      "test_id": "test_instance_manager.LiveLifecycle.test_35_live_restart",
-      "reason": "Headless/sandboxed background subprocess startup timeout on Windows under test suite load."
-    },
+  "version": "2.0",
+  "description": "Authoritative list of accepted baseline test failures and errors for CI regression gating (Gate V2).",
+  "deterministic_failures": [
     {
       "test_id": "test_offline_bootstrap.Validation.test_49_editable_env_records_pep517",
       "reason": "Installation mode detection returns SOURCE_ON_PATH instead of PEP517_EDITABLE when run from worktree."
@@ -27,7 +15,7 @@
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     }
   ],
-  "accepted_errors": [
+  "deterministic_errors": [
     {
       "test_id": "test_backend_phrase_integrity.T2Regeneration.test_25_t2_contains_none_of_the_unsupported_terms",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
@@ -83,6 +71,35 @@
     {
       "test_id": "test_session5d_certification.TestT2Determinism.test_t2_stays_safe_draft",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    }
+  ],
+  "environment_conditional_failures": [
+    {
+      "test_id": "test_autostart_fallback.AutostartFallback.test_15_to_20_startup_launcher_is_safe",
+      "reason_code": "PATH_SENSITIVE_TEST_ASSERTION",
+      "reason": "Workspace directory path containing 'claude' triggers string-search false positive in launcher script test.",
+      "owner": "platform-engineering",
+      "introduced_at": "2026-08-01",
+      "review_by": "2026-09-15",
+      "remediation": "Refactor test assertion to inspect launcher command semantics instead of generic substring match on path."
+    },
+    {
+      "test_id": "test_instance_manager.LiveLifecycle.test_16_17_23_32_33_34_full_lifecycle",
+      "reason_code": "HOST_LOAD_SUBPROCESS_TIMEOUT",
+      "reason": "Background subprocess startup timeout when host CPU is under heavy full-suite load.",
+      "owner": "platform-engineering",
+      "introduced_at": "2026-08-01",
+      "review_by": "2026-09-15",
+      "remediation": "Harden lifecycle readiness/wait condition with adaptive polling rather than fixed sleep timeout."
+    },
+    {
+      "test_id": "test_instance_manager.LiveLifecycle.test_35_live_restart",
+      "reason_code": "HOST_LOAD_SUBPROCESS_TIMEOUT",
+      "reason": "Background subprocess restart timeout when host CPU is under heavy full-suite load.",
+      "owner": "platform-engineering",
+      "introduced_at": "2026-08-01",
+      "review_by": "2026-09-15",
+      "remediation": "Harden restart readiness/wait condition with adaptive polling rather than fixed sleep timeout."
     }
   ]
 }

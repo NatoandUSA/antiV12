@@ -1,8 +1,8 @@
 {
   "tool_version": "2.4.0-rc2",
   "built_at": "",
-  "test_count": 4913,
-  "test_count_regex_matches": 4914,
+  "test_count": 4916,
+  "test_count_regex_matches": 4917,
   "test_count_semantics": "test_count is formal TestCase discovery by unittest.TestLoader().discover(); test_count_regex_matches is raw 'def test_' occurrence count.",
   "module_count_verified": 30,
   "modules": {
@@ -153,8 +153,8 @@
     },
     "scripts/ci_test_gate.py": {
       "status": "VERIFIED",
-      "sha256": "750acf7951f42d71030cd563483218764e71fb21148cbdeaa1cb7ce4ac0041c3",
-      "bytes": 8046
+      "sha256": "f18030b669381760f63f783cc5cd084b60ab28e388b3ffb6679eeaea75168e05",
+      "bytes": 13165
     }
   },
   "note": "Compare these hashes against the archive to prove integrity. Modules marked UNAVAILABLE are not in this build."

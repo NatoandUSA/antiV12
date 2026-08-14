@@ -29,47 +29,47 @@
   ],
   "accepted_errors": [
     {
-      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_backend_phrase_density_report_is_generated_and_committed",
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_25_t2_contains_none_of_the_unsupported_terms",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
-      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_backend_phrase_plan_byte_identical_across_two_generations",
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_25b_t2_preserves_complete_specialty_phrases",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
-      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_backend_phrase_plan_is_generated_and_committed",
+      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_26_t2_is_deterministic",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
-      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_committed_plan_matches_canonical_definition",
+      "test_id": "test_backend_semantic_quality.T2Regeneration.test_18_t2_contains_no_identified_junk_terms",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
-      "test_id": "test_backend_phrase_integrity.T2Regeneration.test_master_keywords_hash_matches_t2_source",
+      "test_id": "test_backend_semantic_quality.T2Regeneration.test_18b_t2_is_byte_safe_and_semantically_clean",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
-      "test_id": "test_semantic_quality.T2Regeneration.test_all_10_bullet_specs_are_valid_and_non_trivial",
+      "test_id": "test_backend_semantic_quality.T2Regeneration.test_19_t2_is_deterministic",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
-      "test_id": "test_semantic_quality.T2Regeneration.test_backend_search_terms_are_tight_and_unpolluted",
-      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
-    },
-    {
-      "test_id": "test_semantic_quality.T2Regeneration.test_bullet_points_byte_identical_across_two_generations",
-      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
-    },
-    {
-      "test_id": "test_semantic_quality.T2Regeneration.test_every_bullet_point_is_well_formed_and_on_concept",
-      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
-    },
-    {
-      "test_id": "test_semantic_quality.T2Regeneration.test_semantic_quality_audit_is_committed_and_clean",
+      "test_id": "test_backend_semantic_quality.T2Regeneration.test_19b_t2_preserves_specialty_phrases",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {
       "test_id": "test_session5d_certification.TestSanitization.test_certification_does_not_mutate_repository_runs",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_copy_ready_and_manual_plan_are_deterministic",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_five_bullets_generated",
+      "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
+    },
+    {
+      "test_id": "test_session5d_certification.TestT2Determinism.test_keyword_source_is_lean_with_expected_tiers",
       "reason": "Requires paid uncommitted raw Helium 10 input files for historical T2 workspace."
     },
     {

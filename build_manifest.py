@@ -41,13 +41,20 @@ def tool_version():
         return "unknown"
 
 def count_tests():
-    total = 0
+    total_regex = 0
     for f in glob.glob(os.path.join(ROOT, "tests", "test_*.py")):
         try:
-            total += len(re.findall(r"def test_", open(f, encoding="utf-8").read()))
+            total_regex += len(re.findall(r"def test_", open(f, encoding="utf-8").read()))
         except Exception:
             pass
-    return total
+    try:
+        import unittest
+        loader = unittest.TestLoader()
+        suite = loader.discover(os.path.join(ROOT, "tests"), pattern="test_*.py")
+        total_discovered = suite.countTestCases()
+    except Exception:
+        total_discovered = total_regex
+    return total_discovered, total_regex
 
 def build(stamp=None):
     modules = {}
@@ -57,10 +64,13 @@ def build(stamp=None):
             modules[rel] = {"status": "VERIFIED", "sha256": sha256(p), "bytes": os.path.getsize(p)}
         else:
             modules[rel] = {"status": "UNAVAILABLE", "sha256": None, "bytes": 0}
+    total_discovered, total_regex = count_tests()
     doc = {
         "tool_version": tool_version(),
         "built_at": stamp or "",
-        "test_count": count_tests(),
+        "test_count": total_discovered,
+        "test_count_regex_matches": total_regex,
+        "test_count_semantics": "test_count is formal TestCase discovery by unittest.TestLoader().discover(); test_count_regex_matches is raw 'def test_' occurrence count.",
         "module_count_verified": sum(1 for m in modules.values() if m["status"] == "VERIFIED"),
         "modules": modules,
         "note": "Compare these hashes against the archive to prove integrity. Modules marked UNAVAILABLE are not in this build.",

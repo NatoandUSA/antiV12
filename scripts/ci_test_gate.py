@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-scripts/ci_test_gate.py — Deterministic CI Regression Gate for AMZ Launch OS.
+scripts/ci_test_gate.py — Deterministic Exact-Baseline CI Regression Gate for AMZ Launch OS.
 
 Runs the canonical test suite, provides 100% transparent test execution output,
-and enforces a strict regression gate:
-  - Any unexpected failure or error (target-only regression) causes CI to FAIL (exit 1).
-  - Pre-existing, accepted environment baseline issues (e.g. uncommitted paid fixtures,
-    headless Windows subprocess timings) are reported transparently and allowed (exit 0).
-  - Never hides failures: every failure and error is printed in full.
+and enforces a strict deterministic exact-baseline contract:
+  - actual_failures MUST equal accepted_failures exactly.
+  - actual_errors MUST equal accepted_errors exactly.
+
+Any divergence fails CI (exit 1):
+  1. New failure or error (target-only regression).
+  2. Disappeared failure or error (baseline drift / requires explicit reviewed baseline prune).
+  3. Failure <-> Error category swap.
 """
 import sys
 import os
@@ -58,11 +61,12 @@ class BaselineAwareTestResult(unittest.TextTestResult):
         self.recorded_skips.append((_normalize_id(test.id()), reason))
 
 
-def load_baseline():
-    if not os.path.exists(BASELINE_PATH):
+def load_baseline(baseline_path=None):
+    path = baseline_path or BASELINE_PATH
+    if not os.path.exists(path):
         return set(), set(), {}
     try:
-        with open(BASELINE_PATH, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         acc_failures = {item["test_id"]: item.get("reason", "") for item in data.get("accepted_failures", [])}
         acc_errors = {item["test_id"]: item.get("reason", "") for item in data.get("accepted_errors", [])}
@@ -73,9 +77,42 @@ def load_baseline():
         return set(), set(), {}
 
 
+def evaluate_gate_results(actual_failures, actual_errors, accepted_failures, accepted_errors):
+    """
+    Deterministic evaluation:
+    Returns (is_exact_match: bool, diff: dict)
+    """
+    actual_fail_set = set(actual_failures)
+    actual_err_set = set(actual_errors)
+    acc_fail_set = set(accepted_failures)
+    acc_err_set = set(accepted_errors)
+
+    unexpected_failures = actual_fail_set - acc_fail_set
+    unexpected_errors = actual_err_set - acc_err_set
+
+    fixed_failures = acc_fail_set - actual_fail_set
+    fixed_errors = acc_err_set - actual_err_set
+
+    swapped_fail_to_err = acc_fail_set & actual_err_set
+    swapped_err_to_fail = acc_err_set & actual_fail_set
+
+    is_exact_match = (actual_fail_set == acc_fail_set) and (actual_err_set == acc_err_set)
+
+    diff = {
+        "is_exact_match": is_exact_match,
+        "unexpected_failures": sorted(unexpected_failures),
+        "unexpected_errors": sorted(unexpected_errors),
+        "fixed_failures": sorted(fixed_failures),
+        "fixed_errors": sorted(fixed_errors),
+        "swapped_fail_to_err": sorted(swapped_fail_to_err),
+        "swapped_err_to_fail": sorted(swapped_err_to_fail),
+    }
+    return is_exact_match, diff
+
+
 def main():
     print("=" * 80)
-    print("AMZ Launch OS — Canonical Test Suite & Regression Gate")
+    print("AMZ Launch OS — Canonical Test Suite & Exact-Baseline Regression Gate")
     print(f"Repository Root: {ROOT}")
     print(f"Python Version : {sys.version}")
     print("=" * 80)
@@ -96,8 +133,9 @@ def main():
     actual_failed_ids = {t_id for t_id, _ in result.recorded_failures}
     actual_error_ids = {t_id for t_id, _ in result.recorded_errors}
 
-    unexpected_failures = actual_failed_ids - acc_failures
-    unexpected_errors = actual_error_ids - acc_errors
+    is_exact_match, diff = evaluate_gate_results(
+        actual_failed_ids, actual_error_ids, acc_failures, acc_errors
+    )
 
     print("\n" + "=" * 80)
     print("CI TEST GATE REPORT")
@@ -112,41 +150,51 @@ def main():
     print("-" * 80)
 
     if actual_failed_ids or actual_error_ids:
-        print("\n[ACCEPTED BASELINE NON-PASSING TESTS]")
+        print("\n[ACTUAL NON-PASSING TESTS]")
         for tid in sorted(actual_failed_ids | actual_error_ids):
             status = "FAIL" if tid in actual_failed_ids else "ERROR"
-            reason = reasons.get(tid, "Unspecified baseline reason")
+            reason = reasons.get(tid, "Unspecified reason")
             print(f"  - [{status}] {tid}")
-            print(f"          Reason: {reason}")
+            print(f"          Baseline Reason: {reason}")
 
-    # Check for fixed baseline tests
-    fixed_failures = acc_failures - actual_failed_ids
-    fixed_errors = acc_errors - actual_error_ids
-    if fixed_failures or fixed_errors:
-        print("\n[NOTICE: Tests in accepted baseline that now PASS]")
-        for tid in sorted(fixed_failures | fixed_errors):
-            print(f"  - [NOW PASSING] {tid}")
-        print("  -> Baseline can be pruned in the next release certification pass.")
-
-    # Enforcement
-    if unexpected_failures or unexpected_errors:
+    if not is_exact_match:
         print("\n" + "!" * 80)
-        print("GATE FAILURE: TARGET-ONLY REGRESSIONS DETECTED")
+        print("GATE FAILURE: EXACT-BASELINE CONTRACT VIOLATION")
         print("!" * 80)
-        if unexpected_failures:
-            print("\nUnexpected Failures:")
-            for tid in sorted(unexpected_failures):
-                print(f"  - {tid}")
-        if unexpected_errors:
-            print("\nUnexpected Errors:")
-            for tid in sorted(unexpected_errors):
-                print(f"  - {tid}")
-        print("\nCI Gate Verdict: REJECTED (New defects must be fixed).")
+
+        if diff["unexpected_failures"]:
+            print("\n[REGRESSION] Unexpected Failures:")
+            for tid in diff["unexpected_failures"]:
+                print(f"  + {tid}")
+
+        if diff["unexpected_errors"]:
+            print("\n[REGRESSION] Unexpected Errors:")
+            for tid in diff["unexpected_errors"]:
+                print(f"  + {tid}")
+
+        if diff["fixed_failures"] or diff["fixed_errors"]:
+            print("\n[BASELINE DRIFT / REMOVAL] Baseline tests that did not reproduce:")
+            for tid in diff["fixed_failures"]:
+                print(f"  - [FAILURE REMOVED/PASSING] {tid}")
+            for tid in diff["fixed_errors"]:
+                print(f"  - [ERROR REMOVED/PASSING] {tid}")
+            print("  Note: If a baseline failure was intentionally fixed or pruned,")
+            print("        update tests/accepted_baseline_failures.json in a reviewed successor commit.")
+
+        if diff["swapped_fail_to_err"] or diff["swapped_err_to_fail"]:
+            print("\n[CATEGORY SWAP] Failure <-> Error Class Mismatches:")
+            for tid in diff["swapped_fail_to_err"]:
+                print(f"  ~ {tid} (expected FAIL, became ERROR)")
+            for tid in diff["swapped_err_to_fail"]:
+                print(f"  ~ {tid} (expected ERROR, became FAIL)")
+
+        print("\nCI Gate Verdict: REJECTED (Exact baseline match required).")
         sys.exit(1)
 
     print("\n" + "*" * 80)
-    print("GATE SUCCESS: ZERO TARGET-ONLY REGRESSIONS")
-    print("All tests passed or matched the accepted baseline exactly.")
+    print("GATE SUCCESS: EXACT BASELINE MATCH VERIFIED")
+    print("actual_failures == accepted_failures AND actual_errors == accepted_errors.")
+    print("Zero target-only regressions and zero silent baseline drift.")
     print("CI Gate Verdict: ACCEPTED FOR RELEASE PIPELINE.")
     print("*" * 80)
     sys.exit(0)

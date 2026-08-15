@@ -10,6 +10,13 @@
 
 $ErrorActionPreference = 'Stop'
 
+# Ensure UTF-8 execution environment on Windows so Python CLI tools print Unicode safely
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+$OutputEncoding           = [System.Text.Encoding]::UTF8
+
 # The repository root is the folder this script lives in - resolved from the script itself, so the
 # toolkit keeps working when it is moved and when the path contains spaces.
 $RepoRoot = $PSScriptRoot

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-AMZ FBM Toolkit v2 — pipeline orchestrator.
+AMZ FBM Toolkit v2 — legacy pipeline orchestrator (Engineering / Compatibility Reference).
+
+NOTICE:
+  This module is preserved for internal tooling and backward-compatibility.
+  For standard staff operations (Staff V1), the primary entrypoint is Start-AMZ-Toolkit.bat
+  which launches the Unified Owner Console (production.phase7_owner_launcher) on http://127.0.0.1:8780.
 
 Runs the tool stages, translates each gate script's EXIT CODE into a structured
 GateResult, records everything in PROJECT-MANIFEST.json, and computes whether the

@@ -1,8 +1,8 @@
 {
   "tool_version": "2.4.0-rc2",
   "built_at": "",
-  "test_count": 4916,
-  "test_count_regex_matches": 4917,
+  "test_count": 4917,
+  "test_count_regex_matches": 4918,
   "test_count_semantics": "test_count is formal TestCase discovery by unittest.TestLoader().discover(); test_count_regex_matches is raw 'def test_' occurrence count.",
   "module_count_verified": 30,
   "modules": {

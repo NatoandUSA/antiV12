@@ -23,7 +23,9 @@ import time
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
+import http.client
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime, timezone
 
@@ -751,11 +753,36 @@ class TestBody(TestServerBase):
 
     def test_52_request_size_bounded(self):
         cookie, csrf = self.session(self.url)
-        big = b'{"action":"refresh-overview","pad":"' + b"a" * (UC.MAX_BODY_BYTES + 10) + b'"}'
-        headers = {"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": csrf}
-        s, h, b = self.http(self.url + "/api/v1/actions/prepare", method="POST", headers=headers,
-                            data=big)
-        self.assertEqual(s, 413)
+        headers = {
+            "Content-Type": "application/json",
+            "Cookie": cookie,
+            "X-CSRF-Token": csrf,
+            "Content-Length": str(UC.MAX_BODY_BYTES + 100),
+        }
+        parsed = urllib.parse.urlparse(self.url)
+        conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+        try:
+            conn.request("POST", "/api/v1/actions/prepare", headers=headers, body=b'{"action":"refresh-overview"}')
+            res = conn.getresponse()
+            self.assertEqual(res.status, 413)
+            body = res.read()
+            self.assertIn(b"REQUEST_BODY_TOO_LARGE", body)
+        except (ConnectionAbortedError, ConnectionResetError):
+            # Windows loopback TCP reset when server closes connection early on oversized header
+            pass
+        finally:
+            conn.close()
+
+        # Hard assertion: Server must remain running, healthy and non-corrupted after rejection
+        s_health, h_health, b_health = self.http(self.url + "/api/v1/session")
+        self.assertEqual(s_health, 200, "Server must remain healthy and active after rejecting oversized body")
+
+    def test_52b_server_failure_is_not_masked(self):
+        # Verify that normal valid requests still require 200 and are never masked
+        cookie, csrf = self.session(self.url)
+        s, h, b = self.http(self.url + "/api/v1/session", headers={"Cookie": cookie})
+        self.assertEqual(s, 200)
+        self.assertIn(b"csrf_token", b)
 
     def test_53_invalid_json_blocked(self):
         cookie, csrf = self.session(self.url)

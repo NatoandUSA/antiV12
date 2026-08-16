@@ -790,11 +790,55 @@ class TestStageInputOutputPresentation(unittest.TestCase):
         table = WSM.workflow_stage_table()
         spec_by_id = {s.stage_id: s for s in table}
 
+        # Stage 2, 4, 12 have manual import hints
+        self.assertIsNotNone(spec_by_id[2].input_hint)
         self.assertIn("Xray", WSM.stage_input_display(spec_by_id[2], spec_by_id))
+        self.assertIsNotNone(spec_by_id[4].input_hint)
         self.assertIn("Cerebro", WSM.stage_input_display(spec_by_id[4], spec_by_id))
+        self.assertIsNotNone(spec_by_id[12].input_hint)
         self.assertIn("Search Term", WSM.stage_input_display(spec_by_id[12], spec_by_id))
-        self.assertIn("Product Truth", WSM.stage_input_display(spec_by_id[8], spec_by_id))
-        self.assertIn("MASTER-KEYWORDS-LEAN.json", WSM.PRODUCT_TRUTH_INPUT_HINT)
+
+        # Stage 3 has supplemental seed keyword hint appended to derived Stage 2
+        self.assertEqual(spec_by_id[3].input_hint, "seed keyword")
+        self.assertEqual(WSM.stage_input_display(spec_by_id[3], spec_by_id), "Stage 2 (Import Amazon + Xray) + seed keyword")
+
+        # Stage 11 has external policy/economics hint
+        self.assertIsNotNone(spec_by_id[11].input_hint)
+        self.assertIn("Economics", WSM.stage_input_display(spec_by_id[11], spec_by_id))
+
+    def test_pure_pipeline_stages_have_no_hardcoded_input_hint(self):
+        """Stages 5, 6, 8, 9, 10, 13 must have input_hint=None and derive inputs purely from upstream outputs."""
+        table = WSM.workflow_stage_table()
+        spec_by_id = {s.stage_id: s for s in table}
+
+        for sid in (5, 6, 8, 9, 10, 13):
+            self.assertIsNone(spec_by_id[sid].input_hint, f"Stage {sid} must not have a static input_hint override")
+
+        # Stage 8 derives from Stage 6 + Product Truth
+        self.assertEqual(WSM.stage_input_display(spec_by_id[8], spec_by_id), "MASTER-KEYWORDS-LEAN.json + Product Truth")
+
+        # Stage 9 derives from Stage 8 output
+        self.assertEqual(WSM.stage_input_display(spec_by_id[9], spec_by_id), "KEYWORD-ALLOCATION-MAP.json")
+
+        # Stage 10 derives from composite Stage 9 outputs
+        self.assertEqual(WSM.stage_input_display(spec_by_id[10], spec_by_id), "PRODUCT-DETAIL-PAGE.json, BASIC-APLUS-CONTENT.json")
+
+        # Stage 13 derives from Stage 12 output
+        self.assertEqual(WSM.stage_input_display(spec_by_id[13], spec_by_id), "PHASE7-REPORT-ANALYSIS-READINESS.json")
+
+    def test_dynamic_upstream_authority_reaction(self):
+        """Demonstrate that changing upstream outputs dynamically updates downstream input display."""
+        mock_up = WSM.StageSpec(100, "Upstream Mock", WSM.GROUP_BUILD, ("custom/path/ARTIFACT-A.json", "custom/path/ARTIFACT-B.csv"))
+        mock_down = WSM.StageSpec(101, "Downstream Mock", WSM.GROUP_BUILD, ("OUT.json",), blocking_stage_ids=(100,))
+        mock_map = {100: mock_up, 101: mock_down}
+
+        # Downstream dynamically displays basename of mock upstream's outputs
+        self.assertEqual(WSM.stage_input_display(mock_down, mock_map), "ARTIFACT-A.json, ARTIFACT-B.csv")
+
+        # When mock upstream adds a new output, downstream input immediately reflects it
+        mock_up_updated = WSM.StageSpec(100, "Upstream Mock", WSM.GROUP_BUILD, ("custom/path/ARTIFACT-A.json", "custom/path/ARTIFACT-B.csv", "EXTRA.json"))
+        mock_map[100] = mock_up_updated
+        self.assertEqual(WSM.stage_input_display(mock_down, mock_map), "ARTIFACT-A.json, ARTIFACT-B.csv, EXTRA.json")
 
 
 if __name__ == "__main__":

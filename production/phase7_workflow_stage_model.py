@@ -133,11 +133,14 @@ def stage_outputs(spec):
 
 
 def stage_input_display(spec, spec_by_id=None):
-    """Derive a human-friendly input summary for Staff from the spec's upstream dependencies or explicit input_hint."""
-    if spec.input_hint:
-        return spec.input_hint
+    """Derive a human-friendly input summary for Staff from the spec's upstream dependencies and supplemental hints.
+
+    Upstream pipeline inputs are DERIVED dynamically from blocking_stage_ids' authoritative outputs.
+    Manual or external prerequisites (like seed keywords or external policies) are appended via
+    input_hint without overriding the upstream derivation.
+    """
+    parts = []
     if spec.blocking_stage_ids:
-        parts = []
         spec_map = spec_by_id or {}
         for up_id in spec.blocking_stage_ids:
             up = spec_map.get(up_id)
@@ -150,10 +153,11 @@ def stage_input_display(spec, spec_by_id=None):
                     parts.append(f"Stage {up_id} ({up.name})")
             else:
                 parts.append(f"Stage {up_id}")
-        if spec.stage_id == 8:
-            parts.append("Product Truth")
-        return " + ".join(parts)
-    return None
+    if spec.stage_id == 8:
+        parts.append("Product Truth")
+    if spec.input_hint:
+        parts.append(spec.input_hint)
+    return " + ".join(parts) if parts else None
 
 
 def _existing_paths(workspace_dir, rel_paths):
@@ -442,7 +446,7 @@ WSM_STAGE_3 = StageSpec(
     3, "ASIN batches", GROUP_RESEARCH, ("ASIN-BATCHES.json",),
     blocking_stage_ids=(2,),
     command="python research/asin_batches.py <folder> --seed \"<seed keyword>\"",
-    input_hint="Stage 2 (Xray export) + seed keyword")
+    input_hint="seed keyword")
 
 # research/master_keyword_builder.py: "Cerebro exports (+ approved ASIN-BATCHES.json) -> evidence
 # matrix". research/cerebro_export_detector.py (imported, not standalone) classifies these by
@@ -471,8 +475,7 @@ WSM_STAGE_6 = StageSpec(
 WSM_STAGE_8 = StageSpec(
     8, "Keywords -> listing", GROUP_BUILD, ("phase6/6B/KEYWORD-ALLOCATION-MAP.json",),
     blocking_stage_ids=(6,),
-    command="python -m listing.keyword_allocation_planner <run_dir>",
-    input_hint="MASTER-KEYWORDS-LEAN.json + Product Truth")
+    command="python -m listing.keyword_allocation_planner <run_dir>")
 
 # production/product_detail_page.py (6C) reads phase6/6B/KEYWORD-ALLOCATION-MAP.json directly
 # (KAP.phase6b_dir / "KEYWORD-ALLOCATION-MAP.json", confirmed by source). production/aplus_assembly.py
@@ -488,8 +491,7 @@ WSM_STAGE_9 = StageSpec(
     ),
     blocking_stage_ids=(8,),
     command="python -m production.product_detail_page <run_dir> --write"
-           "  # then: python -m production.aplus_assembly <run_dir> --write",
-    input_hint="KEYWORD-ALLOCATION-MAP.json + Product Facts")
+           "  # then: python -m production.aplus_assembly <run_dir> --write")
 
 # creative/creative_production_package.py's load_phase6e_dependencies() HARD-verifies both the 6C
 # and 6D output directories exist and pass verify_phase6c_artifacts / verify_phase6d_artifacts,
@@ -504,8 +506,7 @@ WSM_STAGE_10 = StageSpec(
         StageComponent("creative_brief", ("phase6/6E/CREATIVE-BRIEF.md",)),
     ),
     blocking_stage_ids=(9,),
-    command="python -m creative.creative_production_package <run_dir> --write",
-    input_hint="Verified 6C (PDP) + 6D (A+) artifacts")
+    command="python -m creative.creative_production_package <run_dir> --write")
 
 # production/phase7_extended_launch_planning.py: NO source-code reference to phase6c_dir /
 # phase6d_dir / phase6e_dir was found (checked directly) -- its real gate is the accepted Phase
@@ -561,8 +562,7 @@ WSM_STAGE_13 = StageSpec(
     ),
     blocking_stage_ids=(12,),
     command="python -m production.phase7_ads_analysis --base-dir <run_dir>/phase7/7.3"
-           " --phase7-2-dir <run_dir>/phase7/7.2",
-    input_hint="Promoted Phase 7.2 report dataset")
+           " --phase7-2-dir <run_dir>/phase7/7.2")
 
 
 # ================================================================ Product Truth (Phase 6A) --

@@ -932,18 +932,25 @@ def _build_workflow_section_body(config, product_root):
     product_truth_blocks_stage_8 = product_truth_state != WSM.READY
     overrides = {8: WSM.BLOCKED} if product_truth_blocks_stage_8 else None
     results = WSM.resolve_all(table, product_root, tags=tags, state_overrides=overrides)
+    spec_by_id = {s.stage_id: s for s in table}
     stages = []
     for spec in table:
         r = results[spec.stage_id]
         blocked_by = ([up for up in spec.blocking_stage_ids
                       if results.get(up, {}).get("state") != WSM.READY]
                      if r["state"] == WSM.BLOCKED else [])
+        outs = list(WSM.stage_outputs(spec))
+        input_desc = WSM.stage_input_display(spec, spec_by_id)
+        out_display = ", ".join(os.path.basename(p) for p in outs) if outs else None
         stages.append({
             "stage_id": spec.stage_id, "label": spec.name, "group": spec.group, "modeled": True,
             "state": r["state"], "components": r["components"], "blocked_by": blocked_by,
             "blocked_by_product_truth": spec.stage_id == 8 and product_truth_blocks_stage_8,
             "command": spec.command, "acceptance_required": bool(spec.accepted_tag_prefix),
             "informational_reason": None,
+            "inputs": input_desc,
+            "outputs": outs,
+            "output_display": out_display,
         })
     for nt in WSM.NOT_TRACKED_STAGES:
         stages.append({
@@ -951,6 +958,9 @@ def _build_workflow_section_body(config, product_root):
             "modeled": False, "state": None, "components": {}, "blocked_by": [],
             "command": None, "acceptance_required": False,
             "informational_reason": nt["note"],
+            "inputs": None,
+            "outputs": [],
+            "output_display": None,
         })
     stages.sort(key=lambda s: s["stage_id"])
     ready = sum(1 for s in stages if s["state"] == WSM.READY)
@@ -963,10 +973,14 @@ def _build_workflow_section_body(config, product_root):
     # next_action already keeps for the console's overall next-action panel.
     primary_next_stage_id = next((spec.stage_id for spec in table
                                  if results[spec.stage_id]["state"] != WSM.READY), None)
+    pt_outs = list(WSM.PRODUCT_TRUTH_ARTIFACTS)
     product_truth = {
         "label": WSM.PRODUCT_TRUTH_LABEL, "group": WSM.PRODUCT_TRUTH_GROUP,
         "state": product_truth_state, "command": WSM.PRODUCT_TRUTH_COMMAND,
         "staff_note": WSM.PRODUCT_TRUTH_STAFF_NOTE,
+        "inputs": WSM.PRODUCT_TRUTH_INPUT_HINT,
+        "outputs": pt_outs,
+        "output_display": ", ".join(os.path.basename(p) for p in pt_outs),
     }
     return {"status": status, "reason": None, "product_root": product_root, "stages": stages,
             "trust": trust, "product_truth": product_truth,

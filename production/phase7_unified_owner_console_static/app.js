@@ -1106,6 +1106,16 @@
     sec.appendChild(el("h2", { class: "na-title",
       text: "Next: Stage " + s.stage_id + " — " + s.label }));
     sec.appendChild(tag(s.state));
+    if (s.inputs) {
+      sec.appendChild(el("p", { class: "stage-meta em small" }, [
+        el("strong", { text: "Input: " }), document.createTextNode(s.inputs)
+      ]));
+    }
+    if (s.output_display) {
+      sec.appendChild(el("p", { class: "stage-meta em small" }, [
+        el("strong", { text: "Output: " }), document.createTextNode(s.output_display)
+      ]));
+    }
     if (s.blocked_by && s.blocked_by.length) {
       sec.appendChild(el("p", { class: "na-message" },
         [document.createTextNode("Waiting on stage " + s.blocked_by.join(", ") + ".")]));
@@ -1126,6 +1136,16 @@
     row.appendChild(el("span", { class: "stage-num em", "aria-hidden": "true", text: "•" }));
     row.appendChild(el("span", { class: "stage-label", text: pt.label + " (prerequisite)" }));
     row.appendChild(tag(pt.state));
+    if (pt.inputs) {
+      row.appendChild(el("p", { class: "stage-meta em small" }, [
+        el("strong", { text: "Input: " }), document.createTextNode(pt.inputs)
+      ]));
+    }
+    if (pt.output_display) {
+      row.appendChild(el("p", { class: "stage-meta em small" }, [
+        el("strong", { text: "Output: " }), document.createTextNode(pt.output_display)
+      ]));
+    }
     if (pt.state !== "READY" && pt.staff_note) {
       row.appendChild(el("p", { class: "em small", text: pt.staff_note }));
     }
@@ -1144,6 +1164,16 @@
       return row;
     }
     row.appendChild(tag(s.state));
+    if (s.inputs) {
+      row.appendChild(el("p", { class: "stage-meta em small" }, [
+        el("strong", { text: "Input: " }), document.createTextNode(s.inputs)
+      ]));
+    }
+    if (s.output_display) {
+      row.appendChild(el("p", { class: "stage-meta em small" }, [
+        el("strong", { text: "Output: " }), document.createTextNode(s.output_display)
+      ]));
+    }
     if (s.state !== "READY" && s.blocked_by && s.blocked_by.length) {
       row.appendChild(el("p", { class: "em small",
         text: "Waiting on stage " + s.blocked_by.join(", ") + "." }));

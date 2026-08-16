@@ -734,5 +734,112 @@ class ProductTruthPrerequisite(unittest.TestCase):
         self.assertNotIn("product_truth", ids)
 
 
+class TestStageInputOutputPresentation(unittest.TestCase):
+    """P1 Dashboard Input/Output UX Clarity tests — Golden Rule 16 (Source-of-Truth Protection)."""
+
+    def test_output_display_derived_from_authority_no_duplicate_label(self):
+        """Outputs must be strictly derived from output_paths / components.output_paths with no hand-maintained outputs_label."""
+        table = WSM.workflow_stage_table()
+        spec_by_id = {s.stage_id: s for s in table}
+
+        for spec in table:
+            self.assertFalse(hasattr(spec, "outputs_label"), f"Stage {spec.stage_id} must not have outputs_label")
+            derived_outputs = WSM.stage_outputs(spec)
+            self.assertIsInstance(derived_outputs, tuple)
+            self.assertTrue(len(derived_outputs) > 0, f"Stage {spec.stage_id} must have at least one derived output path or glob")
+
+        # Plain stage derivation checks
+        self.assertEqual(WSM.stage_outputs(spec_by_id[3]), ("ASIN-BATCHES.json",))
+        self.assertEqual(WSM.stage_outputs(spec_by_id[5]), ("CEREBRO-EVIDENCE-MATRIX.json",))
+        self.assertEqual(WSM.stage_outputs(spec_by_id[6]), ("MASTER-KEYWORDS-LEAN.json",))
+        self.assertEqual(WSM.stage_outputs(spec_by_id[8]), ("phase6/6B/KEYWORD-ALLOCATION-MAP.json",))
+
+    def test_composite_stage_outputs_coverage(self):
+        """Composite stages (9, 10, 11, 13) must derive all component artifacts in order without collapsing into one file."""
+        table = WSM.workflow_stage_table()
+        spec_by_id = {s.stage_id: s for s in table}
+
+        # Stage 9: listing + aplus
+        outs_9 = WSM.stage_outputs(spec_by_id[9])
+        self.assertEqual(outs_9, ("phase6/6C/PRODUCT-DETAIL-PAGE.json", "phase6/6D/BASIC-APLUS-CONTENT.json"))
+
+        # Stage 10: 3 creative outputs
+        outs_10 = WSM.stage_outputs(spec_by_id[10])
+        self.assertEqual(outs_10, (
+            "phase6/6E/LISTING-IMAGE-PROMPTS.md",
+            "phase6/6E/APLUS-IMAGE-PROMPTS.md",
+            "phase6/6E/CREATIVE-BRIEF.md",
+        ))
+
+        # Stage 11: readiness + manual guide
+        outs_11 = WSM.stage_outputs(spec_by_id[11])
+        self.assertEqual(outs_11, (
+            "phase7/7.1E/final/PHASE7-1E-READINESS.json",
+            "phase7/7.1E/final/MANUAL-ENTRY-GUIDE.md",
+        ))
+
+        # Stage 13: analysis + decision queue
+        outs_13 = WSM.stage_outputs(spec_by_id[13])
+        self.assertEqual(outs_13, (
+            "phase7/7.3/promoted/analysis.json",
+            "phase7/7.3/promoted/owner-decision-queue.csv",
+        ))
+
+    def test_manual_input_stages_presentation(self):
+        """Manual/untracked input stages (2, 4, 12, Product Truth) must provide human-friendly input hints while preserving derivation."""
+        table = WSM.workflow_stage_table()
+        spec_by_id = {s.stage_id: s for s in table}
+
+        # Stage 2, 4, 12 have manual import hints
+        self.assertIsNotNone(spec_by_id[2].input_hint)
+        self.assertIn("Xray", WSM.stage_input_display(spec_by_id[2], spec_by_id))
+        self.assertIsNotNone(spec_by_id[4].input_hint)
+        self.assertIn("Cerebro", WSM.stage_input_display(spec_by_id[4], spec_by_id))
+        self.assertIsNotNone(spec_by_id[12].input_hint)
+        self.assertIn("Search Term", WSM.stage_input_display(spec_by_id[12], spec_by_id))
+
+        # Stage 3 has supplemental seed keyword hint appended to derived Stage 2
+        self.assertEqual(spec_by_id[3].input_hint, "seed keyword")
+        self.assertEqual(WSM.stage_input_display(spec_by_id[3], spec_by_id), "Stage 2 (Import Amazon + Xray) + seed keyword")
+
+        # Stage 11 has external policy/economics hint
+        self.assertIsNotNone(spec_by_id[11].input_hint)
+        self.assertIn("Economics", WSM.stage_input_display(spec_by_id[11], spec_by_id))
+
+    def test_pure_pipeline_stages_have_no_hardcoded_input_hint(self):
+        """Stages 5, 6, 8, 9, 10, 13 must have input_hint=None and derive inputs purely from upstream outputs."""
+        table = WSM.workflow_stage_table()
+        spec_by_id = {s.stage_id: s for s in table}
+
+        for sid in (5, 6, 8, 9, 10, 13):
+            self.assertIsNone(spec_by_id[sid].input_hint, f"Stage {sid} must not have a static input_hint override")
+
+        # Stage 8 derives from Stage 6 + Product Truth
+        self.assertEqual(WSM.stage_input_display(spec_by_id[8], spec_by_id), "MASTER-KEYWORDS-LEAN.json + Product Truth")
+
+        # Stage 9 derives from Stage 8 output
+        self.assertEqual(WSM.stage_input_display(spec_by_id[9], spec_by_id), "KEYWORD-ALLOCATION-MAP.json")
+
+        # Stage 10 derives from composite Stage 9 outputs
+        self.assertEqual(WSM.stage_input_display(spec_by_id[10], spec_by_id), "PRODUCT-DETAIL-PAGE.json, BASIC-APLUS-CONTENT.json")
+
+        # Stage 13 derives from Stage 12 output
+        self.assertEqual(WSM.stage_input_display(spec_by_id[13], spec_by_id), "PHASE7-REPORT-ANALYSIS-READINESS.json")
+
+    def test_dynamic_upstream_authority_reaction(self):
+        """Demonstrate that changing upstream outputs dynamically updates downstream input display."""
+        mock_up = WSM.StageSpec(100, "Upstream Mock", WSM.GROUP_BUILD, ("custom/path/ARTIFACT-A.json", "custom/path/ARTIFACT-B.csv"))
+        mock_down = WSM.StageSpec(101, "Downstream Mock", WSM.GROUP_BUILD, ("OUT.json",), blocking_stage_ids=(100,))
+        mock_map = {100: mock_up, 101: mock_down}
+
+        # Downstream dynamically displays basename of mock upstream's outputs
+        self.assertEqual(WSM.stage_input_display(mock_down, mock_map), "ARTIFACT-A.json, ARTIFACT-B.csv")
+
+        # When mock upstream adds a new output, downstream input immediately reflects it
+        mock_up_updated = WSM.StageSpec(100, "Upstream Mock", WSM.GROUP_BUILD, ("custom/path/ARTIFACT-A.json", "custom/path/ARTIFACT-B.csv", "EXTRA.json"))
+        mock_map[100] = mock_up_updated
+        self.assertEqual(WSM.stage_input_display(mock_down, mock_map), "ARTIFACT-A.json, ARTIFACT-B.csv, EXTRA.json")
+
+
 if __name__ == "__main__":
     unittest.main()

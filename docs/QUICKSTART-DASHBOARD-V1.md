@@ -11,18 +11,19 @@ Bấm đúp file **`Start-AMZ-Toolkit.bat`**. Nó tự mở trình duyệt khi c
 ra ngay là **Workflow** — đây là màn hình chính, cho biết dự án đang ở bước nào và cần làm gì
 tiếp theo.
 
-## 2. Tạo thư mục dự án (workspace)
+## 2. Tạo / chọn dự án (workspace)
 
-Hiện chưa có lệnh tự tạo. Tự tạo thư mục theo đường dẫn sau (thay `<ten-san-pham>` bằng tên
-ngắn, không dấu, không khoảng trắng):
+Trên trang Workflow, ngay dưới dòng **"Product workspace folder"**, có mục **"Product
+workspaces"** — liệt kê mọi dự án đã có, kèm trạng thái (xem mục 6 bên dưới) và nút **Switch**
+để đổi sang dự án đó ngay lập tức (không cần khởi động lại console).
 
-```
-runs/<ten-san-pham>/phase7/
-```
+**Tạo dự án mới:** gõ tên vào ô **"New product name"** (chỉ chữ, số, dấu gạch ngang — không
+dấu, không khoảng trắng) rồi bấm **Create workspace**, xác nhận đúng cụm từ hiện ra. Console
+tự tạo thư mục và chuyển sang dự án đó ngay — không cần tự tạo thư mục bằng tay, không cần
+khởi động lại.
 
-Trang Workflow đọc trực tiếp thư mục này. Mở trang Workflow, dòng **"Product workspace
-folder"** ở đầu trang cho biết chính xác thư mục nó đang đọc — bấm **Copy path** để copy
-đường dẫn đó vào lệnh bên dưới.
+Dòng **"Product workspace folder"** ở đầu trang luôn cho biết chính xác thư mục dự án đang mở
+— bấm **Copy path** để copy đường dẫn đó vào lệnh bên dưới.
 
 ## 3. Nhập Product Truth (Phase 6A) — **làm bước này trước** bước 8 (Keywords -> listing)
 

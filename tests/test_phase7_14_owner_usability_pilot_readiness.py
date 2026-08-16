@@ -2261,8 +2261,11 @@ class TestPriorPhaseRegression(unittest.TestCase):
             cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(out.stdout.strip(), "", "accepted 7.3-7.12 authority modified")
 
-    def test_136c_action_allowlist_still_fifteen(self):
-        self.assertEqual(len(UC.ACTIONS), 15)
+    def test_136c_action_allowlist_now_seventeen(self):
+        # Deliberate, disclosed expansion: select-workspace / create-workspace (multi-product
+        # workspace picker), both authority="console", added alongside the trust/product_truth
+        # API-wiring fix. Was 15 (see git history); intentionally not silently kept at 15.
+        self.assertEqual(len(UC.ACTIONS), 17)
 
     def test_136d_prohibited_actions_still_absent(self):
         for name in UC.PROHIBITED_ACTIONS:

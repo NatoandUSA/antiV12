@@ -22,6 +22,7 @@ import tempfile
 import time
 import threading
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -884,12 +885,37 @@ class TestApi(Base):
 
     def test_67_stable_schema(self):
         for ep in ("overview", "modules", "analysis", "research", "watchlists", "alerts",
-                   "notifications", "backups", "system", "activity"):
+                   "notifications", "backups", "system", "activity", "workflow"):
             s, j = self.g("/api/v1/" + ep)
             for key in ("schema_version", "request_id", "readiness", "generated_at", "data",
                         "warnings", "errors", "source_authorities", "seller_central_counters"):
                 self.assertIn(key, j, "%s missing %s" % (ep, key))
             self.assertEqual(j["schema_version"], UC.API_SCHEMA)
+
+    def test_workflow_endpoint_includes_trust_and_product_truth(self):
+        """Regression: /api/v1/workflow used to silently omit "trust" and "product_truth" from
+        its response even though build_workflow_section always computed both -- no prior test
+        exercised the real HTTP response body for this endpoint, only the internal model dict."""
+        s, j = self.g("/api/v1/workflow")
+        self.assertEqual(s, 200)
+        self.assertIn("trust", j["data"])
+        self.assertIsNotNone(j["data"]["trust"])
+        self.assertEqual(j["data"]["trust"]["state"], UC.TRUST_HISTORICAL)  # self.ws is under runs/T2/phase7
+        self.assertIn("product_truth", j["data"])
+        self.assertIsNotNone(j["data"]["product_truth"])
+
+    def test_workflow_trust_generic_not_only_t2(self):
+        """Same fix, proven against a non-T2-named product root so it isn't accidentally correct
+        only for the one quarantined name."""
+        product_root = os.path.join(self.tmp, "acme")
+        ws = os.path.join(product_root, "phase7")
+        os.makedirs(ws)
+        url, srv = self.serve(self.cfg(ws))
+        cookie, _csrf = self.session(url)
+        s, j = self.getj(url, "/api/v1/workflow", cookie)
+        self.assertEqual(s, 200)
+        self.assertIsNotNone(j["data"]["trust"])
+        self.assertEqual(j["data"]["trust"]["state"], UC.TRUST_UNVERIFIED)
 
     def test_216_seller_central_counters_zero(self):
         s, j = self.g("/api/v1/overview")
@@ -1054,17 +1080,18 @@ class TestAuthorityReuse(Base):
         src = open(MODULE_PATH, encoding="utf-8").read()
         dispatch = src.split("def _execute_authority", 1)[1].split("\ndef ", 1)[0]
         self.assertNotIn("getattr", dispatch)
-        self.assertEqual(len(UC.ACTIONS), 15)
+        self.assertEqual(len(UC.ACTIONS), 17)
 
 
 # ================================================================ 10) action allowlist + prohibited
 class TestActionAllowlist(Base):
     def test_95_fixed_allowlist(self):
-        self.assertEqual(len(UC.ACTIONS), 15)
+        self.assertEqual(len(UC.ACTIONS), 17)
         for name in ("refresh-overview", "export-overview", "verify-system-state", "run-watchlist",
                      "acknowledge-alert", "dismiss-alert", "reopen-alert", "preview-notification",
                      "build-notification-batch", "send-notification-batch", "create-backup-snapshot",
-                     "verify-backup", "check-for-update", "stage-update", "create-recovery-plan"):
+                     "verify-backup", "check-for-update", "stage-update", "create-recovery-plan",
+                     "select-workspace", "create-workspace"):
             self.assertIn(name, UC.ACTIONS)
 
     def test_96_unknown_action_blocked(self):
@@ -2575,6 +2602,190 @@ class WorkspaceTrust(Base):
         model = UC.build_console_model(self.cfg(ws), now=NOW())
         round_tripped = json.loads(json.dumps(model["sections"]["workflow"]["trust"]))
         self.assertEqual(round_tripped, model["sections"]["workflow"]["trust"])
+
+
+class WorkspacePicker(Base):
+    """Multi-product workspace support: GET /api/v1/workspaces, name validation, and the
+    select-workspace / create-workspace console actions. workspace_root is load-bearing for every
+    section (Analysis, Backup, Research, Watchlists, Notifications), not just Workflow -- see
+    test_select_workspace_retargets_whole_console_not_just_workflow below for the proof that a
+    switch really does retarget the whole console, not a Workflow-local variable."""
+
+    def _products_root(self):
+        return os.path.join(self.tmp, "products")
+
+    def _make_product(self, name, *, business=False):
+        ws = os.path.join(self._products_root(), name, "phase7")
+        os.makedirs(ws, exist_ok=True)
+        if business:
+            self.build_business(ws)
+        return ws
+
+    # ---- GET /api/v1/workspaces ----------------------------------------------------------------
+    def test_workspaces_endpoint_lists_candidates_with_trust(self):
+        self._make_product("T2")
+        acme = self._make_product("Acme")
+        url, srv = self.serve(self.cfg(acme))
+        cookie, _csrf = self.session(url)
+        s, j = self.getj(url, "/api/v1/workspaces", cookie)
+        self.assertEqual(s, 200)
+        by_name = {w["name"]: w for w in j["data"]["workspaces"]}
+        self.assertEqual(set(by_name), {"T2", "Acme"})
+        self.assertEqual(by_name["T2"]["trust"]["state"], UC.TRUST_HISTORICAL)
+        self.assertEqual(by_name["Acme"]["trust"]["state"], UC.TRUST_UNVERIFIED)
+        self.assertTrue(by_name["Acme"]["active"])
+        self.assertFalse(by_name["T2"]["active"])
+        self.assertEqual(j["data"]["active"], "Acme")
+
+    def test_workspaces_endpoint_single_candidate(self):
+        solo = self._make_product("Solo")
+        url, srv = self.serve(self.cfg(solo))
+        cookie, _csrf = self.session(url)
+        s, j = self.getj(url, "/api/v1/workspaces", cookie)
+        self.assertEqual(s, 200)
+        self.assertEqual([w["name"] for w in j["data"]["workspaces"]], ["Solo"])
+
+    # ---- name validation -------------------------------------------------------------------------
+    def test_validate_workspace_name_accepts_reasonable_names(self):
+        for n in ("Acme", "my-product-2", "abc123", "A"):
+            self.assertEqual(UC._validate_workspace_name(n), n)
+
+    def test_validate_workspace_name_rejects_bad_charset(self):
+        for n in ("", "   ", "../etc", "a/b", "a\\b", ".hidden", "_private", "has space",
+                  "x" * 65):
+            with self.assertRaises(UC.ConsoleError) as e:
+                UC._validate_workspace_name(n)
+            self.assertEqual(e.exception.code, "INVALID_WORKSPACE_NAME")
+
+    def test_validate_workspace_name_rejects_reserved(self):
+        for n in ("t2", "T2", "con", "CON", "com1", "LPT9"):
+            with self.assertRaises(UC.ConsoleError) as e:
+                UC._validate_workspace_name(n)
+            self.assertEqual(e.exception.code, "RESERVED_WORKSPACE_NAME")
+
+    # ---- select-workspace ------------------------------------------------------------------------
+    def test_select_workspace_retargets_whole_console_not_just_workflow(self):
+        t2 = self._make_product("T2")
+        acme = self._make_product("Acme", business=True)
+        cfg = self.cfg(t2)
+        # T2 here has no 7.3 dir at all (business=False) -> the section builder's early-return path
+        model_before = UC.build_console_model(cfg, now=NOW())
+        self.assertEqual(model_before["sections"]["analysis"]["status"], UC.MOD_UNAVAILABLE)
+
+        prep, res = self.run_action(cfg, "select-workspace", {"product_name": "Acme"})
+        self.assertEqual(res["readiness"], UC.ACTION_COMPLETED)
+        self.assertEqual(os.path.normpath(cfg.workspace_root), os.path.normpath(acme))
+
+        model_after = UC.build_console_model(cfg, now=NOW())
+        self.assertNotEqual(model_after["sections"]["analysis"]["status"], UC.MOD_UNAVAILABLE)
+        self.assertEqual(UC._read_active_workspace(self._products_root()), "Acme")
+
+    def test_select_workspace_unknown_target(self):
+        acme = self._make_product("Acme")
+        cfg = self.cfg(acme)
+        with self.assertRaises(UC.ConsoleError) as e:
+            UC.prepare_action(cfg, "fp", "select-workspace", {"product_name": "DoesNotExist"},
+                              now=NOW(), tokens=UC.ActionTokenStore())
+        self.assertEqual(e.exception.code, "WORKSPACE_NOT_FOUND")
+
+    def test_select_workspace_rejects_path_traversal(self):
+        """Regression: select-workspace originally validated only os.path.isdir() on the joined
+        path, with no charset check at all -- a product_name containing ".." or a path separator
+        that happened to resolve to a real directory would have been accepted, silently pointing
+        the whole console (workspace_root feeds every subsystem via Config.phase_dir()) outside
+        runs/ entirely."""
+        acme = self._make_product("Acme")
+        cfg = self.cfg(acme)
+        for bad in ("../elsewhere", "..\\elsewhere", "a/b", "a\\b", "/etc"):
+            with self.assertRaises(UC.ConsoleError) as e:
+                UC.prepare_action(cfg, "fp", "select-workspace", {"product_name": bad},
+                                  now=NOW(), tokens=UC.ActionTokenStore())
+            self.assertEqual(e.exception.code, "INVALID_WORKSPACE_NAME", bad)
+
+    def test_select_workspace_can_still_reach_the_reserved_t2_name(self):
+        """_validate_existing_workspace_name must NOT apply the reserved-name rejection --
+        RESERVED_WORKSPACE_NAMES exists to stop *creating* a new "t2", not to stop switching to
+        the real, already-existing, permanently-quarantined T2 workspace."""
+        self._make_product("T2")
+        acme = self._make_product("Acme")
+        cfg = self.cfg(acme)
+        prep, res = self.run_action(cfg, "select-workspace", {"product_name": "T2"})
+        self.assertEqual(res["readiness"], UC.ACTION_COMPLETED)
+        self.assertEqual(os.path.basename(os.path.dirname(cfg.workspace_root)), "T2")
+
+    # ---- create-workspace ------------------------------------------------------------------------
+    def test_create_workspace_creates_directory_and_switches(self):
+        seed = self._make_product("T2")
+        cfg = self.cfg(seed)
+        prep, res = self.run_action(cfg, "create-workspace", {"product_name": "BrandNew"})
+        self.assertEqual(res["readiness"], UC.ACTION_COMPLETED)
+        expected = os.path.join(self._products_root(), "BrandNew", "phase7")
+        self.assertEqual(os.path.normpath(cfg.workspace_root), os.path.normpath(expected))
+        self.assertTrue(os.path.isdir(expected))
+        self.assertEqual(UC._read_active_workspace(self._products_root()), "BrandNew")
+
+    def test_create_workspace_conflict_on_existing(self):
+        acme = self._make_product("Acme")
+        cfg = self.cfg(acme)
+        with self.assertRaises(UC.ConsoleError) as e:
+            UC.prepare_action(cfg, "fp", "create-workspace", {"product_name": "Acme"},
+                              now=NOW(), tokens=UC.ActionTokenStore())
+        self.assertEqual(e.exception.code, "WORKSPACE_ALREADY_EXISTS")
+
+    def test_create_workspace_invalid_name(self):
+        acme = self._make_product("Acme")
+        cfg = self.cfg(acme)
+        with self.assertRaises(UC.ConsoleError) as e:
+            UC.prepare_action(cfg, "fp", "create-workspace", {"product_name": "t2"},
+                              now=NOW(), tokens=UC.ActionTokenStore())
+        self.assertEqual(e.exception.code, "RESERVED_WORKSPACE_NAME")
+
+
+class WorkspaceStartupResolution(Base):
+    """_resolve_effective_workspace_root -- the startup-only override used by _config_from_args.
+    phase7_owner_launcher.py itself is never touched by this feature (preserves
+    test_198_no_runs_dependency_in_launcher_module in test_phase7_14_owner_usability_pilot_readiness.py)."""
+
+    def test_explicit_non_default_passes_through_untouched(self):
+        explicit = os.path.join(self.tmp, "anything", "phase7")
+        self.assertEqual(UC._resolve_effective_workspace_root(explicit), explicit)
+
+    def test_default_with_no_selection_falls_back_unchanged(self):
+        default = os.path.join(self.tmp, "runs", "T2", "phase7")
+        with patch.object(UC, "DEFAULT_WORKSPACE_ROOT", default):
+            self.assertEqual(UC._resolve_effective_workspace_root(default), default)
+
+    def test_default_with_a_valid_persisted_selection_is_overridden(self):
+        default = os.path.join(self.tmp, "runs", "T2", "phase7")
+        acme = os.path.join(self.tmp, "runs", "Acme", "phase7")
+        os.makedirs(acme)
+        UC._write_active_workspace(os.path.join(self.tmp, "runs"), "Acme")
+        with patch.object(UC, "DEFAULT_WORKSPACE_ROOT", default):
+            got = UC._resolve_effective_workspace_root(default)
+        self.assertEqual(os.path.normpath(got), os.path.normpath(acme))
+
+    def test_stale_persisted_selection_is_ignored(self):
+        default = os.path.join(self.tmp, "runs", "T2", "phase7")
+        products_root = os.path.join(self.tmp, "runs")
+        os.makedirs(products_root)
+        UC._write_active_workspace(products_root, "GhostProduct")  # never actually created
+        with patch.object(UC, "DEFAULT_WORKSPACE_ROOT", default):
+            got = UC._resolve_effective_workspace_root(default)
+        self.assertEqual(got, default)
+
+    def test_windows_separator_mismatch_still_matches_the_default(self):
+        """DEFAULT_WORKSPACE_ROOT = os.path.join(...) is backslash-separated on Windows;
+        phase7_owner_launcher.py's OWN copy of the same constant is a literal forward-slash string
+        and console_command() always normalizes to forward slashes before spawning -- the console
+        must recognize both spellings as "the default", not just its own os.path.join form."""
+        default_backslash = os.path.join(self.tmp, "runs", "T2", "phase7")
+        default_forwardslash = default_backslash.replace("\\", "/")
+        acme = os.path.join(self.tmp, "runs", "Acme", "phase7")
+        os.makedirs(acme)
+        UC._write_active_workspace(os.path.join(self.tmp, "runs"), "Acme")
+        with patch.object(UC, "DEFAULT_WORKSPACE_ROOT", default_backslash):
+            got = UC._resolve_effective_workspace_root(default_forwardslash)
+        self.assertEqual(os.path.normpath(got), os.path.normpath(acme))
 
 
 class ProductTruthSection(Base):

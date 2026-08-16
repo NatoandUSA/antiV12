@@ -91,13 +91,17 @@ class StageSpec:
     accepted_tag_prefix: if set, a git tag "<prefix>-accepted-*" must exist for this stage to ever
     report READY; otherwise, once its artifacts exist and would otherwise qualify, it reports
     NOT_ACCEPTED instead of a false READY.
+
+    input_hint: optional human-friendly description of manual input files / owner-provided facts,
+    used when inputs cannot be purely inferred from upstream stage output artifacts.
     """
     __slots__ = ("stage_id", "name", "group", "output_paths", "existence_globs", "components",
-                "blocking_stage_ids", "freshness_globs", "accepted_tag_prefix", "command")
+                "blocking_stage_ids", "freshness_globs", "accepted_tag_prefix", "command",
+                "input_hint")
 
     def __init__(self, stage_id, name, group, output_paths=(), *, existence_globs=(),
                 components=(), blocking_stage_ids=(), freshness_globs=(),
-                accepted_tag_prefix=None, command=None):
+                accepted_tag_prefix=None, command=None, input_hint=None):
         self.stage_id = stage_id
         self.name = name
         self.group = group
@@ -108,6 +112,48 @@ class StageSpec:
         self.freshness_globs = tuple(freshness_globs)
         self.accepted_tag_prefix = accepted_tag_prefix
         self.command = command
+        self.input_hint = input_hint
+
+
+def stage_outputs(spec):
+    """The authoritative output paths for a stage, derived directly from its existing definition.
+
+    Plain stages return their output_paths (or existence_globs). Composite stages return the union
+    of all their components' output_paths in declaration order. No duplicate label authority."""
+    if spec.components:
+        out = []
+        for comp in spec.components:
+            out.extend(comp.output_paths)
+        return tuple(out)
+    if spec.output_paths:
+        return tuple(spec.output_paths)
+    if spec.existence_globs:
+        return tuple(spec.existence_globs)
+    return ()
+
+
+def stage_input_display(spec, spec_by_id=None):
+    """Derive a human-friendly input summary for Staff from the spec's upstream dependencies or explicit input_hint."""
+    if spec.input_hint:
+        return spec.input_hint
+    if spec.blocking_stage_ids:
+        parts = []
+        spec_map = spec_by_id or {}
+        for up_id in spec.blocking_stage_ids:
+            up = spec_map.get(up_id)
+            if up:
+                outs = stage_outputs(up)
+                out_names = [os.path.basename(p) for p in outs if not p.startswith("*")]
+                if out_names:
+                    parts.append(", ".join(out_names))
+                else:
+                    parts.append(f"Stage {up_id} ({up.name})")
+            else:
+                parts.append(f"Stage {up_id}")
+        if spec.stage_id == 8:
+            parts.append("Product Truth")
+        return " + ".join(parts)
+    return None
 
 
 def _existing_paths(workspace_dir, rel_paths):
@@ -388,13 +434,15 @@ def workflow_stage_table():
 WSM_STAGE_2 = StageSpec(
     2, "Import Amazon + Xray", GROUP_RESEARCH,
     existence_globs=("*Xray*.xlsx", "*Xray*.xls", "*Xray*.csv", "*xray*.xlsx", "*xray*.csv"),
-    command="(place the Helium 10 Xray export in the workspace folder)")
+    command="(place the Helium 10 Xray export in the workspace folder)",
+    input_hint="Helium 10 Xray export (*.xlsx / *.csv)")
 
 # research/asin_batches.py main(): writes BATCHES = "ASIN-BATCHES.json" under the workspace.
 WSM_STAGE_3 = StageSpec(
     3, "ASIN batches", GROUP_RESEARCH, ("ASIN-BATCHES.json",),
     blocking_stage_ids=(2,),
-    command="python research/asin_batches.py <folder> --seed \"<seed keyword>\"")
+    command="python research/asin_batches.py <folder> --seed \"<seed keyword>\"",
+    input_hint="Stage 2 (Xray export) + seed keyword")
 
 # research/master_keyword_builder.py: "Cerebro exports (+ approved ASIN-BATCHES.json) -> evidence
 # matrix". research/cerebro_export_detector.py (imported, not standalone) classifies these by
@@ -402,7 +450,8 @@ WSM_STAGE_3 = StageSpec(
 WSM_STAGE_4 = StageSpec(
     4, "Cerebro re-import", GROUP_RESEARCH,
     existence_globs=("*erebro*.xlsx", "*erebro*.csv", "*agnet*.xlsx", "*agnet*.csv"),
-    command="(place fresh Cerebro/Magnet exports in the workspace folder)")
+    command="(place fresh Cerebro/Magnet exports in the workspace folder)",
+    input_hint="Cerebro / Magnet export (*.xlsx / *.csv)")
 
 # research/master_keyword_builder.py main(): writes CEREBRO-EVIDENCE-MATRIX.json, THEN
 # MASTER-KEYWORDS-LEAN.json, in the same invocation -- stages 5 and 6 share one producer.
@@ -422,7 +471,8 @@ WSM_STAGE_6 = StageSpec(
 WSM_STAGE_8 = StageSpec(
     8, "Keywords -> listing", GROUP_BUILD, ("phase6/6B/KEYWORD-ALLOCATION-MAP.json",),
     blocking_stage_ids=(6,),
-    command="python -m listing.keyword_allocation_planner <run_dir>")
+    command="python -m listing.keyword_allocation_planner <run_dir>",
+    input_hint="MASTER-KEYWORDS-LEAN.json + Product Truth")
 
 # production/product_detail_page.py (6C) reads phase6/6B/KEYWORD-ALLOCATION-MAP.json directly
 # (KAP.phase6b_dir / "KEYWORD-ALLOCATION-MAP.json", confirmed by source). production/aplus_assembly.py
@@ -438,7 +488,8 @@ WSM_STAGE_9 = StageSpec(
     ),
     blocking_stage_ids=(8,),
     command="python -m production.product_detail_page <run_dir> --write"
-           "  # then: python -m production.aplus_assembly <run_dir> --write")
+           "  # then: python -m production.aplus_assembly <run_dir> --write",
+    input_hint="KEYWORD-ALLOCATION-MAP.json + Product Facts")
 
 # creative/creative_production_package.py's load_phase6e_dependencies() HARD-verifies both the 6C
 # and 6D output directories exist and pass verify_phase6c_artifacts / verify_phase6d_artifacts,
@@ -453,7 +504,8 @@ WSM_STAGE_10 = StageSpec(
         StageComponent("creative_brief", ("phase6/6E/CREATIVE-BRIEF.md",)),
     ),
     blocking_stage_ids=(9,),
-    command="python -m creative.creative_production_package <run_dir> --write")
+    command="python -m creative.creative_production_package <run_dir> --write",
+    input_hint="Verified 6C (PDP) + 6D (A+) artifacts")
 
 # production/phase7_extended_launch_planning.py: NO source-code reference to phase6c_dir /
 # phase6d_dir / phase6e_dir was found (checked directly) -- its real gate is the accepted Phase
@@ -474,7 +526,8 @@ WSM_STAGE_11 = StageSpec(
                        accepted_tag_prefix="phase7-1e"),
         StageComponent("entry_guide", ("phase7/7.1E/final/MANUAL-ENTRY-GUIDE.md",)),
     ),
-    command="python -m production.phase7_extended_launch_planning --run-dir <run_dir>")
+    command="python -m production.phase7_extended_launch_planning --run-dir <run_dir>",
+    input_hint="Confirmed Phase 7.1M Economics + Owner Policy")
 
 # production/phase7_report_ingestion.py: "owner-EXPORTED Amazon Ads report files ... placed in a
 # local inbox" -- the raw import itself has no fixed name (owner-driven, like stages 2/4), but the
@@ -489,7 +542,8 @@ WSM_STAGE_11 = StageSpec(
 WSM_STAGE_12 = StageSpec(
     12, "Import PPC reports", GROUP_LAUNCH,
     ("phase7/7.2/final/PHASE7-REPORT-ANALYSIS-READINESS.json",),
-    command="python -m production.phase7_report_ingestion --base-dir <run_dir>/phase7/7.2")
+    command="python -m production.phase7_report_ingestion --base-dir <run_dir>/phase7/7.2",
+    input_hint="Amazon Ads Search Term report placed in phase7/7.2")
 
 # production/phase7_ads_analysis.py: hard-coded to read ONLY the promoted Phase 7.2 "final/"
 # directory, raising AdsAnalysisError on any other source (confirmed by source) -- the strongest-
@@ -507,7 +561,8 @@ WSM_STAGE_13 = StageSpec(
     ),
     blocking_stage_ids=(12,),
     command="python -m production.phase7_ads_analysis --base-dir <run_dir>/phase7/7.3"
-           " --phase7-2-dir <run_dir>/phase7/7.2")
+           " --phase7-2-dir <run_dir>/phase7/7.2",
+    input_hint="Promoted Phase 7.2 report dataset")
 
 
 # ================================================================ Product Truth (Phase 6A) --
@@ -564,6 +619,7 @@ PRODUCT_TRUTH_LABEL = "Product Truth"
 PRODUCT_TRUTH_GROUP = GROUP_BUILD
 PRODUCT_TRUTH_COMMAND = "python scripts/phase6a_build.py <run_dir>"
 PRODUCT_TRUTH_STAFF_NOTE = "Product Truth required before Listing + A+."
+PRODUCT_TRUTH_INPUT_HINT = "MASTER-KEYWORDS-LEAN.json + Owner-confirmed product facts"
 
 
 def derive_product_truth_state(product_root):

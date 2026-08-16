@@ -6,6 +6,8 @@ REM action of any kind is ever performed.
 setlocal
 title AMZ FBM Toolkit - Start
 cd /d "%~dp0"
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 powershell.exe -NoProfile -NoLogo -ExecutionPolicy Bypass -File "%~dp0Start-AMZ-Toolkit.ps1"
 set "TOOLKIT_RC=%ERRORLEVEL%"
 if not "%TOOLKIT_RC%"=="0" (

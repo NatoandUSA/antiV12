@@ -1,4 +1,15 @@
-# Hướng dẫn nhanh (nhân viên) — v2.3.4-RC1
+# Hướng dẫn nhanh (nhân viên) — [LEGACY / ENGINEERING REFERENCE]
+
+> ⚠️ **LƯU Ý QUAN TRỌNG CHO NHÂN VIÊN (STAFF V1):**
+> Tài liệu này mô tả **quy trình CLI cũ (v2.3.4 legacy)** dùng cho mục đích kỹ thuật / kiểm thử nội bộ. 
+> Nhân viên vận hành **KHÔNG SỬ DỤNG** quy trình này để bắt đầu.
+> 👉 **Quy trình chuẩn hiện tại (v2.4.0+):**
+> 1. Nhấp đúp vào **`Start-AMZ-Toolkit.bat`** (khởi động console tại `http://127.0.0.1:8780`).
+> 2. Đọc hướng dẫn vận hành chuẩn tại: **[`docs/QUICKSTART-DASHBOARD-V1.md`](QUICKSTART-DASHBOARD-V1.md)**.
+>
+> *(Nội dung bên dưới được lưu lại chỉ nhằm mục đích tham chiếu kỹ thuật và tương thích ngược).*
+
+---
 
 > Chỉ **sếp (owner)** được chạy các lệnh `--approve-*`. Nhân viên chuẩn bị file; sếp duyệt.
 > Trên Windows dùng `python`; trên Mac/Linux có thể là `python3`. Ví dụ dưới dùng `python`.

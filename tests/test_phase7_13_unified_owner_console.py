@@ -2368,6 +2368,21 @@ class WorkflowSection(Base):
         # a client-side guess.
         self.assertEqual(wf["primary_next_stage_id"], 2)
 
+    def test_manual_import_stage_output_display_never_shows_raw_glob_pattern(self):
+        """Stages 2/4 (existence_globs, no fixed filename since Amazon/H10 names the export) must
+        never render a glob pattern as Output -- os.path.basename("*Xray*.xlsx") is a no-op, so a
+        naive join previously showed the pattern text itself to Staff as if it were a produced
+        artifact. RISK-002."""
+        ws = self.newroot()
+        model = UC.build_console_model(self.cfg(ws), now=NOW())
+        by_id = {s["stage_id"]: s for s in model["sections"]["workflow"]["stages"]}
+        for sid in (2, 4):
+            self.assertIsNone(by_id[sid]["output_display"], sid)
+            # WSM.stage_outputs' own documented contract (existence_globs, unchanged) still
+            # surfaces the raw patterns in "outputs" -- only the human-facing display is filtered.
+            for o in by_id[sid]["outputs"]:
+                self.assertTrue(o.startswith("*"), o)
+
     def test_stage_1_and_7_present_but_not_modeled(self):
         ws = self.newroot()
         model = UC.build_console_model(self.cfg(ws), now=NOW())

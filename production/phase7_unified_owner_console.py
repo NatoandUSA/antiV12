@@ -36,6 +36,7 @@ import hmac
 import ipaddress
 import json
 import os
+import re
 import secrets
 import socket
 import sys
@@ -140,6 +141,20 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8780
 DEFAULT_WORKSPACE_ROOT = os.path.join("runs", "T2", "phase7")
 DEFAULT_BASE_DIR = os.path.join("runs", "T2", "phase7", "7.13")
+
+# ---------------------------------------------------------------- multi-product workspace picker
+# The persisted "which product is active" pointer lives beside the product folders themselves
+# (products_root/.active-workspace.json), not under %LOCALAPPDATA% -- it is bookkeeping for the
+# runs/ tree, not a machine-wide preference, and it keeps every test's picker state trivially
+# isolated inside that test's own tmp products root.
+ACTIVE_WORKSPACE_FILENAME = ".active-workspace.json"
+ACTIVE_WORKSPACE_SCHEMA = "phase7-13-active-workspace-v1"
+WORKSPACE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+# "t2" is the one permanently quarantined name (QUARANTINED_PRODUCT_ROOTS below); Windows reserved
+# device names would otherwise silently fail directory creation with a confusing OS error.
+RESERVED_WORKSPACE_NAMES = frozenset({"t2"} | {
+    "con", "prn", "aux", "nul",
+} | {"com%d" % i for i in range(1, 10)} | {"lpt%d" % i for i in range(1, 10)})
 
 SESSION_TTL_SECONDS = 8 * 3600
 ACTION_TOKEN_TTL_SECONDS = 300
@@ -879,6 +894,119 @@ def _workspace_trust_state(product_root):
     return {"state": TRUST_TRUSTED, "reason": "Lineage verified against the accepted package."}
 
 
+# ---------------------------------------------------------------- multi-product workspace picker
+def _products_root_for(workspace_root):
+    """The folder that holds every product (each a sibling of the one config.workspace_root
+    currently points into) -- two levels up from workspace_root, the same arithmetic
+    build_workflow_section already uses once for product_root, applied a second time."""
+    product_root = os.path.dirname(_s(workspace_root).rstrip(os.sep))
+    return os.path.dirname(product_root)
+
+
+def _active_workspace_path(products_root):
+    return os.path.join(products_root, ACTIVE_WORKSPACE_FILENAME)
+
+
+def _validate_workspace_name(name):
+    """Raise ConsoleError on anything not safe to use as a new directory name. The character set
+    alone already excludes path separators, "..", and a leading "."/"_" (so a product can never
+    collide with .active-workspace.json's own namespace)."""
+    n = _validate_existing_workspace_name(name)
+    if n.lower() in RESERVED_WORKSPACE_NAMES:
+        raise ConsoleError(400, "RESERVED_WORKSPACE_NAME", n, readiness=ACTION_BLOCKED)
+    return n
+
+
+def _validate_existing_workspace_name(name):
+    """Same charset/traversal safety as _validate_workspace_name, minus the reserved-name check --
+    selecting an EXISTING workspace (the permanently quarantined "T2" above all) must always stay
+    possible; only *creating* a new one with a reserved name is refused. Used by select-workspace
+    so a caller can never smuggle a path-traversal product_name (e.g. "../../elsewhere") past the
+    os.path.isdir() existence check in _resolve_target -- the charset match is the only thing
+    standing between an arbitrary product_name and config.workspace_root being pointed outside
+    runs/ entirely (workspace_root feeds every subsystem via Config.phase_dir())."""
+    n = _s(name).strip()
+    if not WORKSPACE_NAME_RE.match(n):
+        raise ConsoleError(400, "INVALID_WORKSPACE_NAME", n, readiness=ACTION_BLOCKED)
+    return n
+
+
+def _list_workspace_candidates(products_root, *, active_name=None):
+    """Every product folder directly under products_root -- isdir, name not starting with "."/"_"
+    (excludes the active-workspace pointer file and any future dotfile/underscore bookkeeping).
+    Deliberately NOT production.product_workspace.select_product_workspace: that helper's
+    _has_keyword_source gate would make every brand-new, just-created workspace permanently
+    invisible, and its import chain (keyword_source_adapter, product_fact_loader, claim_evidence,
+    ...) is far heavier than a directory listing needs."""
+    out = []
+    if not os.path.isdir(products_root):
+        return out
+    for name in sorted(os.listdir(products_root)):
+        if name.startswith(".") or name.startswith("_"):
+            continue
+        product_root = os.path.join(products_root, name)
+        if not os.path.isdir(product_root):
+            continue
+        out.append({"name": name, "trust": _workspace_trust_state(product_root),
+                    "active": name == active_name})
+    return out
+
+
+def _read_active_workspace(products_root):
+    """The persisted product name, or None if never set / unreadable / stale (no longer a real
+    directory under products_root) -- callers always have a safe default to fall back to."""
+    path = _active_workspace_path(products_root)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            rec = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rec, dict):
+        return None
+    name = rec.get("active_workspace")
+    if not isinstance(name, str) or not name:
+        return None
+    if not os.path.isdir(os.path.join(products_root, name)):
+        return None
+    return name
+
+
+def _write_active_workspace(products_root, name):
+    """Atomic write, same temp-file + fsync + os.replace idiom already used for the 7.13
+    validation record (_execute_console_action's verify-system-state branch)."""
+    os.makedirs(products_root, exist_ok=True)
+    record = {"schema_version": ACTIVE_WORKSPACE_SCHEMA, "active_workspace": name,
+              "selected_at": _iso(_now_utc())}
+    path = _active_workspace_path(products_root)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(canonical_json(record) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _resolve_effective_workspace_root(workspace_root_arg):
+    """Startup-time override, used only from _config_from_args. Only ever substitutes when the
+    incoming value IS the literal, un-customized default -- an operator or test that explicitly
+    passed a different --workspace-root always wins untouched, so no existing T2-fixture test or
+    TestCLI test (which always passes an explicit tmp path) is affected.
+
+    DEFAULT_WORKSPACE_ROOT is built with os.path.join, which is backslash-separated on Windows;
+    the value actually received here (e.g. from Start-AMZ-Toolkit.ps1 via phase7_owner_launcher's
+    console_command(), which always normalizes to forward slashes before spawning) may be the
+    forward-slash form. Compare with os.path.normpath on both sides, never raw string equality."""
+    if os.path.normpath(_s(workspace_root_arg)) != os.path.normpath(DEFAULT_WORKSPACE_ROOT):
+        return workspace_root_arg
+    products_root = _products_root_for(workspace_root_arg)
+    active = _read_active_workspace(products_root)
+    if active is None:
+        return workspace_root_arg
+    return os.path.join(products_root, active, "phase7")
+
+
 def build_workflow_section(config, *, now):
     """Dashboard V1 Workflow -- the 13-stage pipeline overview (DASHBOARD-V1-SPEC.md). Read-only
     and purely additive: no existing section, the console readiness banner, module list, or any
@@ -1466,6 +1594,13 @@ ACTIONS = {s.name: s for s in [
     ActionSpec("create-recovery-plan", authority="phase7.9", target_param="snapshot_id",
                effect="Create a Phase 7.9 read-only recovery plan for one snapshot (changes nothing at source).",
                upstream_state_change="phase7.9", requires_confirmation=True, phrase_prefix="PLAN"),
+    ActionSpec("select-workspace", authority="console", target_param="product_name",
+               effect="Switch the console's active product workspace (local directory pointer only).",
+               local_state_change="7.13_active_workspace"),
+    ActionSpec("create-workspace", authority="console", target_param="product_name",
+               effect="Create a new product workspace under runs/ and switch the console to it.",
+               local_state_change="runs_new_workspace", requires_confirmation=True,
+               phrase_prefix="CREATE"),
 ]}
 
 # Prohibited actions are simply absent from the allowlist. Naming them here documents the refusal.
@@ -1627,6 +1762,20 @@ def _resolve_target(config, action, params):
         return ["overview"], "overview", ctx
     if action == "verify-system-state":
         return ["console"], "console", ctx
+    if action == "select-workspace":
+        name = _validate_existing_workspace_name(params.get("product_name"))
+        products_root = _products_root_for(config.workspace_root)
+        if not os.path.isdir(os.path.join(products_root, name)):
+            raise ConsoleError(404, "WORKSPACE_NOT_FOUND", name, readiness=ACTION_BLOCKED)
+        ctx["product_name"] = name
+        return [name], name, ctx
+    if action == "create-workspace":
+        name = _validate_workspace_name(params.get("product_name"))
+        products_root = _products_root_for(config.workspace_root)
+        if os.path.isdir(os.path.join(products_root, name)):
+            raise ConsoleError(409, "WORKSPACE_ALREADY_EXISTS", name, readiness=ACTION_BLOCKED)
+        ctx["product_name"] = name
+        return [name], name, ctx
     raise ConsoleError(400, "UNKNOWN_ACTION", action, readiness=ACTION_BLOCKED)
 
 
@@ -1756,7 +1905,7 @@ def execute_action(config, *, token, confirmation_phrase, session_fingerprint, n
     failure_reason = None
     if spec.authority == "console":
         execution_result, upstream_id, policy_result, result = _execute_console_action(
-            config, action, now=now, cache=cache)
+            config, action, now=now, cache=cache, ctx=ctx)
     else:
         try:
             result = _execute_authority(config, action, params, ctx)
@@ -1800,7 +1949,31 @@ def execute_action(config, *, token, confirmation_phrase, session_fingerprint, n
     }
 
 
-def _execute_console_action(config, action, *, now, cache):
+def _execute_console_action(config, action, *, now, cache, ctx=None):
+    if action == "select-workspace":
+        name = (ctx or {}).get("product_name")
+        products_root = _products_root_for(config.workspace_root)
+        config.workspace_root = os.path.abspath(os.path.join(products_root, name, "phase7"))
+        _write_active_workspace(products_root, name)
+        if cache is not None:
+            cache.invalidate()
+        return (ACTION_COMPLETED, name, "ALLOWED",
+                {"ok": True, "active_workspace": name})
+    if action == "create-workspace":
+        name = (ctx or {}).get("product_name")
+        products_root = _products_root_for(config.workspace_root)
+        new_ws = os.path.join(products_root, name, "phase7")
+        try:
+            os.makedirs(new_ws, exist_ok=False)
+        except OSError as e:
+            return (ACTION_FAILED, name, "ALLOWED",
+                    {"ok": False, "error": "WORKSPACE_CREATE_FAILED", "detail": _s(e)})
+        config.workspace_root = os.path.abspath(new_ws)
+        _write_active_workspace(products_root, name)
+        if cache is not None:
+            cache.invalidate()
+        return (ACTION_COMPLETED, name, "ALLOWED",
+                {"ok": True, "active_workspace": name, "created": True})
     if action == "refresh-overview":
         if cache is not None:
             cache.invalidate()
@@ -2210,6 +2383,17 @@ def _make_handler():
                     return self._error(400, "UNSUPPORTED_EXPORT_FORMAT", fmt)
                 fn, ctype = EXPORTERS[fname]
                 return self._send_bytes(200, ctype, fn(model).encode("utf-8"), extra=extra)
+            if endpoint == "workspaces":
+                # Not a console-model section: a cheap directory listing, so this deliberately
+                # bypasses self.server.model() rather than forcing a full model rebuild/cache
+                # entry for something unrelated to model staleness.
+                products_root = _products_root_for(self.server.config.workspace_root)
+                active = os.path.basename(os.path.dirname(
+                    self.server.config.workspace_root.rstrip(os.sep)))
+                return self._envelope({
+                    "products_root": products_root, "active": active,
+                    "workspaces": _list_workspace_candidates(products_root, active_name=active),
+                }, readiness=CONSOLE_READY, extra=extra)
             if endpoint not in _READ_ENDPOINTS:
                 return self._error(404, "UNKNOWN_ENDPOINT", endpoint)
             model = self.server.model()
@@ -2297,7 +2481,8 @@ def _make_handler():
                 sec = model["sections"]["workflow"]
                 return {"status": sec["status"], "stages": sec["stages"], "counts": sec["counts"],
                         "product_root": sec["product_root"],
-                        "primary_next_stage_id": sec.get("primary_next_stage_id")}, readiness
+                        "primary_next_stage_id": sec.get("primary_next_stage_id"),
+                        "trust": sec.get("trust"), "product_truth": sec.get("product_truth")}, readiness
             if endpoint == "activity":
                 audit_state = self.server.audit.state()
                 events = self.server.audit.events()
@@ -2426,7 +2611,7 @@ def validate_only(config):
     for stage in ("7.3", "7.4", "7.5", "7.6", "7.7", "7.8", "7.9", "7.10", "7.11", "7.12"):
         present = os.path.isdir(config.phase_dir(stage))
         checks.append({"check": f"phase_{stage}_present", "ok": True, "present": present})
-    checks.append({"check": "action_allowlist_fixed", "ok": len(ACTIONS) == 15, "count": len(ACTIONS)})
+    checks.append({"check": "action_allowlist_fixed", "ok": len(ACTIONS) == 17, "count": len(ACTIONS)})
     checks.append({"check": "api_schema_defined", "ok": bool(API_SCHEMA)})
     checks.append({"check": "static_assets_declared", "ok": set(STATIC_FILES) == {
         "index.html", "app.js", "styles.css", "icons.svg", "favicon.svg"}})
@@ -2482,7 +2667,8 @@ def build_arg_parser():
 
 
 def _config_from_args(a):
-    return Config(a.base_dir, a.workspace_root, actor=a.actor, reference_date=a.reference_date,
+    ws_root = _resolve_effective_workspace_root(a.workspace_root)
+    return Config(a.base_dir, ws_root, actor=a.actor, reference_date=a.reference_date,
                   allow_local=a.allow_local_test_server)
 
 

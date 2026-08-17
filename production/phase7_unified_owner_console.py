@@ -1069,7 +1069,12 @@ def _build_workflow_section_body(config, product_root):
                      if r["state"] == WSM.BLOCKED else [])
         outs = list(WSM.stage_outputs(spec))
         input_desc = WSM.stage_input_display(spec, spec_by_id)
-        out_display = ", ".join(os.path.basename(p) for p in outs) if outs else None
+        # existence_globs (stages 2/4: no fixed filename -- Amazon/H10 names the export) are
+        # patterns, not real files; os.path.basename() is a no-op on "*Xray*.xlsx" so it was
+        # rendering the raw pattern as if it were a produced artifact. Same glob-detection idiom
+        # WSM.stage_input_display already uses one function away for the identical reason.
+        out_names = [os.path.basename(p) for p in outs if not p.startswith("*")]
+        out_display = ", ".join(out_names) if out_names else None
         stages.append({
             "stage_id": spec.stage_id, "label": spec.name, "group": spec.group, "modeled": True,
             "state": r["state"], "components": r["components"], "blocked_by": blocked_by,

@@ -33,7 +33,7 @@ its own hash-bound review, tiny images cannot pass, image-spec hashes must match
 there is now a supported owner approval chain (main-image → creative → final), each hash-bound and
 self-invalidating. Creative Edge reports only a CREATIVE PACKAGE status; project publication is
 decided solely by `pipeline --status`. See CAPABILITIES.json for the maturity source of truth,
-AUDIT-RESPONSE-v2_3_4.md for what changed and what is deferred, and docs/ARCHITECTURE.md for the
+archive/misc/AUDIT-RESPONSE-v2_3_4.md for what changed and what is deferred, and docs/ARCHITECTURE.md for the
 map. Executable stage orchestration (--run-stage) and the web dashboard/database are intentionally
 NOT built yet — next after one real end-to-end pilot.
 

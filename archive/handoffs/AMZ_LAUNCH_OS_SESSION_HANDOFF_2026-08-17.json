@@ -1,0 +1,76 @@
+{
+  "project": "AMZ Launch OS / AMZ-FBM Toolkit",
+  "repository": "https://github.com/NatoandUSA/amz-fbm-toolkit.git",
+  "mirror_repository": "https://github.com/NatoandUSA/antiV12.git",
+  "branch": "p1-dashboard-input-output-ux-clarity",
+  "base_sha": "eb196008dcbdbeed4c9aacdcc317db94eccfc6f3",
+  "base_sha_note": "Canonical main tip after PR #2 merged (eb19600). Mirror main tip is a9b107362f1c2a9c36177a78f6c1ba220644a3d6 -- identical content, separate merge-commit SHA. This branch's own pre-existing tip (54e9218) is the actual git parent of current_sha and is already an ancestor of both mains, so PR #3 shows cleanly as +1 commit, no rebase needed.",
+  "current_sha": "5dc37957014fad6352668ce56423f7173d37dddd",
+  "short_sha": "5dc3795",
+  "current_state": "PR3_OPEN_BOTH_CI_GREEN_AWAITING_MERGE_DECISION",
+  "objective": "Simulate the F6 Staff Usability Pilot as a fresh employee following docs/QUICKSTART-DASHBOARD-V1.md literally (no prior system knowledge), then fix whatever it found. Not GPT-suggestion-driven -- owner-directed via direct conversation this session.",
+  "what_changed": "1) Simulated pilot hit a Day-0 blocker at doc step 2: Start-AMZ-Toolkit.ps1 hardcodes --workspace-root runs/T2/phase7 with no way to point at a new product; the doc's 'create your own folder, page reads it directly' claim was false. Proved with a real screenshot through the real launcher. 2) Investigating the owner's 'distinguish fixture from real data' requirement found GET /api/v1/workflow silently omitted 'trust' and 'product_truth' from its response even though build_workflow_section always computed both -- the workspace trust banner and Product Truth prerequisite row were fully built, unit-tested, and documented in the staff quickstart, but unreachable over HTTP for any workspace, ever. No prior test exercised the real HTTP response body for this endpoint. 3) Fixed both: added the two missing keys to the workflow endpoint response (Part A); built a real multi-product workspace picker -- GET /api/v1/workspaces (list with per-candidate trust state), select-workspace/create-workspace actions reusing the existing prepare/execute allowlist (CSRF+audit+confirmation, not a bespoke endpoint), persisted at runs/.active-workspace.json, phase7_owner_launcher.py left untouched to preserve its stdlib-only contract and test_198_no_runs_dependency_in_launcher_module (Part B). 4) Self-review (code-review skill) caught a path-traversal validation gap: select-workspace originally checked only os.path.isdir() on the joined path with no charset check, unlike create-workspace -- fixed by splitting into _validate_existing_workspace_name (charset-only, select, must still reach the reserved 'T2' name) vs _validate_workspace_name (charset+reserved-name, create). Also found and fixed a 4th location for the pinned ACTIONS-count-15 assertion that a prior planning pass's grep missed (test_94_no_arbitrary_function_invocation). 5) Rewrote docs/QUICKSTART-DASHBOARD-V1.md step 2 to describe the real flow.",
+  "files_changed": [
+    "production/phase7_unified_owner_console.py",
+    "production/phase7_unified_owner_console_static/app.js",
+    "tests/test_phase7_13_unified_owner_console.py",
+    "tests/test_phase7_14_owner_usability_pilot_readiness.py",
+    "docs/QUICKSTART-DASHBOARD-V1.md"
+  ],
+  "gpt_suggestion_coverage": "N/A this session -- owner-directed simulation + fix, not driven by an incoming ChatGPT suggestion list.",
+  "root_cause": "Two independent, pre-existing defects, both now closed: (1) the one-click launcher's workspace_root was designed as a single fixed value with no selection/creation mechanism ever built, even though Config.workspace_root is load-bearing for every console subsystem (Analysis/Backup/Research/Watchlists/Notifications via Config.phase_dir()), so there was no low-risk way to retrofit multi-product support without touching the launcher's stdlib-only contract -- solved by keeping the override logic entirely inside the console (startup-time _resolve_effective_workspace_root + live in-place Config.workspace_root mutation) rather than the launcher. (2) The GET /api/v1/workflow HTTP handler's response dict was written by hand and simply never updated when trust/product_truth were added to the internal model -- a hand-maintained key allowlist silently drifting from the model it's supposed to expose, undetected because every existing test asserted against the internal dict, never the real HTTP boundary.",
+  "impact_surface": [
+    "Unified Owner Console backend (production/phase7_unified_owner_console.py): Config resolution, ACTIONS allowlist (15->17), workflow API response shape, new /api/v1/workspaces endpoint",
+    "Unified Owner Console frontend (app.js): Workflow page render (new picker block), no new nav/routing",
+    "Staff-facing documentation (docs/QUICKSTART-DASHBOARD-V1.md)",
+    "phase7_owner_launcher.py and Start-AMZ-Toolkit.ps1: verified UNCHANGED, deliberately, to preserve their existing accepted contracts"
+  ],
+  "source_of_truth_review": "No new sources of truth created. Trust state reuses the existing _workspace_trust_state()/QUARANTINED_PRODUCT_ROOTS authority for both the Workflow banner and the new picker list (one function, two call sites). Workspace mutation reuses the existing ACTIONS prepare/execute allowlist (CSRF/audit/confirmation) rather than a new bespoke endpoint. Workspace enumeration is a small new local helper, deliberately NOT production.product_workspace.select_product_workspace (that helper's _has_keyword_source gate would hide every brand-new empty workspace, and its import chain is far heavier than a directory listing needs) -- disclosed as a considered rejection, not an oversight.",
+  "tests_executed": [
+    "tests/test_phase7_13_unified_owner_console.py + tests/test_phase7_14_owner_usability_pilot_readiness.py (targeted, run repeatedly through the session): 861/862 passed. Sole failure: test_199e_no_acceptance_tag_yet, a pre-existing stale git-tag assertion, unrelated to this change, already documented in prior session memory.",
+    "scripts/ci_test_gate.py (full project regression gate, Python 3.12.10, Windows), run once before this session's code changes and once after: raw non-passing counts are bit-for-bit identical both times (94 errors + 8 failures), matching the pre-existing local runs/T2 fixture-drift class documented in prior session memory -- zero new regressions from this diff.",
+    "Live: real accepted launcher (production/phase7_owner_launcher.py start/stop) -- SESSION7_14_LAUNCHER_READY / STOPPED, clean both times.",
+    "Live: real headless-Edge CDP probe (elementFromPoint click-reachability hit-test, same technique as tests/phase7_14_browser_qa.js) against the real running console before AND after the fix -- 0 blocked controls both times; after the fix, trust banner and Product Truth row confirmed actually rendering (previously silently absent).",
+    "Live: full interactive create-workspace round trip against a real runs/ tree -- typed a product name, clicked Create, read the confirmation phrase out of the real DOM, typed it, clicked Confirm, then fetched /api/v1/workspaces fresh and confirmed the new product existed and was active. Test artifacts (the created workspace dir, runs/.active-workspace.json) deleted afterward; runs/ verified back to its exact original state.",
+    "Canonical CI (GitHub Actions, PR #3, exact SHA 5dc3795): SUCCESS.",
+    "Mirror CI (GitHub Actions, PR #3, exact SHA 5dc3795): SUCCESS."
+  ],
+  "tests_not_executed": [
+    "tests/phase7_14_console_dom_harness.js's fixture was NOT extended with new workspace-picker-specific assertions -- deliberate, disclosed scope call: the existing harness still passes unchanged, and the live CDP verification above already proves more (real CSS, real click-reachability) than the offline DOM shim can. A future session could still add this for permanent CI coverage of the picker's render contract specifically."
+  ],
+  "ci_evidence": {
+    "canonical": {
+      "pr": "https://github.com/NatoandUSA/amz-fbm-toolkit/pull/3",
+      "run_url": "https://github.com/NatoandUSA/amz-fbm-toolkit/actions/runs/31964308976/job/95206990663",
+      "conclusion": "SUCCESS"
+    },
+    "mirror": {
+      "pr": "https://github.com/NatoandUSA/antiV12/pull/3",
+      "run_url": "https://github.com/NatoandUSA/antiV12/actions/runs/31964319647/job/95207015881",
+      "conclusion": "SUCCESS"
+    },
+    "canonical_prior_baseline_sha": "eb196008dcbdbeed4c9aacdcc317db94eccfc6f3 (GREEN, PR #2)"
+  },
+  "runtime_evidence": "All live evidence above was gathered by directly driving the real accepted launcher and a real headless browser -- not simulated, not the offline DOM shim alone.",
+  "known_risks": [
+    "The workspace picker's enumeration filter (isdir, name not starting with '.'/'_') lists runs/backups (a snapshot storage folder from an unrelated ad-hoc process, not a product) as a selectable candidate. Not a defect against the approved design -- the plan explicitly specified this simple filter -- but cosmetically noisy. Selecting it would just show an empty/NOT_STARTED Workflow page, nothing unsafe.",
+    "Pre-existing, NOT touched by this PR: production/phase7_unified_owner_console.py's stage-output display (build_workflow_section, stage_outputs()) renders raw existence_globs (e.g. '*Xray*.xlsx, *Xray*.xls, ...') as a stage's own Output for manual-input stages (2, 4) instead of a real produced artifact -- found during this session's self-review but out of scope for this diff since it predates it (part of yesterday's already-merged P1 UX PR #2). Flagged to the owner separately; not yet fixed."
+  ],
+  "not_verified": [
+    "Whether the owner wants runs/backups filtered out of the picker list (or renamed/relocated so it stops looking like a product folder).",
+    "Whether/when the owner wants the separate pre-existing stage-output glob-display bug (see known_risks) fixed.",
+    "No independent (non-author) review of this diff has happened yet -- self-review (code-review skill) only."
+  ],
+  "open_questions": [
+    "Merge PR #3 into main now (both remotes CI green), or hold for further review first?",
+    "Fix the runs/backups picker-noise and/or the stage-output glob-display bug in a follow-up, or leave both as known, disclosed, non-blocking issues?"
+  ],
+  "recommended_next_step": "Independent review of PR #3 diff on exact SHA 5dc3795 (both remotes already CI green) -> merge into main on both remotes if approved -> decide follow-up priority for the two known_risks items.",
+  "requested_gpt_review": [
+    "Verify the path-traversal fix (_validate_existing_workspace_name vs _validate_workspace_name split) is actually sufficient -- confirm no other console action or endpoint accepts a similarly-unvalidated filesystem-path-shaped parameter.",
+    "Review whether reusing the ACTIONS prepare/execute allowlist for workspace mutation (rather than a dedicated endpoint) is the right architectural call long-term, now that ACTIONS has grown from 15 to 17.",
+    "Decide the runs/backups picker-noise question and the stage-output glob-display bug priority (see open_questions).",
+    "Confirm whether extending tests/phase7_14_console_dom_harness.js's fixture for the picker is worth doing now vs. deferred."
+  ],
+  "provenance": "ANTIGRAVITY/CLAUDE-VERIFIED"
+}

@@ -1099,6 +1099,56 @@
     return row;
   }
 
+  // ---------------------------------------------------------------- multi-product workspace picker
+  function workspacePickerRow(w) {
+    var row = el("div", { class: "workspace-row" });
+    row.appendChild(el("span", { class: "workspace-name", text: w.name }));
+    row.appendChild(tag(w.trust ? w.trust.state : "UNKNOWN"));
+    if (w.active) {
+      row.appendChild(el("span", { class: "em small", text: "(active)" }));
+    } else {
+      var b = el("button", { class: "btn action", type: "button", text: "Switch",
+                             "data-act": "action:select-workspace" });
+      b.addEventListener("click", function () {
+        startAction("select-workspace", { product_name: w.name }, "Switch to " + w.name);
+      });
+      row.appendChild(b);
+    }
+    return row;
+  }
+
+  function workspacePickerPanel() {
+    var sec = el("section", { class: "panel", id: "workspace-picker",
+                              role: "region", "aria-label": "Product workspaces" });
+    sec.appendChild(el("h2", { class: "na-title", text: "Product workspaces" }));
+    var mount = el("div");
+    mount.appendChild(loadingBlock("workspaces"));
+    sec.appendChild(mount);
+    getJSON(API + "/workspaces").then(function (res) {
+      mount.textContent = "";
+      if (handleUnauthorized(res)) { mount.appendChild(sessionExpiredPanel()); return; }
+      var data = (res.body && res.body.data) || {};
+      var list = el("div", { class: "workspace-list" });
+      (data.workspaces || []).forEach(function (w) { list.appendChild(workspacePickerRow(w)); });
+      mount.appendChild(list);
+
+      var input = el("input", { type: "text", "data-act": "workspace:create-name",
+                                "aria-label": "New product workspace name" });
+      input.placeholder = "letters, numbers, hyphens only";
+      var createBtn = el("button", { class: "btn action", type: "button", text: "Create workspace",
+                                     "data-act": "action:create-workspace" });
+      createBtn.addEventListener("click", function () {
+        var name = input.value.trim();
+        if (name) startAction("create-workspace", { product_name: name }, "Create workspace: " + name);
+      });
+      var createRow = el("div", { class: "workspace-create" });
+      createRow.appendChild(el("label", {}, [el("span", { text: "New product name" }), input]));
+      createRow.appendChild(createBtn);
+      mount.appendChild(createRow);
+    });
+    return sec;
+  }
+
   function workflowPrimaryPanel(s) {
     var sec = el("section", { class: "panel next-action na-" + (STATUS[ownerState(s.state)] || STATUS.UNKNOWN).cls,
                               id: "workflow-next", "data-block": "next-action",
@@ -1230,13 +1280,14 @@
         head.appendChild(commandCopyRow(wf.product_root, "Copy path"));
       }
       root.appendChild(head);
+      root.appendChild(workspacePickerPanel());
       if (wf.trust) root.appendChild(workflowTrustBanner(wf.trust));
 
       if (!stages.length) {
         root.appendChild(emptyState({
           title: "No product workspace found yet.", isError: false,
           why: "The Workflow view reads a product workspace directly from disk; none exists yet.",
-          next: "Create a product workspace, then reload this page."
+          next: "Use \"Create workspace\" above to create one and switch to it."
         }));
         return;
       }
